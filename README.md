@@ -28,13 +28,8 @@ A Model Context Protocol (MCP) server for interacting with [Ray](https://github.
 - **Performance monitoring** - Detailed cluster performance metrics
 - **Health checks** - Comprehensive cluster health assessment
 - **Configuration optimization** - Get cluster optimization recommendations
-- **Workflow orchestration** - Create and manage Ray workflows
-- **Job scheduling** - Schedule jobs with cron expressions
+- **Job scheduling configuration** - Configure job scheduling parameters (metadata only)
 - **Backup & recovery** - Backup and restore cluster state
-
-### Scaling Operations
-- **Cluster scaling** - Scale clusters up or down (with autoscaler support)
-- **Resource allocation** - Configure CPU, GPU, and memory allocation
 
 ## Installation
 
@@ -163,9 +158,9 @@ The server provides **21 tools** for comprehensive Ray cluster management:
 - `health_check` - Perform comprehensive cluster health check
 - `optimize_config` - Get cluster optimization recommendations
 
-### Workflow & Orchestration
+### Job Scheduling
 
-- `schedule_job` - Schedule a job to run periodically
+- `schedule_job` - Configure job scheduling parameters (stores metadata only)
 
 ### Backup & Recovery
 - `backup_cluster` - Backup cluster state
@@ -306,7 +301,7 @@ config/
 ## Limitations
 
 - **Log Retrieval**: Actor and node log retrieval has some limitations (job logs fully supported)
-- **Cluster Scaling**: Auto-scaling depends on Ray cluster autoscaler configuration
+- **Cluster Resources**: Configure CPU, GPU, and memory allocation when starting new clusters
 - **Authentication**: No built-in authentication (relies on Ray cluster security)
 - **Multi-cluster**: Currently supports single cluster per server instance
 
