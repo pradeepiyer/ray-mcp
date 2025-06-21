@@ -3,27 +3,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
 
 # Virtual environments
 .venv/
 venv/
-ENV/
 env/
 
 # Testing
@@ -40,22 +27,8 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
-*~
-
-# Personal configs
-config/claude_desktop_config.json.local
-config/personal_*
 
 # Logs
 *.log
 ray_logs/
 ray_mcp_logs/
-
-# Ray MCP Package artifacts
-ray_mcp.egg-info/
-# Legacy package names (for cleanup)
-mcp_ray.egg-info/
-mcp_ray_server.egg-info/
-
-# Cleanup scripts
-cleanup_repo.sh
