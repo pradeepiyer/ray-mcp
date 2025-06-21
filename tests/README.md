@@ -35,7 +35,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 - `cluster_status` - Getting cluster health and status
 - `cluster_resources` - Resource monitoring and allocation
 - `cluster_nodes` - Node management and scaling
-- `scale_cluster` - Dynamic cluster scaling
+
 
 ### 2. Job Management Tests
 - `submit_job` - Job submission with runtime environments
@@ -57,7 +57,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 - `optimize_config` - Configuration optimization
 
 ### 5. Workflow & Orchestration Tests
-- `create_workflow` - Workflow definition and creation
+
 - `schedule_job` - Job scheduling with cron expressions
 
 ### 6. Backup & Recovery Tests

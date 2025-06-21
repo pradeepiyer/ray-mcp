@@ -587,31 +587,7 @@ class RayManager:
                 "message": f"Failed to get logs: {str(e)}"
             }
 
-    async def scale_cluster(self, num_workers: int) -> Dict[str, Any]:
-        """Scale the cluster."""
-        try:
-            self._ensure_initialized()
 
-            if not RAY_AVAILABLE or ray is None:
-                return {
-                    "status": "error",
-                    "message": "Ray is not available"
-                }
-            
-            current_nodes = len(ray.nodes())
-            
-            return {
-                "status": "info",
-                "message": f"Cluster scaling requested to {num_workers} workers. Current nodes: {current_nodes}",
-                "note": "Auto-scaling depends on Ray cluster configuration and autoscaler setup"
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to scale cluster: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to scale cluster: {str(e)}"
-            }
 
 
 
@@ -797,42 +773,7 @@ class RayManager:
 
     # ===== WORKFLOW & ORCHESTRATION =====
 
-    async def create_workflow(
-        self,
-        workflow_definition: Dict[str, Any],
-        **kwargs: Any
-    ) -> Dict[str, Any]:
-        """Create and execute a Ray Workflow."""
-        try:
-            self._ensure_initialized()
-            
-            import ray.workflow as workflow
-            
-            workflow_config = {
-                "definition": workflow_definition,
-                "name": workflow_definition.get("name", f"workflow_{int(time.time())}"),
-                "steps": workflow_definition.get("steps", []),
-                **kwargs
-            }
-            
-            return {
-                "status": "workflow_created",
-                "workflow_name": workflow_config["name"],
-                "config": workflow_config,
-                "message": f"Workflow {workflow_config['name']} created successfully"
-            }
-            
-        except ImportError:
-            return {
-                "status": "error",
-                "message": "Ray Workflows not available. Install with: pip install 'ray[workflows]'"
-            }
-        except Exception as e:
-            logger.error(f"Failed to create workflow: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to create workflow: {str(e)}"
-            }
+
 
     async def schedule_job(
         self,

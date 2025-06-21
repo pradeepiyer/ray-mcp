@@ -63,10 +63,7 @@ async def get_cluster_nodes(ray_manager: RayManager) -> str:
     return json.dumps(result, indent=2)
 
 
-async def scale_cluster(ray_manager: RayManager, num_workers: int) -> str:
-    """Scale the cluster to the specified number of workers."""
-    result = await ray_manager.scale_cluster(num_workers)
-    return json.dumps(result, indent=2)
+
 
 
 # ===== JOB MANAGEMENT =====
@@ -164,18 +161,6 @@ async def optimize_cluster_config(ray_manager: RayManager) -> str:
 
 
 # ===== WORKFLOW & ORCHESTRATION =====
-
-async def create_workflow(
-    ray_manager: RayManager,
-    workflow_definition: Dict[str, Any],
-    **kwargs: Any
-) -> str:
-    """Create and execute a Ray Workflow."""
-    result = await ray_manager.create_workflow(
-        workflow_definition=workflow_definition,
-        **kwargs
-    )
-    return json.dumps(result, indent=2)
 
 
 async def schedule_job(

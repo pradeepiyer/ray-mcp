@@ -109,21 +109,7 @@ class HealthReport(TypedDict):
 
 
 
-# ===== WORKFLOW TYPES =====
 
-class WorkflowStep(TypedDict):
-    """A single workflow step."""
-    name: str
-    function: str
-    dependencies: List[str]
-    args: List[JsonValue]
-    kwargs: JsonDict
-
-class WorkflowDefinition(TypedDict):
-    """Complete workflow definition."""
-    name: str
-    steps: List[WorkflowStep]
-    description: Optional[str]
 
 class ScheduleConfig(TypedDict):
     """Job scheduling configuration."""
@@ -253,4 +239,4 @@ class JobClient(Protocol):
 # Specific kwargs types for different operations
 ClusterKwargs = Dict[str, Union[str, int, bool, ResourceDict]]
 JobKwargs = Dict[str, Union[str, int, JsonDict, Dict[str, str]]]
-WorkflowKwargs = Dict[str, Union[str, WorkflowDefinition, JsonDict]] 
+ 

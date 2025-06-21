@@ -31,7 +31,7 @@ class TestMCPToolCalls:
         manager.get_cluster_status = AsyncMock(return_value={"status": "running", "message": "Cluster running"})
         manager.get_cluster_resources = AsyncMock(return_value={"status": "success", "resources": {}})
         manager.get_cluster_nodes = AsyncMock(return_value={"status": "success", "nodes": []})
-        manager.scale_cluster = AsyncMock(return_value={"status": "success", "message": "Scaling complete"})
+
         manager.submit_job = AsyncMock(return_value={"status": "submitted", "job_id": "test_job"})
         manager.list_jobs = AsyncMock(return_value={"status": "success", "jobs": []})
         manager.get_job_status = AsyncMock(return_value={"status": "success", "job_status": "RUNNING"})
@@ -44,7 +44,7 @@ class TestMCPToolCalls:
         manager.get_performance_metrics = AsyncMock(return_value={"status": "success", "metrics": {}})
         manager.cluster_health_check = AsyncMock(return_value={"status": "success", "health": "good"})
         manager.optimize_cluster_config = AsyncMock(return_value={"status": "success", "suggestions": []})
-        manager.create_workflow = AsyncMock(return_value={"status": "workflow_created", "workflow_id": "test"})
+
         manager.schedule_job = AsyncMock(return_value={"status": "job_scheduled", "schedule": "0 * * * *"})
         manager.backup_cluster_state = AsyncMock(return_value={"status": "backup_created", "backup_path": "test.json"})
         manager.restore_cluster_state = AsyncMock(return_value={"status": "restore_complete", "backup_path": "test.json"})
@@ -118,17 +118,7 @@ class TestMCPToolCalls:
                 
                 mock_ray_manager.get_cluster_nodes.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_scale_cluster_tool(self, mock_ray_manager):
-        """Test scale_cluster tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                result = await call_tool("scale_cluster", {"num_workers": 5})
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "success"
-                
-                mock_ray_manager.scale_cluster.assert_called_once_with(5)
+
 
     # ===== JOB MANAGEMENT TESTS =====
 
@@ -279,24 +269,7 @@ class TestMCPToolCalls:
 
     # ===== WORKFLOW & ORCHESTRATION TESTS =====
 
-    @pytest.mark.asyncio
-    async def test_create_workflow_tool(self, mock_ray_manager):
-        """Test create_workflow tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                workflow_def = {
-                    "name": "test_workflow",
-                    "steps": [
-                        {"name": "step1", "function": "process_data"},
-                        {"name": "step2", "function": "train_model"}
-                    ]
-                }
-                result = await call_tool("create_workflow", {"workflow_definition": workflow_def})
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "workflow_created"
-                
-                mock_ray_manager.create_workflow.assert_called_once_with(workflow_definition=workflow_def)
+
 
     @pytest.mark.asyncio
     async def test_schedule_job_tool(self, mock_ray_manager):
@@ -420,19 +393,7 @@ class TestMCPToolCalls:
 
     # ===== PARAMETER VALIDATION TESTS =====
 
-    @pytest.mark.asyncio
-    async def test_scale_cluster_default_value(self, mock_ray_manager):
-        """Test scale_cluster with default num_workers value."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                # Call without num_workers argument
-                result = await call_tool("scale_cluster", {})
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "success"
-                
-                # Should use default value of 1
-                mock_ray_manager.scale_cluster.assert_called_once_with(1)
+
 
     @pytest.mark.asyncio
     async def test_kill_actor_default_no_restart(self, mock_ray_manager):

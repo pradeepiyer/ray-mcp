@@ -25,7 +25,7 @@ class TestMCPIntegration:
         tools = await list_tools()
         
         assert isinstance(tools, list)
-        assert len(tools) == 23  # We have 23 tools defined (after removing ML/AI tools)
+        assert len(tools) == 21  # We have 21 tools defined (after removing ML/AI and scale/workflow tools)
         
         # Check that all tools are Tool instances
         for tool in tools:
@@ -37,11 +37,11 @@ class TestMCPIntegration:
         # Check specific tool names
         tool_names = [tool.name for tool in tools]
         expected_tools = [
-            "start_ray", "connect_ray", "stop_ray", "cluster_status", "cluster_resources", "cluster_nodes", "scale_cluster",
+            "start_ray", "connect_ray", "stop_ray", "cluster_status", "cluster_resources", "cluster_nodes",
             "submit_job", "list_jobs", "job_status", "cancel_job", "monitor_job", "debug_job",
             "list_actors", "kill_actor",
             "performance_metrics", "health_check", "optimize_config",
-            "create_workflow", "schedule_job",
+            "schedule_job",
             "backup_cluster", "restore_cluster",
             "get_logs"
         ]
@@ -272,7 +272,7 @@ class TestMCPIntegration:
         """Test tool calls with complex parameter structures."""
         mock_ray_manager = Mock()
         mock_ray_manager.submit_job = AsyncMock(return_value={"status": "submitted", "job_id": "complex_job"})
-        mock_ray_manager.create_workflow = AsyncMock(return_value={"status": "workflow_created"})
+
         
         with patch('ray_mcp.main.ray_manager', mock_ray_manager):
             with patch('ray_mcp.main.RAY_AVAILABLE', True):

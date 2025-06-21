@@ -97,17 +97,7 @@ async def list_tools() -> List[Tool]:
             description="Get cluster node information",
             inputSchema={"type": "object", "properties": {}}
         ),
-        Tool(
-            name="scale_cluster",
-            description="Scale the cluster by adding workers",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "num_workers": {"type": "integer", "minimum": 1}
-                },
-                "required": ["num_workers"]
-            }
-        ),
+
         
         # Job management
         Tool(
@@ -217,18 +207,7 @@ async def list_tools() -> List[Tool]:
             inputSchema={"type": "object", "properties": {}}
         ),
         
-        # Workflow & orchestration
-        Tool(
-            name="create_workflow",
-            description="Create a Ray workflow",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workflow_definition": {"type": "object"}
-                },
-                "required": ["workflow_definition"]
-            }
-        ),
+
         Tool(
             name="schedule_job",
             description="Schedule a job to run periodically",
@@ -307,8 +286,7 @@ async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Li
             result = await ray_manager.get_cluster_resources()
         elif name == "cluster_nodes":
             result = await ray_manager.get_cluster_nodes()
-        elif name == "scale_cluster":
-            result = await ray_manager.scale_cluster(args.get("num_workers", 1))
+
             
         # Job management
         elif name == "submit_job":
@@ -340,9 +318,7 @@ async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Li
         elif name == "optimize_config":
             result = await ray_manager.optimize_cluster_config()
             
-        # Workflow & orchestration
-        elif name == "create_workflow":
-            result = await ray_manager.create_workflow(**args)
+
         elif name == "schedule_job":
             result = await ray_manager.schedule_job(**args)
             

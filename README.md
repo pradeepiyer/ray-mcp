@@ -132,7 +132,7 @@ The MCP Ray Server follows a **manual initialization** approach:
 
 ## Available Tools
 
-The server provides **22 tools** for comprehensive Ray cluster management:
+The server provides **21 tools** for comprehensive Ray cluster management:
 
 ### Cluster Operations
 - `start_ray` - Start a new Ray cluster (head node)
@@ -141,7 +141,7 @@ The server provides **22 tools** for comprehensive Ray cluster management:
 - `cluster_status` - Get comprehensive cluster status
 - `cluster_resources` - Get resource usage information
 - `cluster_nodes` - List all cluster nodes
-- `scale_cluster` - Scale the cluster to specified size
+
 
 ### Job Operations
 - `submit_job` - Submit a new job to the cluster
@@ -164,7 +164,7 @@ The server provides **22 tools** for comprehensive Ray cluster management:
 - `optimize_config` - Get cluster optimization recommendations
 
 ### Workflow & Orchestration
-- `create_workflow` - Create a Ray workflow
+
 - `schedule_job` - Schedule a job to run periodically
 
 ### Backup & Recovery
