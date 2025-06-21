@@ -779,6 +779,442 @@ print("Job completed successfully!")
         
         print("✅ Cluster management cycle test passed!")
 
+    @pytest.mark.asyncio
+    async def test_distributed_training_workflow(self, ray_cluster_manager: RayManager):
+        """Test distributed training workflow using the distributed_training.py example."""
+        
+        # Step 1: Start Ray cluster
+        print("Starting Ray cluster for distributed training...")
+        start_result = await call_tool("start_ray", {"num_cpus": 6})
+        start_content = get_text_content(start_result)
+        start_data = json.loads(start_content)
+        assert start_data["status"] == "started"
+        assert ray.is_initialized()
+        
+        # Step 2: Submit the distributed training job
+        print("Submitting distributed training job...")
+        
+        current_dir = Path(__file__).parent.parent
+        examples_dir = current_dir / "examples"
+        training_script_path = examples_dir / "distributed_training.py"
+        
+        assert training_script_path.exists(), f"distributed_training.py not found at {training_script_path}"
+        
+        job_result = await call_tool("submit_job", {
+            "entrypoint": f"python {training_script_path}",
+            "runtime_env": {
+                "pip": ["numpy>=1.21.0"]
+            }
+        })
+        
+        job_content = get_text_content(job_result)
+        job_data = json.loads(job_content)
+        assert job_data["status"] == "submitted"
+        job_id = job_data["job_id"]
+        print(f"Distributed training job submitted with ID: {job_id}")
+        
+        # Step 3: Monitor job execution
+        print("Monitoring distributed training job...")
+        max_wait_time = 180  # 3 minutes for training
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait_time:
+            status_result = await call_tool("job_status", {"job_id": job_id})
+            status_content = get_text_content(status_result)
+            status_data = json.loads(status_content)
+            
+            job_status = status_data.get("job_status", "UNKNOWN")
+            print(f"Training job status: {job_status}")
+            
+            if job_status == "SUCCEEDED":
+                print("Distributed training job completed successfully!")
+                break
+            elif job_status == "FAILED":
+                logs_result = await call_tool("get_logs", {"job_id": job_id})
+                logs_content = get_text_content(logs_result)
+                logs_data = json.loads(logs_content)
+                print(f"Training job failed. Logs: {logs_data}")
+                pytest.fail(f"Distributed training job failed with status: {job_status}")
+            
+            await asyncio.sleep(8)  # Check every 8 seconds
+        else:
+            pytest.fail(f"Distributed training job did not complete within {max_wait_time} seconds")
+        
+        # Step 4: Verify job outputs
+        print("Verifying distributed training job outputs...")
+        logs_result = await call_tool("get_logs", {"job_id": job_id})
+        logs_content = get_text_content(logs_result)
+        logs_data = json.loads(logs_content)
+        
+        assert logs_data["status"] == "success"
+        logs_text = logs_data["logs"]
+        
+        # Check for expected training outputs
+        assert "Ray initialized successfully!" in logs_text
+        assert "Distributed Training Example" in logs_text
+        assert "Creating Parameter Server" in logs_text
+        assert "Creating Workers" in logs_text
+        assert "Starting Distributed Training" in logs_text
+        assert "Final Model Evaluation" in logs_text
+        assert "Training Summary" in logs_text
+        assert "training_completed" in logs_text
+        assert "Ray shutdown complete." in logs_text
+        
+        print("Distributed training job outputs verified!")
+        
+        # Step 5: Test actor management during training
+        print("Testing actor listing functionality...")
+        actors_result = await call_tool("list_actors")
+        actors_content = get_text_content(actors_result)
+        actors_data = json.loads(actors_content)
+        
+        # After job completion, there should be no active actors
+        assert actors_data["status"] == "success"
+        print(f"Active actors after training: {len(actors_data.get('actors', []))}")
+        
+        # Step 6: Test performance metrics
+        print("Getting performance metrics...")
+        metrics_result = await call_tool("performance_metrics")
+        metrics_content = get_text_content(metrics_result)
+        metrics_data = json.loads(metrics_content)
+        
+        assert metrics_data["status"] == "success"
+        assert "cluster_overview" in metrics_data or "cluster_resources" in metrics_data
+        print("Performance metrics retrieved successfully!")
+        
+        # Step 7: Stop Ray cluster
+        print("Stopping Ray cluster...")
+        stop_result = await call_tool("stop_ray")
+        stop_content = get_text_content(stop_result)
+        stop_data = json.loads(stop_content)
+        assert stop_data["status"] == "stopped"
+        assert not ray.is_initialized()
+        
+        print("✅ Distributed training workflow test passed successfully!")
+
+    @pytest.mark.asyncio
+    async def test_data_pipeline_workflow(self, ray_cluster_manager: RayManager):
+        """Test data processing pipeline workflow using the data_pipeline.py example."""
+        
+        # Step 1: Start Ray cluster
+        print("Starting Ray cluster for data pipeline...")
+        start_result = await call_tool("start_ray", {"num_cpus": 4})
+        start_content = get_text_content(start_result)
+        start_data = json.loads(start_content)
+        assert start_data["status"] == "started"
+        assert ray.is_initialized()
+        
+        # Step 2: Get cluster resources before processing
+        print("Checking cluster resources...")
+        resources_result = await call_tool("cluster_resources")
+        resources_content = get_text_content(resources_result)
+        resources_data = json.loads(resources_content)
+        
+        assert resources_data["status"] == "success"
+        assert "cluster_resources" in resources_data
+        print(f"Cluster resources: {resources_data['cluster_resources']}")
+        
+        # Step 3: Submit the data pipeline job
+        print("Submitting data pipeline job...")
+        
+        current_dir = Path(__file__).parent.parent
+        examples_dir = current_dir / "examples"
+        pipeline_script_path = examples_dir / "data_pipeline.py"
+        
+        assert pipeline_script_path.exists(), f"data_pipeline.py not found at {pipeline_script_path}"
+        
+        job_result = await call_tool("submit_job", {
+            "entrypoint": f"python {pipeline_script_path}",
+            "runtime_env": {
+                "pip": ["numpy>=1.21.0"]
+            }
+        })
+        
+        job_content = get_text_content(job_result)
+        job_data = json.loads(job_content)
+        assert job_data["status"] == "submitted"
+        job_id = job_data["job_id"]
+        print(f"Data pipeline job submitted with ID: {job_id}")
+        
+        # Step 4: Monitor job execution
+        print("Monitoring data pipeline job...")
+        max_wait_time = 120  # 2 minutes for pipeline
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait_time:
+            status_result = await call_tool("job_status", {"job_id": job_id})
+            status_content = get_text_content(status_result)
+            status_data = json.loads(status_content)
+            
+            job_status = status_data.get("job_status", "UNKNOWN")
+            print(f"Pipeline job status: {job_status}")
+            
+            if job_status == "SUCCEEDED":
+                print("Data pipeline job completed successfully!")
+                break
+            elif job_status == "FAILED":
+                logs_result = await call_tool("get_logs", {"job_id": job_id})
+                logs_content = get_text_content(logs_result)
+                logs_data = json.loads(logs_content)
+                print(f"Pipeline job failed. Logs: {logs_data}")
+                pytest.fail(f"Data pipeline job failed with status: {job_status}")
+            
+            await asyncio.sleep(5)  # Check every 5 seconds
+        else:
+            pytest.fail(f"Data pipeline job did not complete within {max_wait_time} seconds")
+        
+        # Step 5: Verify job outputs
+        print("Verifying data pipeline job outputs...")
+        logs_result = await call_tool("get_logs", {"job_id": job_id})
+        logs_content = get_text_content(logs_result)
+        logs_data = json.loads(logs_content)
+        
+        assert logs_data["status"] == "success"
+        logs_text = logs_data["logs"]
+        
+        # Check for expected pipeline outputs
+        assert "Ray initialized successfully!" in logs_text
+        assert "Data Processing Pipeline Example" in logs_text
+        assert "Creating Pipeline Components" in logs_text
+        assert "Processing Data Through Pipeline" in logs_text
+        assert "Aggregating Results" in logs_text
+        assert "Pipeline Results" in logs_text
+        assert "pipeline_completed" in logs_text
+        assert "Ray shutdown complete." in logs_text
+        
+        print("Data pipeline job outputs verified!")
+        
+        # Step 6: Test job listing and filtering
+        print("Testing job listing...")
+        jobs_result = await call_tool("list_jobs")
+        jobs_content = get_text_content(jobs_result)
+        jobs_data = json.loads(jobs_content)
+        
+        assert jobs_data["status"] == "success"
+        jobs_list = jobs_data["jobs"]
+        
+        # Find our pipeline job
+        pipeline_job_found = False
+        for job in jobs_list:
+            if job["job_id"] == job_id:
+                pipeline_job_found = True
+                assert job["status"] == "SUCCEEDED"
+                print(f"Found pipeline job in list: {job['job_id']}")
+                break
+            elif (job.get("entrypoint", "") and "data_pipeline.py" in job.get("entrypoint", "")):
+                pipeline_job_found = True
+                assert job["status"] == "SUCCEEDED"
+                print(f"Found pipeline job by entrypoint: {job['job_id']}")
+                break
+        
+        assert pipeline_job_found, f"Pipeline job not found in job list. Available jobs: {[j['job_id'] for j in jobs_list]}"
+        
+        # Step 7: Test cluster health check
+        print("Performing cluster health check...")
+        health_result = await call_tool("health_check")
+        health_content = get_text_content(health_result)
+        health_data = json.loads(health_content)
+        
+        assert health_data["status"] == "success"
+        assert "health_score" in health_data or "cluster_status" in health_data
+        print("Cluster health check completed!")
+        
+        # Step 8: Stop Ray cluster
+        print("Stopping Ray cluster...")
+        stop_result = await call_tool("stop_ray")
+        stop_content = get_text_content(stop_result)
+        stop_data = json.loads(stop_content)
+        assert stop_data["status"] == "stopped"
+        assert not ray.is_initialized()
+        
+        print("✅ Data pipeline workflow test passed successfully!")
+
+    @pytest.mark.asyncio
+    async def test_workflow_orchestration_workflow(self, ray_cluster_manager: RayManager):
+        """Test complex workflow orchestration using the workflow_orchestration.py example."""
+        
+        # Step 1: Start Ray cluster
+        print("Starting Ray cluster for workflow orchestration...")
+        start_result = await call_tool("start_ray", {"num_cpus": 8})
+        start_content = get_text_content(start_result)
+        start_data = json.loads(start_content)
+        assert start_data["status"] == "started"
+        assert ray.is_initialized()
+        
+        # Step 2: Get initial cluster status
+        print("Getting initial cluster status...")
+        status_result = await call_tool("cluster_status")
+        status_content = get_text_content(status_result)
+        status_data = json.loads(status_content)
+        
+        assert status_data["status"] == "running"
+        print(f"Initial cluster status: {status_data}")
+        
+        # Step 3: Submit the workflow orchestration job
+        print("Submitting workflow orchestration job...")
+        
+        current_dir = Path(__file__).parent.parent
+        examples_dir = current_dir / "examples"
+        workflow_script_path = examples_dir / "workflow_orchestration.py"
+        
+        assert workflow_script_path.exists(), f"workflow_orchestration.py not found at {workflow_script_path}"
+        
+        job_result = await call_tool("submit_job", {
+            "entrypoint": f"python {workflow_script_path}",
+            "runtime_env": {
+                "pip": ["numpy>=1.21.0"]
+            },
+            "metadata": {
+                "test_type": "workflow_orchestration",
+                "description": "Complex workflow with multiple dependencies"
+            }
+        })
+        
+        job_content = get_text_content(job_result)
+        job_data = json.loads(job_content)
+        assert job_data["status"] == "submitted"
+        job_id = job_data["job_id"]
+        print(f"Workflow orchestration job submitted with ID: {job_id}")
+        
+        # Step 4: Monitor job execution with progress tracking
+        print("Monitoring workflow orchestration job...")
+        max_wait_time = 240  # 4 minutes for complex workflow
+        start_time = time.time()
+        last_status = None
+        
+        while time.time() - start_time < max_wait_time:
+            # Get job status
+            status_result = await call_tool("job_status", {"job_id": job_id})
+            status_content = get_text_content(status_result)
+            status_data = json.loads(status_content)
+            
+            job_status = status_data.get("job_status", "UNKNOWN")
+            
+            if job_status != last_status:
+                print(f"Workflow job status changed: {job_status}")
+                last_status = job_status
+            
+            # Try to get job progress monitoring
+            try:
+                progress_result = await call_tool("monitor_job_progress", {"job_id": job_id})
+                progress_content = get_text_content(progress_result)
+                progress_data = json.loads(progress_content)
+                
+                if progress_data.get("status") == "success":
+                    print(f"Job progress: {progress_data.get('progress', 'N/A')}")
+            except Exception:
+                # Progress monitoring might not be available for all job types
+                pass
+            
+            if job_status == "SUCCEEDED":
+                print("Workflow orchestration job completed successfully!")
+                break
+            elif job_status == "FAILED":
+                logs_result = await call_tool("get_logs", {"job_id": job_id})
+                logs_content = get_text_content(logs_result)
+                logs_data = json.loads(logs_content)
+                print(f"Workflow job failed. Logs: {logs_data}")
+                pytest.fail(f"Workflow orchestration job failed with status: {job_status}")
+            
+            await asyncio.sleep(10)  # Check every 10 seconds
+        else:
+            pytest.fail(f"Workflow orchestration job did not complete within {max_wait_time} seconds")
+        
+        # Step 5: Verify job outputs
+        print("Verifying workflow orchestration job outputs...")
+        logs_result = await call_tool("get_logs", {"job_id": job_id})
+        logs_content = get_text_content(logs_result)
+        logs_data = json.loads(logs_content)
+        
+        assert logs_data["status"] == "success"
+        logs_text = logs_data["logs"]
+        
+        # Check for expected workflow outputs
+        assert "Ray initialized successfully!" in logs_text
+        assert "Workflow Orchestration Example" in logs_text
+        assert "Creating Workflow Orchestrator" in logs_text
+        assert "Executing Workflows" in logs_text
+        assert "Workflow History" in logs_text
+        assert "Orchestration Summary" in logs_text
+        assert "orchestration_completed" in logs_text
+        assert "Ray shutdown complete." in logs_text
+        
+        print("Workflow orchestration job outputs verified!")
+        
+        # Step 6: Test advanced job operations
+        print("Testing advanced job operations...")
+        
+        # Test job debugging capabilities
+        debug_result = await call_tool("debug_job", {"job_id": job_id})
+        debug_content = get_text_content(debug_result)
+        debug_data = json.loads(debug_content)
+        
+        # Debug might not be available for completed jobs, but should return valid response
+        assert debug_data.get("status") in ["success", "not_available", "completed"]
+        print("Job debugging test completed!")
+        
+        # Step 7: Test performance metrics after heavy workload
+        print("Getting performance metrics after workflow...")
+        metrics_result = await call_tool("performance_metrics")
+        metrics_content = get_text_content(metrics_result)
+        metrics_data = json.loads(metrics_content)
+        
+        assert metrics_data["status"] == "success"
+        assert "cluster_overview" in metrics_data or "cluster_resources" in metrics_data
+        print("Performance metrics after workflow retrieved!")
+        
+        # Step 8: Test cluster nodes information
+        print("Getting cluster nodes information...")
+        nodes_result = await call_tool("cluster_nodes")
+        nodes_content = get_text_content(nodes_result)
+        nodes_data = json.loads(nodes_content)
+        
+        assert nodes_data["status"] == "success"
+        assert "nodes" in nodes_data
+        print(f"Cluster nodes: {len(nodes_data['nodes'])} nodes")
+        
+        # Step 9: Final job listing to verify metadata
+        print("Final job listing to verify metadata...")
+        jobs_result = await call_tool("list_jobs")
+        jobs_content = get_text_content(jobs_result)
+        jobs_data = json.loads(jobs_content)
+        
+        assert jobs_data["status"] == "success"
+        jobs_list = jobs_data["jobs"]
+        
+        # Find our workflow job and verify metadata
+        workflow_job_found = False
+        for job in jobs_list:
+            if job["job_id"] == job_id:
+                workflow_job_found = True
+                assert job["status"] == "SUCCEEDED"
+                
+                # Check if metadata was preserved
+                job_metadata = job.get("metadata", {})
+                if job_metadata:
+                    assert job_metadata.get("test_type") == "workflow_orchestration"
+                    print("Job metadata preserved correctly!")
+                
+                print(f"Found workflow job in list: {job['job_id']}")
+                break
+            elif (job.get("entrypoint", "") and "workflow_orchestration.py" in job.get("entrypoint", "")):
+                workflow_job_found = True
+                assert job["status"] == "SUCCEEDED"
+                print(f"Found workflow job by entrypoint: {job['job_id']}")
+                break
+        
+        assert workflow_job_found, f"Workflow job not found in job list. Available jobs: {[j['job_id'] for j in jobs_list]}"
+        
+        # Step 10: Stop Ray cluster
+        print("Stopping Ray cluster...")
+        stop_result = await call_tool("stop_ray")
+        stop_content = get_text_content(stop_result)
+        stop_data = json.loads(stop_content)
+        assert stop_data["status"] == "stopped"
+        assert not ray.is_initialized()
+        
+        print("✅ Workflow orchestration workflow test passed successfully!")
+
 
 @pytest.mark.asyncio
 async def test_simple_job_standalone():

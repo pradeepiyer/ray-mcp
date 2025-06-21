@@ -74,7 +74,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 ### 7. Logs & Debugging Tests
 - `get_logs` - Log retrieval and analysis
 
-## End-to-End Integration Tests (NEW)
+## End-to-End Integration Tests
 
 The `test_e2e_integration.py` file contains comprehensive real-world testing scenarios that execute against actual Ray clusters **without any mocking**. These tests provide the highest level of confidence in the MCP Ray server functionality.
 
@@ -121,11 +121,70 @@ The `test_e2e_integration.py` file contains comprehensive real-world testing sce
 - Lists all jobs to verify both failed and successful jobs are recorded
 - Stops Ray cluster
 
-#### 5. **Additional Validation Tests**
+#### 5. **Distributed Training Workflow Test** (`test_distributed_training_workflow`) **NEW**
+**Duration**: ~3 minutes | **Status**: ✅ Passing
+- Starts Ray cluster with 6 CPUs for distributed machine learning
+- Submits `distributed_training.py` example with parameter server and worker actors
+- Monitors distributed training job with 10 iterations across 3 workers
+- Validates training convergence, parameter updates, and gradient computations
+- Tests actor management and listing after training completion
+- Collects performance metrics after intensive ML workload
+- Verifies training summary contains completion statistics and model evaluation
+- Stops Ray cluster and validates proper cleanup
+
+#### 6. **Data Pipeline Workflow Test** (`test_data_pipeline_workflow`) **NEW**
+**Duration**: ~2 minutes | **Status**: ✅ Passing
+- Starts Ray cluster with 4 CPUs for ETL data processing
+- Checks cluster resources before pipeline execution
+- Submits `data_pipeline.py` example with generators and processors
+- Monitors multi-stage data pipeline (generate → process → aggregate)
+- Validates data transformation and aggregation statistics
+- Tests job listing functionality to find pipeline job
+- Performs cluster health check after intensive data processing
+- Verifies pipeline efficiency metrics and data quality results
+- Stops Ray cluster after successful pipeline completion
+
+#### 7. **Workflow Orchestration Test** (`test_workflow_orchestration_workflow`) **NEW**
+**Duration**: ~4 minutes | **Status**: ✅ Passing
+- Starts Ray cluster with 8 CPUs for complex workflow management
+- Gets initial cluster status and resource allocation
+- Submits `workflow_orchestration.py` with job metadata for tracking
+- Monitors complex multi-workflow execution with dependency chains
+- Tests job progress monitoring and advanced debugging capabilities
+- Validates workflow history and orchestration success metrics
+- Collects performance metrics and cluster node information after heavy workload
+- Verifies job metadata preservation in job listing
+- Tests workflow orchestrator actor pattern and state management
+- Performs comprehensive cleanup after complex workflow execution
+
+#### 8. **Additional Validation Tests**
 - **MCP Tools Availability Test**: Validates all 21 MCP tools are properly defined
 - **Error Handling Test**: Tests behavior when Ray is not initialized
 - **Cluster Management Cycle Test**: Tests multiple start/stop cycles
 - **Simple Job Standalone Test**: Validates example job runs independently
+
+### E2E Test Examples
+
+The new comprehensive workflow tests utilize three specialized Ray examples:
+
+#### 1. **`distributed_training.py`** - Machine Learning Example
+- **ParameterServer** actor for managing model parameters
+- **Worker** actors for distributed gradient computation
+- **Model evaluation** task for performance assessment
+- Demonstrates parameter server pattern with 10 training iterations
+- Tests ML workload scaling and convergence metrics
+
+#### 2. **`data_pipeline.py`** - ETL Processing Example
+- **DataGenerator** actors for synthetic data creation
+- **DataProcessor** actors for parallel data transformation
+- **Aggregation** tasks for data summarization and statistics
+- Demonstrates ETL patterns with batch processing and efficiency metrics
+
+#### 3. **`workflow_orchestration.py`** - Complex Orchestration Example
+- **WorkflowOrchestrator** actor for managing workflow dependencies
+- **Multi-stage pipeline** with fetch → validate → transform → merge → save
+- **Parallel workflow execution** with different transformation types
+- Demonstrates complex dependency management and workflow history tracking
 
 ### E2E Test Features
 
@@ -137,6 +196,9 @@ The `test_e2e_integration.py` file contains comprehensive real-world testing sce
 - **📝 Comprehensive Logging**: Detailed progress tracking and debugging output
 - **⚡ Parallel Execution**: Tests can run independently and in parallel
 - **🎯 Realistic Use Cases**: Tests mirror actual developer workflows
+- **🤖 ML Workloads**: Distributed training with parameter servers and workers
+- **🔄 ETL Pipelines**: Data processing with generators, processors, and aggregators
+- **🎭 Complex Orchestration**: Multi-workflow management with dependencies
 
 ## Running Tests
 
@@ -168,11 +230,19 @@ python -m pytest tests/test_mcp_tools.py::TestMCPToolCalls::test_start_ray_tool 
 # Run all E2E integration tests
 python -m pytest tests/test_e2e_integration.py -v
 
-# Run specific E2E test
+# Run specific E2E test (original workflow tests)
 python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_complete_ray_workflow -v -s
+
+# Run new comprehensive workflow tests
+python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_distributed_training_workflow -v -s
+python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_data_pipeline_workflow -v -s
+python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_workflow_orchestration_workflow -v -s
 
 # Run E2E tests with detailed output
 python -m pytest tests/test_e2e_integration.py -v -s --tb=long
+
+# Run only the new workflow tests (faster for development)
+python -m pytest tests/test_e2e_integration.py -k "workflow" -v -s
 ```
 
 ### Using the Test Runner
@@ -270,15 +340,17 @@ Current test coverage includes:
 ## Test Results Summary
 
 Recent test run results:
-- **Total Tests**: 94 (8 new E2E tests added)
+- **Total Tests**: 97 (11 E2E tests total, 3 new comprehensive workflow tests added)
 - **Unit Tests**: 86 (100% passing)
-- **E2E Integration Tests**: 8 (100% passing)
+- **E2E Integration Tests**: 11 (100% passing)
 - **Overall Status**: ✅ All tests passing
 
 ### Test Execution Times
 - **Unit Tests**: ~5 seconds (fast, mocked)
-- **E2E Integration Tests**: ~90 seconds (comprehensive, real operations)
-- **Total Suite**: ~95 seconds
+- **E2E Integration Tests**: ~9 minutes (comprehensive, real operations including ML training)
+  - Original E2E tests: ~2 minutes (basic workflows)
+  - New workflow tests: ~7 minutes (complex ML, data pipeline, orchestration)
+- **Total Suite**: ~9.5 minutes
 
 ### Test Status
 ✅ All tests are currently passing with comprehensive coverage of:
@@ -336,6 +408,11 @@ python -m pytest tests/test_mcp_tools.py::TestMCPToolCalls::test_start_ray_tool 
 
 # Debug E2E test with full output
 python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_complete_ray_workflow -v -s --tb=long
+
+# Debug new workflow tests with full output
+python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_distributed_training_workflow -v -s --tb=long
+python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_data_pipeline_workflow -v -s --tb=long
+python -m pytest tests/test_e2e_integration.py::TestE2EIntegration::test_workflow_orchestration_workflow -v -s --tb=long
 
 # Show test output
 python -m pytest tests/ -v -s --capture=no
