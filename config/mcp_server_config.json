@@ -1,0 +1,79 @@
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/your/venv/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0"
+      }
+    }
+  },
+  "ray_cluster_connection_guide": {
+    "description": "Configuration guide for Ray cluster connections",
+    "connection_options": {
+      "start_new_cluster": {
+        "tool": "start_ray",
+        "description": "Start a new Ray cluster (head node) - defaults to 4 CPUs",
+        "example": {
+          "arguments": {
+            "num_cpus": 8,
+            "num_gpus": 2,
+            "object_store_memory": 2000000000
+          }
+        },
+        "note": "If num_cpus is not specified, defaults to 4 CPUs"
+      },
+      "connect_to_existing_cluster": {
+        "tool": "connect_ray",
+        "description": "Connect to an existing Ray cluster",
+        "example": {
+          "arguments": {
+            "address": "ray://127.0.0.1:10001"
+          }
+        },
+        "supported_address_formats": [
+          "ray://127.0.0.1:10001",
+          "127.0.0.1:10001",
+          "ray://head-node-ip:10001",
+          "ray://cluster.example.com:10001"
+        ]
+      }
+    },
+    "environment_variables": {
+      "RAY_ADDRESS": {
+        "description": "Default Ray cluster address (leave empty to use tool parameters)",
+        "example": "ray://cluster.example.com:10001"
+      },
+      "RAY_DASHBOARD_HOST": {
+        "description": "Ray dashboard host binding",
+        "default": "0.0.0.0"
+      },
+      "RAY_DASHBOARD_PORT": {
+        "description": "Ray dashboard port",
+        "default": "8265"
+      }
+    },
+    "usage_scenarios": {
+      "development": {
+        "description": "Local development with new clusters",
+        "recommended_tool": "start_ray",
+        "default_resources": "4 CPUs (can be customized)",
+        "example_workflow": [
+          "Use start_ray tool to create local cluster",
+          "Submit jobs for testing",
+          "Use stop_ray when done"
+        ]
+      },
+      "production": {
+        "description": "Connect to persistent production clusters",
+        "recommended_tool": "connect_ray",
+        "example_workflow": [
+          "Use connect_ray tool with production cluster address",
+          "Submit production jobs",
+          "Monitor cluster health",
+          "Connection persists until server restart"
+        ]
+      }
+    }
+  }
+} 

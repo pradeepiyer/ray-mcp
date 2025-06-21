@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/your/venv/bin/ray-mcp",
+      "args": [],
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0"
+      }
+    }
+  }
+} 
