@@ -56,3 +56,6 @@ ray_mcp.egg-info/
 # Legacy package names (for cleanup)
 mcp_ray.egg-info/
 mcp_ray_server.egg-info/
+
+# Cleanup scripts
+cleanup_repo.sh
