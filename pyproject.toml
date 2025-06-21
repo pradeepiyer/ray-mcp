@@ -54,4 +54,29 @@ line_length = 88
 python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true 
+disallow_untyped_defs = true
+
+[tool.pyright]
+# Restrict analysis to this repository only
+include = [
+    "ray_mcp",
+    "tests",
+    "examples",
+    "setup.py"
+]
+exclude = [
+    "**/.venv",
+    "**/.pytest_cache",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.git",
+    "**/dist",
+    "**/build",
+    "**/*.egg-info"
+]
+# Only analyze files in this repo, not external dependencies
+useLibraryCodeForTypes = true
+# Python version compatibility
+pythonVersion = "3.8"
+# Strict type checking for this project
+typeCheckingMode = "basic" 
