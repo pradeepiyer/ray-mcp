@@ -108,7 +108,7 @@ class RayManager:
                 "address": self._cluster_address,
                 "dashboard_url": ray_context.dashboard_url,
                 "node_id": ray.get_runtime_context().get_node_id() if ray is not None else None,
-                "session_name": ray_context.session_name
+                "session_name": getattr(ray_context, "session_name", "unknown")
             }
 
         except Exception as e:
@@ -152,7 +152,7 @@ class RayManager:
                 "address": self._cluster_address,
                 "dashboard_url": ray_context.dashboard_url,
                 "node_id": ray.get_runtime_context().get_node_id() if ray is not None else None,
-                "session_name": ray_context.session_name
+                "session_name": getattr(ray_context, "session_name", "unknown")
             }
 
         except Exception as e:
