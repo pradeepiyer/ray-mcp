@@ -265,7 +265,7 @@ class WorkflowOrchestrator:
         # Step 1: Fetch data from multiple sources
         fetch_futures = []
         for source_id in sources:
-            future = fetch_data_task.remote(source_id, delay=np.random.uniform(0.5, 2.0))
+            future = fetch_data_task.remote(source_id, delay=np.random.uniform(0.5, 2.0))  # type: ignore
             fetch_futures.append(future)
         
         fetched_data = ray.get(fetch_futures)
@@ -273,7 +273,7 @@ class WorkflowOrchestrator:
         # Step 2: Validate data
         validation_futures = []
         for data in fetched_data:
-            future = validate_data_task.remote(data)
+            future = validate_data_task.remote(data)  # type: ignore
             validation_futures.append(future)
         
         validation_results = ray.get(validation_futures)
@@ -281,16 +281,16 @@ class WorkflowOrchestrator:
         # Step 3: Transform data
         transform_futures = []
         for validation_result in validation_results:
-            future = transform_data_task.remote(validation_result, transform_type)
+            future = transform_data_task.remote(validation_result, transform_type)  # type: ignore
             transform_futures.append(future)
         
         transform_results = ray.get(transform_futures)
         
         # Step 4: Merge data
-        merge_result = ray.get(merge_data_task.remote(transform_results))
+        merge_result = ray.get(merge_data_task.remote(transform_results))  # type: ignore
         
         # Step 5: Save results
-        save_result = ray.get(save_results_task.remote(merge_result, output_format))
+        save_result = ray.get(save_results_task.remote(merge_result, output_format))  # type: ignore
         
         return {
             "pipeline_steps": {
@@ -298,7 +298,7 @@ class WorkflowOrchestrator:
                 "validate": {"batches": len(validation_results), "total_valid": sum(r["valid_count"] for r in validation_results)},
                 "transform": {"batches": len(transform_results), "total_transformed": sum(r["output_count"] for r in transform_results)},
                 "merge": {"total_records": merge_result["total_records"], "sources": merge_result["source_count"]},
-                "save": {"status": save_result["save_status"], "records_saved": save_result["records_saved"]}
+                "save": {"status": save_result["save_status"], "records_saved": save_result["records_saved"]}  # type: ignore
             },
             "final_statistics": merge_result["statistics"],
             "performance_metrics": {
@@ -362,7 +362,7 @@ def main():
     workflow_futures = []
     
     for workflow in workflows:
-        future = orchestrator.execute_workflow.remote(workflow["id"], workflow["config"])
+        future = orchestrator.execute_workflow.remote(workflow["id"], workflow["config"])  # type: ignore
         workflow_futures.append((workflow["id"], future))
     
     # Wait for all workflows to complete
@@ -370,11 +370,11 @@ def main():
     for workflow_id, future in workflow_futures:
         result = ray.get(future)
         workflow_results.append(result)
-        print(f"Workflow {workflow_id} result: {result['status']}")
+        print(f"Workflow {workflow_id} result: {result['status']}")  # type: ignore
     
     # Get workflow history
     print("\n--- Workflow History ---")
-    history = ray.get(orchestrator.get_workflow_history.remote())
+    history = ray.get(orchestrator.get_workflow_history.remote())  # type: ignore
     
     for workflow_record in history:
         print(f"Workflow: {workflow_record['workflow_id']}")

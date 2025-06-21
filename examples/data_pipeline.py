@@ -100,8 +100,8 @@ def aggregate_data(processed_batches: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total_input": total_input,
         "total_output": total_output,
         "value_stats": {
-            "mean": np.mean(values),
-            "std": np.std(values),
+            "mean": np.mean(np.array(values)),
+            "std": np.std(np.array(values)),
             "min": min(values),
             "max": max(values)
         },
@@ -146,7 +146,7 @@ def main():
         print(f"\nBatch {batch_num + 1}/{num_batches}")
         
         # Generate data
-        generation_futures = [gen.generate_batch.remote(batch_size) for gen in generators]
+        generation_futures = [gen.generate_batch.remote(batch_size) for gen in generators]  # type: ignore
         generated_batches = ray.get(generation_futures)
         print(f"  Generated {len(generated_batches)} batches")
         
@@ -154,7 +154,7 @@ def main():
         processing_futures = []
         for i, batch in enumerate(generated_batches):
             processor = processors[i % len(processors)]
-            future = processor.process_batch.remote(batch)
+            future = processor.process_batch.remote(batch)  # type: ignore
             processing_futures.append(future)
         
         processed_batches = ray.get(processing_futures)

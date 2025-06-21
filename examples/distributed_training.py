@@ -174,12 +174,12 @@ def main():
         print(f"\nIteration {iteration + 1}/{num_iterations}")
         
         # Get current parameters
-        current_params = ray.get(param_server.get_parameters.remote())
+        current_params = ray.get(param_server.get_parameters.remote())  # type: ignore
         
         # Compute gradients on all workers
         gradient_futures = []
         for worker in workers:
-            future = worker.compute_gradients.remote(current_params, batch_size=50)
+            future = worker.compute_gradients.remote(current_params, batch_size=50)  # type: ignore
             gradient_futures.append(future)
         
         # Collect gradients and metrics
@@ -189,21 +189,21 @@ def main():
         all_worker_metrics.extend(worker_metrics)
         
         # Average gradients
-        avg_gradients = np.mean(gradients, axis=0)
+        avg_gradients = np.mean(np.array(gradients), axis=0)
         
         # Update parameters
-        update_metrics = ray.get(param_server.update_parameters.remote(avg_gradients, learning_rate))
+        update_metrics = ray.get(param_server.update_parameters.remote(avg_gradients, learning_rate))  # type: ignore
         
         # Print iteration summary
         avg_loss = np.mean([m["loss"] for m in worker_metrics])
         print(f"  Average worker loss: {avg_loss:.4f}")
-        print(f"  Parameter norm: {update_metrics['parameter_norm']:.4f}")
-        print(f"  Gradient norm: {update_metrics['gradient_norm']:.4f}")
+        print(f"  Parameter norm: {update_metrics['parameter_norm']:.4f}")  # type: ignore
+        print(f"  Gradient norm: {update_metrics['gradient_norm']:.4f}")  # type: ignore
     
     # Final evaluation
     print(f"\n--- Final Model Evaluation ---")
-    final_params = ray.get(param_server.get_parameters.remote())
-    eval_metrics = ray.get(evaluate_model.remote(final_params))
+    final_params = ray.get(param_server.get_parameters.remote())  # type: ignore
+    eval_metrics = ray.get(evaluate_model.remote(final_params))  # type: ignore
     
     print(f"Final evaluation metrics:")
     print(f"  Test MSE: {eval_metrics['test_mse']:.4f}")
@@ -212,14 +212,14 @@ def main():
     
     # Get training statistics
     print(f"\n--- Training Statistics ---")
-    param_server_stats = ray.get(param_server.get_training_stats.remote())
-    worker_stats_futures = [worker.get_worker_stats.remote() for worker in workers]
+    param_server_stats = ray.get(param_server.get_training_stats.remote())  # type: ignore
+    worker_stats_futures = [worker.get_worker_stats.remote() for worker in workers]  # type: ignore
     worker_stats = ray.get(worker_stats_futures)
     
     print(f"Parameter server stats:")
-    print(f"  Total steps: {param_server_stats['steps']}")
-    print(f"  Average parameter norm: {param_server_stats['avg_param_norm']:.4f}")
-    print(f"  Average gradient norm: {param_server_stats['avg_grad_norm']:.4f}")
+    print(f"  Total steps: {param_server_stats['steps']}")  # type: ignore
+    print(f"  Average parameter norm: {param_server_stats['avg_param_norm']:.4f}")  # type: ignore
+    print(f"  Average gradient norm: {param_server_stats['avg_grad_norm']:.4f}")  # type: ignore
     
     print(f"Worker stats:")
     for stats in worker_stats:
@@ -232,7 +232,7 @@ def main():
         "total_workers": num_workers,
         "final_test_mse": eval_metrics['test_mse'],
         "final_param_norm": eval_metrics['parameter_norm'],
-        "total_gradient_updates": param_server_stats['steps'],
+        "total_gradient_updates": param_server_stats['steps'],  # type: ignore
         "worker_iterations": sum(stats['iterations_completed'] for stats in worker_stats)
     }
     
