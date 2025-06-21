@@ -40,8 +40,7 @@ class TestMCPIntegration:
             "start_ray", "connect_ray", "stop_ray", "cluster_status", "cluster_resources", "cluster_nodes", "scale_cluster",
             "submit_job", "list_jobs", "job_status", "cancel_job", "monitor_job", "debug_job",
             "list_actors", "kill_actor",
-            "train_model", "tune_hyperparameters", "deploy_model", "list_deployments",
-            "create_dataset", "transform_data", "batch_inference",
+            
             "performance_metrics", "health_check", "optimize_config",
             "create_workflow", "schedule_job",
             "backup_cluster", "restore_cluster",
@@ -165,82 +164,7 @@ class TestMCPIntegration:
                 response_data = json.loads(get_text_content(result).text)
                 assert response_data["status"] == "cancelled"
 
-    @pytest.mark.asyncio
-    async def test_complete_workflow_ml_pipeline(self):
-        """Test a complete ML pipeline workflow."""
-        mock_ray_manager = Mock()
-        mock_ray_manager.create_dataset = AsyncMock(return_value={
-            "status": "dataset_created",
-            "source": "/data/train.parquet",
-            "format": "parquet"
-        })
-        mock_ray_manager.train_model = AsyncMock(return_value={
-            "status": "training_started",
-            "algorithm": "torch",
-            "dataset_path": "/data/train.parquet"
-        })
-        mock_ray_manager.tune_hyperparameters = AsyncMock(return_value={
-            "status": "tuning_started",
-            "metric": "accuracy",
-            "search_space": {"lr": [0.001, 0.01]}
-        })
-        mock_ray_manager.deploy_model = AsyncMock(return_value={
-            "status": "deployment_started",
-            "deployment_name": "my_model",
-            "model_path": "/models/best_model.pkl"
-        })
-        mock_ray_manager.batch_inference = AsyncMock(return_value={
-            "status": "inference_started",
-            "model_path": "/models/best_model.pkl",
-            "dataset_path": "/data/test.parquet"
-        })
-        
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                
-                # Step 1: Create dataset
-                result = await call_tool("create_dataset", {
-                    "source": "/data/train.parquet",
-                    "format": "parquet"
-                })
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "dataset_created"
-                
-                # Step 2: Train model
-                result = await call_tool("train_model", {
-                    "algorithm": "torch",
-                    "dataset_path": "/data/train.parquet",
-                    "model_config": {"learning_rate": 0.001, "epochs": 10}
-                })
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "training_started"
-                
-                # Step 3: Tune hyperparameters
-                result = await call_tool("tune_hyperparameters", {
-                    "script_path": "/scripts/train.py",
-                    "search_space": {"lr": [0.001, 0.01]},
-                    "metric": "accuracy"
-                })
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "tuning_started"
-                
-                # Step 4: Deploy model
-                result = await call_tool("deploy_model", {
-                    "model_path": "/models/best_model.pkl",
-                    "deployment_name": "my_model",
-                    "num_replicas": 2
-                })
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "deployment_started"
-                
-                # Step 5: Run batch inference
-                result = await call_tool("batch_inference", {
-                    "model_path": "/models/best_model.pkl",
-                    "dataset_path": "/data/test.parquet",
-                    "output_path": "/results/predictions.parquet"
-                })
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "inference_started"
+
 
     @pytest.mark.asyncio
     async def test_error_propagation(self):

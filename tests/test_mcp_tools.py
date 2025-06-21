@@ -40,13 +40,7 @@ class TestMCPToolCalls:
         manager.debug_job = AsyncMock(return_value={"status": "success", "debug_info": {}})
         manager.list_actors = AsyncMock(return_value={"status": "success", "actors": []})
         manager.kill_actor = AsyncMock(return_value={"status": "killed", "actor_id": "test_actor"})
-        manager.train_model = AsyncMock(return_value={"status": "training_started", "algorithm": "torch"})
-        manager.tune_hyperparameters = AsyncMock(return_value={"status": "tuning_started", "metric": "accuracy"})
-        manager.deploy_model = AsyncMock(return_value={"status": "deployment_started", "deployment_name": "test"})
-        manager.list_deployments = AsyncMock(return_value={"status": "success", "deployments": []})
-        manager.create_dataset = AsyncMock(return_value={"status": "dataset_created", "source": "test.parquet"})
-        manager.transform_data = AsyncMock(return_value={"status": "transformation_applied", "dataset_id": "test"})
-        manager.batch_inference = AsyncMock(return_value={"status": "inference_started", "model_path": "test.pkl"})
+
         manager.get_performance_metrics = AsyncMock(return_value={"status": "success", "metrics": {}})
         manager.cluster_health_check = AsyncMock(return_value={"status": "success", "health": "good"})
         manager.optimize_cluster_config = AsyncMock(return_value={"status": "success", "suggestions": []})
@@ -243,121 +237,7 @@ class TestMCPToolCalls:
                 
                 mock_ray_manager.kill_actor.assert_called_once_with("test_actor_123", True)
 
-    # ===== MACHINE LEARNING & AI TESTS =====
 
-    @pytest.mark.asyncio
-    async def test_train_model_tool(self, mock_ray_manager):
-        """Test train_model tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                args = {
-                    "algorithm": "torch",
-                    "dataset_path": "/path/to/data.parquet",
-                    "model_config": {"learning_rate": 0.001, "batch_size": 32}
-                }
-                result = await call_tool("train_model", args)
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "training_started"
-                
-                mock_ray_manager.train_model.assert_called_once_with(**args)
-
-    @pytest.mark.asyncio
-    async def test_tune_hyperparameters_tool(self, mock_ray_manager):
-        """Test tune_hyperparameters tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                args = {
-                    "script_path": "/path/to/train.py",
-                    "search_space": {"lr": [0.001, 0.01], "batch_size": [16, 32]},
-                    "metric": "accuracy"
-                }
-                result = await call_tool("tune_hyperparameters", args)
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "tuning_started"
-                
-                mock_ray_manager.tune_hyperparameters.assert_called_once_with(**args)
-
-    @pytest.mark.asyncio
-    async def test_deploy_model_tool(self, mock_ray_manager):
-        """Test deploy_model tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                args = {
-                    "model_path": "/path/to/model.pkl",
-                    "deployment_name": "my_model",
-                    "num_replicas": 3
-                }
-                result = await call_tool("deploy_model", args)
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "deployment_started"
-                
-                mock_ray_manager.deploy_model.assert_called_once_with(**args)
-
-    @pytest.mark.asyncio
-    async def test_list_deployments_tool(self, mock_ray_manager):
-        """Test list_deployments tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                result = await call_tool("list_deployments")
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "success"
-                
-                mock_ray_manager.list_deployments.assert_called_once()
-
-    # ===== DATA PROCESSING TESTS =====
-
-    @pytest.mark.asyncio
-    async def test_create_dataset_tool(self, mock_ray_manager):
-        """Test create_dataset tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                args = {
-                    "source": "/path/to/data.parquet",
-                    "format": "parquet"
-                }
-                result = await call_tool("create_dataset", args)
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "dataset_created"
-                
-                mock_ray_manager.create_dataset.assert_called_once_with(**args)
-
-    @pytest.mark.asyncio
-    async def test_transform_data_tool(self, mock_ray_manager):
-        """Test transform_data tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                args = {
-                    "dataset_id": "dataset_123",
-                    "transformation": "filter(lambda x: x['value'] > 0)"
-                }
-                result = await call_tool("transform_data", args)
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "transformation_applied"
-                
-                mock_ray_manager.transform_data.assert_called_once_with(**args)
-
-    @pytest.mark.asyncio
-    async def test_batch_inference_tool(self, mock_ray_manager):
-        """Test batch_inference tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                args = {
-                    "model_path": "/path/to/model.pkl",
-                    "dataset_path": "/path/to/data.parquet",
-                    "output_path": "/path/to/results.parquet"
-                }
-                result = await call_tool("batch_inference", args)
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "inference_started"
-                
-                mock_ray_manager.batch_inference.assert_called_once_with(**args)
 
     # ===== ENHANCED MONITORING TESTS =====
 

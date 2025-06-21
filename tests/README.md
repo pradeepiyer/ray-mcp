@@ -7,7 +7,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 ### Test Files
 
 1. **`test_mcp_tools.py`** - Unit tests for all MCP tool calls
-   - Tests all 30 MCP tools individually
+   - Tests all 22 MCP tools individually
    - Covers parameter validation, error handling, and response formats
    - Mocks RayManager to isolate tool call logic
 
@@ -49,31 +49,22 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 - `list_actors` - Actor discovery and listing
 - `kill_actor` - Actor lifecycle management
 
-### 4. Machine Learning & AI Tests
-- `train_model` - Distributed model training
-- `tune_hyperparameters` - Hyperparameter optimization
-- `deploy_model` - Model deployment and serving
-- `list_deployments` - Deployment management
 
-### 5. Data Processing Tests
-- `create_dataset` - Dataset creation from various sources
-- `transform_data` - Data transformation pipelines
-- `batch_inference` - Large-scale batch inference
 
-### 6. Enhanced Monitoring Tests
+### 4. Enhanced Monitoring Tests
 - `performance_metrics` - Performance monitoring
 - `health_check` - Cluster health assessment
 - `optimize_config` - Configuration optimization
 
-### 7. Workflow & Orchestration Tests
+### 5. Workflow & Orchestration Tests
 - `create_workflow` - Workflow definition and creation
 - `schedule_job` - Job scheduling with cron expressions
 
-### 8. Backup & Recovery Tests
+### 6. Backup & Recovery Tests
 - `backup_cluster` - Cluster state backup
 - `restore_cluster` - Cluster state restoration
 
-### 9. Logs & Debugging Tests
+### 7. Logs & Debugging Tests
 - `get_logs` - Log retrieval and analysis
 
 ## Running Tests
@@ -160,7 +151,7 @@ All tests validate:
 
 Current test coverage includes:
 
-- **Tool Calls**: All 30 MCP tools
+- **Tool Calls**: All 22 MCP tools
 - **Parameter Validation**: Required and optional parameters
 - **Error Handling**: Ray unavailable, exceptions, invalid inputs
 - **Response Formats**: JSON structure and content validation
@@ -176,7 +167,7 @@ Recent test run results:
 
 ### Test Status
 ✅ All tests are currently passing with comprehensive coverage of:
-- All 30 MCP tools
+- All 22 MCP tools
 - Error handling scenarios
 - Integration workflows
 - Parameter validation

@@ -22,16 +22,7 @@ A Model Context Protocol (MCP) server for interacting with [Ray](https://github.
 - **Actor control** - Kill specific actors with restart options
 - **Actor monitoring** - Track actor states and resources
 
-### Machine Learning & AI
-- **Model training** - Distributed model training with Ray Train
-- **Hyperparameter tuning** - Optimize model parameters with Ray Tune
-- **Model deployment** - Deploy models with Ray Serve
-- **Batch inference** - Large-scale batch inference on datasets
 
-### Data Processing
-- **Dataset creation** - Create Ray datasets from various sources
-- **Data transformation** - Transform data using Ray Data
-- **Batch processing** - Process large datasets efficiently
 
 ### Advanced Features
 - **Performance monitoring** - Detailed cluster performance metrics
@@ -132,8 +123,6 @@ The MCP Ray Server follows a **manual initialization** approach:
 **❌ Requires Ray initialization:**
 - All job management tools (`submit_job`, `list_jobs`, etc.)
 - All actor management tools (`list_actors`, `kill_actor`)
-- All ML/AI tools (`train_model`, `deploy_model`, etc.)
-- All data processing tools (`create_dataset`, `batch_inference`, etc.)
 - All monitoring tools (`performance_metrics`, `health_check`, etc.)
 
 **🔧 Ray initialization tools:**
@@ -143,7 +132,7 @@ The MCP Ray Server follows a **manual initialization** approach:
 
 ## Available Tools
 
-The server provides **30 tools** for comprehensive Ray cluster management:
+The server provides **22 tools** for comprehensive Ray cluster management:
 
 ### Cluster Operations
 - `start_ray` - Start a new Ray cluster (head node)
@@ -167,16 +156,7 @@ The server provides **30 tools** for comprehensive Ray cluster management:
 - `list_actors` - List all actors in the cluster
 - `kill_actor` - Terminate a specific actor
 
-### Machine Learning & AI Operations
-- `train_model` - Train a machine learning model using Ray
-- `tune_hyperparameters` - Tune hyperparameters using Ray Tune
-- `deploy_model` - Deploy a model using Ray Serve
-- `list_deployments` - List all model deployments
 
-### Data Processing Operations
-- `create_dataset` - Create a Ray dataset
-- `transform_data` - Transform data using Ray Data
-- `batch_inference` - Run batch inference on a dataset
 
 ### Enhanced Monitoring
 - `performance_metrics` - Get detailed cluster performance metrics

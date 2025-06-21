@@ -44,29 +44,7 @@ class HealthStatus(str, Enum):
     FAIR = "fair"
     POOR = "poor"
 
-class MLAlgorithm(str, Enum):
-    """Supported ML algorithms."""
-    TORCH = "torch"
-    PYTORCH = "pytorch"
-    TENSORFLOW = "tensorflow"
-    TF = "tf"
-    XGBOOST = "xgboost"
-    SKLEARN = "sklearn"
-    SCIKIT_LEARN = "scikit-learn"
 
-class DataFormat(str, Enum):
-    """Supported data formats."""
-    PARQUET = "parquet"
-    CSV = "csv"
-    JSON = "json"
-    IMAGES = "images"
-    TEXT = "text"
-    BINARY = "binary"
-
-class OptimizationMode(str, Enum):
-    """Hyperparameter optimization modes."""
-    MAX = "max"
-    MIN = "min"
 
 # ===== TYPED DICTIONARIES =====
 
@@ -129,68 +107,7 @@ class HealthReport(TypedDict):
     timestamp: float
     recommendations: List[str]
 
-# ===== ML-SPECIFIC TYPES =====
 
-class ModelConfig(TypedDict, total=False):
-    """Model configuration for training."""
-    learning_rate: float
-    batch_size: int
-    epochs: int
-    hidden_size: int
-    num_layers: int
-    dropout: float
-    optimizer: str
-    loss_function: str
-
-class SearchSpace(TypedDict, total=False):
-    """Hyperparameter search space."""
-    learning_rate: Union[List[float], Dict[str, Union[float, str]]]
-    batch_size: Union[List[int], Dict[str, Union[int, str]]]
-    epochs: Union[List[int], Dict[str, Union[int, str]]]
-    hidden_size: Union[List[int], Dict[str, Union[int, str]]]
-
-class TuneConfig(TypedDict):
-    """Ray Tune configuration."""
-    search_space: SearchSpace
-    metric: str
-    mode: OptimizationMode
-    num_samples: int
-    max_concurrent_trials: int
-
-class DeploymentConfig(TypedDict):
-    """Model deployment configuration."""
-    name: str
-    num_replicas: int
-    model_path: str
-
-class DeploymentInfo(TypedDict):
-    """Information about a model deployment."""
-    name: str
-    status: str
-    num_replicas: int
-    route_prefix: Optional[str]
-
-# ===== DATA PROCESSING TYPES =====
-
-class DatasetInfo(TypedDict):
-    """Dataset information."""
-    source: str
-    format: DataFormat
-    creation_time: float
-
-class TransformationInfo(TypedDict):
-    """Data transformation information."""
-    dataset_id: str
-    transformation: str
-    timestamp: float
-
-class InferenceConfig(TypedDict):
-    """Batch inference configuration."""
-    model_path: str
-    dataset_path: str
-    output_path: str
-    batch_size: int
-    num_workers: int
 
 # ===== WORKFLOW TYPES =====
 
@@ -285,39 +202,7 @@ class JobSubmissionResponse(TypedDict):
     job_id: JobId
     message: str
 
-class TrainingResponse(TypedDict):
-    """Response from model training."""
-    status: Literal["training_started"]
-    algorithm: MLAlgorithm
-    dataset_path: str
-    config: ModelConfig
-    message: str
 
-class TuningResponse(TypedDict):
-    """Response from hyperparameter tuning."""
-    status: Literal["tuning_started"]
-    script_path: str
-    search_space: SearchSpace
-    metric: str
-    config: TuneConfig
-    message: str
-
-class DeploymentResponse(TypedDict):
-    """Response from model deployment."""
-    status: Literal["deployment_started"]
-    deployment_name: str
-    model_path: str
-    num_replicas: int
-    config: DeploymentConfig
-    message: str
-
-class DatasetResponse(TypedDict):
-    """Response from dataset creation."""
-    status: Literal["dataset_created"]
-    source: str
-    format: DataFormat
-    info: DatasetInfo
-    message: str
 
 class BackupResponse(TypedDict):
     """Response from cluster backup."""
@@ -332,10 +217,6 @@ Response = Union[
     ErrorResponse,
     ClusterStartResponse,
     JobSubmissionResponse,
-    TrainingResponse,
-    TuningResponse,
-    DeploymentResponse,
-    DatasetResponse,
     BackupResponse
 ]
 
@@ -346,10 +227,6 @@ RayManagerResponse = Union[
     ErrorResponse,
     ClusterStartResponse,
     JobSubmissionResponse,
-    TrainingResponse,
-    TuningResponse,
-    DeploymentResponse,
-    DatasetResponse,
     BackupResponse,
     JsonDict  # For complex responses that don't fit standard patterns
 ]
@@ -376,6 +253,4 @@ class JobClient(Protocol):
 # Specific kwargs types for different operations
 ClusterKwargs = Dict[str, Union[str, int, bool, ResourceDict]]
 JobKwargs = Dict[str, Union[str, int, JsonDict, Dict[str, str]]]
-MLKwargs = Dict[str, Union[str, int, float, bool, ModelConfig, SearchSpace]]
-DataKwargs = Dict[str, Union[str, int, DataFormat, JsonDict]]
 WorkflowKwargs = Dict[str, Union[str, WorkflowDefinition, JsonDict]] 

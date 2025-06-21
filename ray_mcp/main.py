@@ -198,90 +198,7 @@ async def list_tools() -> List[Tool]:
             }
         ),
         
-        # Machine learning & AI features
-        Tool(
-            name="train_model",
-            description="Train a machine learning model using Ray",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "algorithm": {"type": "string", "enum": ["torch", "tensorflow", "xgboost", "sklearn"]},
-                    "dataset_path": {"type": "string"},
-                    "model_config": {"type": "object"}
-                },
-                "required": ["algorithm", "dataset_path", "model_config"]
-            }
-        ),
-        Tool(
-            name="tune_hyperparameters",
-            description="Tune hyperparameters using Ray Tune",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "script_path": {"type": "string"},
-                    "search_space": {"type": "object"},
-                    "metric": {"type": "string"}
-                },
-                "required": ["script_path", "search_space", "metric"]
-            }
-        ),
-        Tool(
-            name="deploy_model",
-            description="Deploy a model using Ray Serve",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "model_path": {"type": "string"},
-                    "deployment_name": {"type": "string"},
-                    "num_replicas": {"type": "integer", "minimum": 1, "default": 1}
-                },
-                "required": ["model_path", "deployment_name"]
-            }
-        ),
-        Tool(
-            name="list_deployments",
-            description="List all model deployments",
-            inputSchema={"type": "object", "properties": {}}
-        ),
-        
-        # Data processing features
-        Tool(
-            name="create_dataset",
-            description="Create a Ray dataset",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "source": {"type": "string"},
-                    "format": {"type": "string", "enum": ["parquet", "csv", "json", "images", "text"], "default": "parquet"}
-                },
-                "required": ["source"]
-            }
-        ),
-        Tool(
-            name="transform_data",
-            description="Transform data using Ray Data",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "dataset_id": {"type": "string"},
-                    "transformation": {"type": "string"}
-                },
-                "required": ["dataset_id", "transformation"]
-            }
-        ),
-        Tool(
-            name="batch_inference",
-            description="Run batch inference on a dataset",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "model_path": {"type": "string"},
-                    "dataset_path": {"type": "string"},
-                    "output_path": {"type": "string"}
-                },
-                "required": ["model_path", "dataset_path", "output_path"]
-            }
-        ),
+
         
         # Enhanced monitoring
         Tool(
@@ -413,23 +330,7 @@ async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Li
         elif name == "kill_actor":
             result = await ray_manager.kill_actor(args["actor_id"], args.get("no_restart", False))
             
-        # Machine learning & AI features
-        elif name == "train_model":
-            result = await ray_manager.train_model(**args)
-        elif name == "tune_hyperparameters":
-            result = await ray_manager.tune_hyperparameters(**args)
-        elif name == "deploy_model":
-            result = await ray_manager.deploy_model(**args)
-        elif name == "list_deployments":
-            result = await ray_manager.list_deployments()
-            
-        # Data processing features
-        elif name == "create_dataset":
-            result = await ray_manager.create_dataset(**args)
-        elif name == "transform_data":
-            result = await ray_manager.transform_data(**args)
-        elif name == "batch_inference":
-            result = await ray_manager.batch_inference(**args)
+
             
         # Enhanced monitoring
         elif name == "performance_metrics":
