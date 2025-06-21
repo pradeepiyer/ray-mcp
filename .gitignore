@@ -32,3 +32,6 @@ Thumbs.db
 *.log
 ray_logs/
 ray_mcp_logs/
+
+# Scripts
+cleanup_repo.sh
