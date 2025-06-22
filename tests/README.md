@@ -7,7 +7,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 ### Test Files
 
 1. **`test_tools.py`** - **NEW** Comprehensive unit tests for all tool functions
-   - Tests all 22 tool functions in `ray_mcp/tools.py` individually
+   - Tests all 19 tool functions in `ray_mcp/tools.py` individually
    - 100% coverage of tools.py module
    - Covers parameter validation, error handling, and JSON response formats
    - Mocks RayManager to isolate tool function logic
@@ -26,7 +26,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
    - Comprehensive fixtures for manager and initialized_manager
 
 4. **`test_mcp_tools.py`** - Unit tests for all MCP tool calls
-   - Tests all 22 MCP tools individually through the MCP interface
+   - Tests all 19 MCP tools individually through the MCP interface
    - Covers parameter validation, error handling, and response formats
    - Mocks RayManager to isolate tool call logic
 
@@ -69,7 +69,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 
 4. **Created Comprehensive Tool Tests**
    - **`test_tools.py`** - 22 tests achieving **100% coverage** of tools.py
-   - Tests all 15 tool functions with proper parameter handling
+   - Tests all 19 tool functions with proper parameter handling
    - JSON formatting verification and response validation
 
 ## Test Categories
@@ -189,7 +189,7 @@ The `test_e2e_integration.py` file contains comprehensive real-world testing sce
 - Performs comprehensive cleanup after complex workflow execution
 
 #### 8. **Additional Validation Tests**
-- **MCP Tools Availability Test**: Validates all 21 MCP tools are properly defined
+- **MCP Tools Availability Test**: Validates all 19 MCP tools are properly defined
 - **Error Handling Test**: Tests behavior when Ray is not initialized
 - **Cluster Management Cycle Test**: Tests multiple start/stop cycles
 - **Simple Job Standalone Test**: Validates example job runs independently
@@ -367,10 +367,10 @@ All tests validate:
 
 Current test coverage includes:
 
-- **Tool Functions**: All 15 tool functions in `tools.py` (100% coverage)
+- **Tool Functions**: All 19 tool functions in `tools.py` (100% coverage)
 - **Main Functions**: `list_tools()`, `call_tool()`, `main()` functions
 - **RayManager Methods**: Comprehensive coverage of all manager methods
-- **MCP Tool Calls**: All 22 MCP tools through the interface
+- **MCP Tool Calls**: All 19 MCP tools through the interface
 - **Parameter Validation**: Required and optional parameters
 - **Error Handling**: Ray unavailable, exceptions, invalid inputs
 - **Response Formats**: JSON structure and content validation
@@ -415,7 +415,7 @@ Current test coverage includes:
 - **E2E Integration Tests**: Real Ray cluster operations work perfectly
 - **Integration Tests**: MCP interface integration works correctly
 - **Unit Tests**: All modules thoroughly tested with proper mocking
-- **Tool Functions**: Complete coverage of all 15 tool functions
+- **Tool Functions**: Complete coverage of all 19 tool functions
 - **Manager Methods**: Comprehensive RayManager testing
 - **Error Handling**: Robust error scenario coverage
 
