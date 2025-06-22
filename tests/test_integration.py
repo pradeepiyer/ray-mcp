@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integration tests for the complete MCP Ray server flow."""
+"""Integration tests for the complete Ray MCP server flow."""
 
 import asyncio
 import json

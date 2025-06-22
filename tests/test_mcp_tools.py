@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Comprehensive unit tests for all MCP tool calls in the Ray server."""
+"""Comprehensive unit tests for all MCP tool calls in the Ray MCP server."""
 
 import asyncio
 import json

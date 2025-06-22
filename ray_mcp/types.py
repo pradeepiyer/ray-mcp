@@ -1,4 +1,4 @@
-"""Type definitions for the MCP Ray server."""
+"""Type definitions for the Ray MCP server."""
 
 from typing import Dict, List, Optional, Union, Literal, TypedDict, Protocol, Any
 from enum import Enum

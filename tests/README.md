@@ -107,7 +107,7 @@ This directory contains comprehensive unit and integration tests for the Ray MCP
 
 ## End-to-End Integration Tests
 
-The `test_e2e_integration.py` file contains comprehensive real-world testing scenarios that execute against actual Ray clusters **without any mocking**. These tests provide the highest level of confidence in the MCP Ray server functionality.
+The `test_e2e_integration.py` file contains comprehensive real-world testing scenarios that execute against actual Ray clusters **without any mocking**. These tests provide the highest level of confidence in the Ray MCP server functionality.
 
 ### E2E Test Scenarios
 

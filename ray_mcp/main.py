@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main entry point for the MCP Ray server."""
+"""Main entry point for the Ray MCP server."""
 
 import asyncio
 import json

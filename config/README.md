@@ -1,6 +1,6 @@
-# MCP Ray Server Configuration
+# Ray MCP Server Configuration
 
-This directory contains configuration files for setting up the MCP Ray Server with different MCP clients.
+This directory contains configuration files for setting up the Ray MCP Server with different MCP clients.
 
 ## Configuration Files
 
