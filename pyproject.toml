@@ -7,7 +7,7 @@ name = "ray-mcp"
 version = "0.1.0"
 description = "MCP (Model Context Protocol) server for Ray distributed computing"
 authors = [
-    {name = "Ray MCP Team", email = "ray-mcp@example.com"}
+    {name = "claude 4 sonnet", email = "ray-mcp@example.com"}
 ]
 readme = "README.md"
 license = {text = "MIT"}
