@@ -43,7 +43,7 @@ config/
 
 ### Install from source
 ```bash
-git clone https://github.com/pradeepiyer/ray-mcp.git
+git clone https://github.com/ray-mcp/ray-mcp.git
 cd ray-mcp
 pip install -e .
 ```
@@ -54,10 +54,57 @@ pip install -r requirements.txt
 ```
 
 ## Running Tests
+
+### Test Categories
+
+We have organized tests into different categories for optimal development workflow:
+
+- **Unit tests**: Fast, isolated tests (`test_ray_manager.py`, `test_ray_manager_methods.py`)
+- **Integration tests**: Medium-speed tests with some Ray interaction (`test_integration.py`, `test_mcp_tools.py`)
+- **End-to-end tests**: Comprehensive, slow tests with full Ray workflows (`test_e2e_integration.py`)
+
+### Quick Test Commands
+
 ```bash
-pip install -e .
-pytest tests/
+# Fast development testing (excludes e2e tests) - recommended for daily development
+make test
+
+# Smoke tests - minimal verification (30 seconds)
+make test-smoke
+
+# End-to-end tests only - for major changes (5-10 minutes)
+make test-e2e
+
+# Complete test suite - for releases (10-15 minutes)
+make test-full
+
+# Smart test runner - automatically chooses appropriate tests based on changes
+make test-smart
 ```
+
+### Manual Test Execution
+
+```bash
+# Fast tests (excludes e2e) - typical development workflow
+pytest tests/ -m "not e2e and not slow" --tb=short -v
+
+# Only end-to-end tests
+pytest tests/ -m "e2e" --tb=short -v
+
+# Only smoke tests
+pytest tests/ -m "smoke" --tb=short -v
+
+# All tests
+pytest tests/ --tb=short -v
+```
+
+### When to Run Different Test Suites
+
+- **Daily Development**: `make test` (fast tests, ~1-2 minutes)
+- **Before Committing**: `make test-smart` (intelligent test selection)
+- **Major Changes**: `make test-e2e` (comprehensive e2e tests)
+- **Before Releases**: `make test-full` (complete test suite)
+- **Quick Verification**: `make test-smoke` (basic functionality check)
 
 ### Test Categories
 - **Unit tests**: `test_ray_manager.py`, `test_ray_manager_methods.py`
@@ -87,23 +134,26 @@ ruff check ray_mcp/
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make changes with tests
-4. Ensure tests pass (`pytest tests/`)
-5. Format code (`black . && isort .`)
-6. Submit a pull request
+4. Ensure tests pass (`make test`)
+5. For major changes, run e2e tests (`make test-e2e`)
+6. Format code (`black . && isort .`)
+7. Submit a pull request
 
 ### Contribution Guidelines
 - Add tests for new functionality
 - Follow existing code style
 - Update documentation as needed
 - Ensure all tests pass
+- Use `make test-smart` to run appropriate tests for your changes
 
 ## Release Process
 
 1. Update version in `pyproject.toml`
 2. Update CHANGELOG.md
-3. Create release PR
-4. Tag release after merge
-5. GitHub Actions will handle PyPI deployment
+3. Run full test suite (`make test-full`)
+4. Create release PR
+5. Tag release after merge
+6. GitHub Actions will handle PyPI deployment
 
 ## Debugging
 

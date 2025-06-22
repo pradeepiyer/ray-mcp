@@ -51,6 +51,8 @@ class TestE2EIntegration:
             pass  # Ignore cleanup errors
 
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_complete_ray_workflow(self, ray_cluster_manager: RayManager):
         """Test the complete Ray workflow: start cluster, submit job, verify results, cleanup."""
         
@@ -191,6 +193,8 @@ class TestE2EIntegration:
         print("✅ Complete end-to-end test passed successfully!")
     
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_actor_management_workflow(self, ray_cluster_manager: RayManager):
         """Test the complete actor management workflow: create actors, list, monitor, kill."""
         
@@ -690,6 +694,8 @@ print("Job completed successfully!")
         print("✅ Job failure and debugging workflow test passed successfully!")
 
     @pytest.mark.asyncio
+    @pytest.mark.smoke
+    @pytest.mark.fast
     async def test_mcp_tools_availability(self):
         """Test that all MCP tools are available and properly defined."""
         
