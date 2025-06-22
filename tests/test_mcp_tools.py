@@ -12,6 +12,13 @@ from ray_mcp.main import call_tool, ray_manager
 from ray_mcp.ray_manager import RayManager
 from mcp.types import TextContent, Content
 
+# Mock the main function to prevent coroutine warnings
+@pytest.fixture(scope="session", autouse=True)
+def mock_main_function():
+    """Mock the main function to prevent unawaited coroutine warnings."""
+    with patch('ray_mcp.main.main', new_callable=AsyncMock) as mock_main:
+        yield mock_main
+
 
 def get_text_content(result: Any, index: int = 0) -> TextContent:
     """Helper function to get TextContent from result with proper typing."""

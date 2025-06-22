@@ -13,9 +13,8 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 def run_server():
     """Synchronous wrapper for the async main function"""
-    import asyncio
-    from ray_mcp.main import main
-    asyncio.run(main())
+    from ray_mcp.main import run_server as _run_server
+    _run_server()
 
 setup(
     name="ray-mcp",
