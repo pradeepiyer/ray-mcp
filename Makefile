@@ -8,7 +8,7 @@ test: test-fast
 # Fast test suite (excludes e2e tests) - for development
 test-fast:
 	@echo "🏃‍♂️ Running fast test suite..."
-	@pytest tests/ -m "not e2e and not slow" --tb=short -v --maxfail=3
+	@pytest tests/test_main.py tests/test_tools.py tests/test_ray_manager.py tests/test_ray_manager_methods.py tests/test_mcp_tools.py tests/test_integration.py --tb=short -v --maxfail=3 --cov=ray_mcp --cov-report=term-missing --cov-fail-under=0
 
 # Smoke tests - minimal verification
 test-smoke:
