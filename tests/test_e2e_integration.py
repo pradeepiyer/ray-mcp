@@ -697,7 +697,7 @@ print("Job completed successfully!")
         tools = await list_tools()
         
         assert isinstance(tools, list)
-        assert len(tools) == 21  # We expect 21 tools
+        assert len(tools) == 19  # We expect 19 tools (after removing backup/restore)
         
         # Verify key tools are present
         tool_names = [tool.name for tool in tools]

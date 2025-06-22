@@ -46,8 +46,6 @@ class TestMCPToolCalls:
         manager.optimize_cluster_config = AsyncMock(return_value={"status": "success", "suggestions": []})
 
         manager.schedule_job = AsyncMock(return_value={"status": "job_scheduled", "schedule": "0 * * * *"})
-        manager.backup_cluster_state = AsyncMock(return_value={"status": "backup_created", "backup_path": "test.json"})
-        manager.restore_cluster_state = AsyncMock(return_value={"status": "restore_complete", "backup_path": "test.json"})
         manager.get_logs = AsyncMock(return_value={"status": "success", "logs": "test logs"})
         manager.connect_cluster = AsyncMock(return_value={"status": "connected", "address": "ray://remote-cluster:10001", "message": "Successfully connected to Ray cluster"})
         return manager
@@ -287,31 +285,7 @@ class TestMCPToolCalls:
                 
                 mock_ray_manager.schedule_job.assert_called_once_with(**args)
 
-    # ===== BACKUP & RECOVERY TESTS =====
 
-    @pytest.mark.asyncio
-    async def test_backup_cluster_tool(self, mock_ray_manager):
-        """Test backup_cluster tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                result = await call_tool("backup_cluster", {"backup_path": "/tmp/cluster_backup.json"})
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "backup_created"
-                
-                mock_ray_manager.backup_cluster_state.assert_called_once_with("/tmp/cluster_backup.json")
-
-    @pytest.mark.asyncio
-    async def test_restore_cluster_tool(self, mock_ray_manager):
-        """Test restore_cluster tool call."""
-        with patch('ray_mcp.main.ray_manager', mock_ray_manager):
-            with patch('ray_mcp.main.RAY_AVAILABLE', True):
-                result = await call_tool("restore_cluster", {"backup_path": "/tmp/cluster_backup.json"})
-                
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "restore_complete"
-                
-                mock_ray_manager.restore_cluster_state.assert_called_once_with("/tmp/cluster_backup.json")
 
     # ===== LOGS & DEBUGGING TESTS =====
 

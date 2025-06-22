@@ -29,7 +29,7 @@ A Model Context Protocol (MCP) server for interacting with [Ray](https://github.
 - **Health checks** - Comprehensive cluster health assessment
 - **Configuration optimization** - Get cluster optimization recommendations
 - **Job scheduling configuration** - Configure job scheduling parameters (metadata only)
-- **Backup & recovery** - Backup and restore cluster state
+
 
 ## Installation
 
@@ -163,8 +163,7 @@ The server provides **21 tools** for comprehensive Ray cluster management:
 - `schedule_job` - Configure job scheduling parameters (stores metadata only)
 
 ### Backup & Recovery
-- `backup_cluster` - Backup cluster state
-- `restore_cluster` - Restore cluster from backup
+
 
 ## Tool Parameters
 

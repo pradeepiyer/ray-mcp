@@ -68,8 +68,7 @@ This directory contains comprehensive unit and integration tests for the MCP Ray
 - `schedule_job` - Job scheduling with cron expressions
 
 ### 6. Backup & Recovery Tests
-- `backup_cluster` - Cluster state backup
-- `restore_cluster` - Cluster state restoration
+
 
 ### 7. Logs & Debugging Tests
 - `get_logs` - Log retrieval and analysis

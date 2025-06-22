@@ -178,24 +178,7 @@ async def schedule_job(
     return json.dumps(result, indent=2)
 
 
-# ===== BACKUP & RECOVERY =====
 
-async def backup_cluster_state(
-    ray_manager: RayManager,
-    backup_path: str
-) -> str:
-    """Backup cluster state including jobs, actors, and configurations."""
-    result = await ray_manager.backup_cluster_state(backup_path)
-    return json.dumps(result, indent=2)
-
-
-async def restore_cluster_state(
-    ray_manager: RayManager,
-    backup_path: str
-) -> str:
-    """Restore cluster state from a backup."""
-    result = await ray_manager.restore_cluster_state(backup_path)
-    return json.dumps(result, indent=2)
 
 
 # ===== LOGS & DEBUGGING =====

@@ -220,30 +220,7 @@ async def list_tools() -> List[Tool]:
                 "required": ["entrypoint", "schedule"]
             }
         ),
-        
-        # Backup & recovery
-        Tool(
-            name="backup_cluster",
-            description="Backup cluster state",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "backup_path": {"type": "string"}
-                },
-                "required": ["backup_path"]
-            }
-        ),
-        Tool(
-            name="restore_cluster",
-            description="Restore cluster from backup",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "backup_path": {"type": "string"}
-                },
-                "required": ["backup_path"]
-            }
-        ),
+
         
         # Logs & debugging
         Tool(
@@ -321,12 +298,6 @@ async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Li
 
         elif name == "schedule_job":
             result = await ray_manager.schedule_job(**args)
-            
-        # Backup & recovery
-        elif name == "backup_cluster":
-            result = await ray_manager.backup_cluster_state(args["backup_path"])
-        elif name == "restore_cluster":
-            result = await ray_manager.restore_cluster_state(args["backup_path"])
             
         # Logs & debugging
         elif name == "get_logs":

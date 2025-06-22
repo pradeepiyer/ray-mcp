@@ -25,7 +25,7 @@ class TestMCPIntegration:
         tools = await list_tools()
         
         assert isinstance(tools, list)
-        assert len(tools) == 21  # We have 21 tools defined (after removing ML/AI and scale/workflow tools)
+        assert len(tools) == 19  # We have 19 tools defined (after removing backup/restore tools)
         
         # Check that all tools are Tool instances
         for tool in tools:
@@ -42,7 +42,6 @@ class TestMCPIntegration:
             "list_actors", "kill_actor",
             "performance_metrics", "health_check", "optimize_config",
             "schedule_job",
-            "backup_cluster", "restore_cluster",
             "get_logs"
         ]
         
