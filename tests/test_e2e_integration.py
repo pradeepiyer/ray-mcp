@@ -356,6 +356,8 @@ if __name__ == "__main__":
         print("✅ Actor management workflow test passed successfully!")
 
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_monitoring_and_health_workflow(self, ray_cluster_manager: RayManager):
         """Test the complete monitoring and health check workflow."""
         
@@ -506,6 +508,8 @@ if __name__ == "__main__":
         print("✅ Monitoring and health workflow test passed successfully!")
 
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_job_failure_and_debugging_workflow(self, ray_cluster_manager: RayManager):
         """Test the complete job failure and debugging workflow."""
         
@@ -750,6 +754,8 @@ print("Job completed successfully!")
         print("✅ Error handling test passed!")
     
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_cluster_management_cycle(self):
         """Test starting and stopping Ray cluster multiple times."""
         
@@ -786,6 +792,8 @@ print("Job completed successfully!")
         print("✅ Cluster management cycle test passed!")
 
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_distributed_training_workflow(self, ray_cluster_manager: RayManager):
         """Test distributed training workflow using the distributed_training.py example."""
         
@@ -899,6 +907,8 @@ print("Job completed successfully!")
         print("✅ Distributed training workflow test passed successfully!")
 
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_data_pipeline_workflow(self, ray_cluster_manager: RayManager):
         """Test data processing pipeline workflow using the data_pipeline.py example."""
         
@@ -1036,6 +1046,8 @@ print("Job completed successfully!")
         print("✅ Data pipeline workflow test passed successfully!")
 
     @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
     async def test_workflow_orchestration_workflow(self, ray_cluster_manager: RayManager):
         """Test complex workflow orchestration using the workflow_orchestration.py example."""
         
@@ -1223,6 +1235,8 @@ print("Job completed successfully!")
 
 
 @pytest.mark.asyncio
+@pytest.mark.e2e
+@pytest.mark.slow
 async def test_simple_job_standalone():
     """Test that simple_job.py can run standalone (validation test)."""
     
