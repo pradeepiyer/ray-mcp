@@ -1,6 +1,6 @@
-# MCP Ray Server Test Suite
+# Ray MCP Server Test Suite
 
-This directory contains comprehensive unit and integration tests for the MCP Ray Server project.
+This directory contains comprehensive unit and integration tests for the Ray MCP Server project.
 
 ## Test Structure
 
