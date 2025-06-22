@@ -20,8 +20,8 @@ def run_server():
 setup(
     name="ray-mcp",
     version="0.1.0",
-    author="Pradeep Iyer",
-    author_email="pradeepiyer@gmail.com",
+    author="Ray MCP Team",
+    author_email="ray-mcp@example.com",
     description="MCP (Model Context Protocol) server for Ray distributed computing",
     long_description=long_description,
     long_description_content_type="text/markdown",
