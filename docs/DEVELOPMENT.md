@@ -43,7 +43,7 @@ config/
 
 ### Install from source
 ```bash
-git clone https://github.com/ray-mcp/ray-mcp.git
+git clone https://github.com/pradeepiyer/ray-mcp.git
 cd ray-mcp
 pip install -e .
 ```
