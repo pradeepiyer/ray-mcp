@@ -3,13 +3,28 @@
 
 import asyncio
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from typing import Dict, Any, List
 
 from ray_mcp.ray_manager import RayManager
 
 
 class TestRayManager:
     """Test cases for RayManager."""
+
+    @pytest.fixture
+    def manager(self):
+        """Create a RayManager instance for testing."""
+        return RayManager()
+
+    @pytest.fixture
+    def initialized_manager(self):
+        """Create an initialized RayManager instance."""
+        manager = RayManager()
+        manager._is_initialized = True
+        manager._cluster_address = "ray://127.0.0.1:10001"
+        manager._job_client = Mock()
+        return manager
 
     def test_init(self):
         """Test RayManager initialization."""
@@ -162,6 +177,180 @@ class TestRayManager:
                 mock_ray.is_initialized.return_value = True
                 # Should not raise
                 manager._ensure_initialized()
+
+    # ===== CONNECT CLUSTER TESTS =====
+
+    @pytest.mark.asyncio
+    async def test_connect_cluster_success(self, manager):
+        """Test successful cluster connection."""
+        mock_context = Mock()
+        mock_context.address_info = {"address": "ray://remote:10001"}
+        mock_context.dashboard_url = "http://remote:8265"
+        mock_context.session_name = "remote_session"
+        
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = "remote_node"
+                
+                with patch('ray_mcp.ray_manager.JobSubmissionClient') as mock_client:
+                    result = await manager.connect_cluster("ray://remote:10001")
+                    
+                    assert result["status"] == "connected"
+                    assert result["address"] == "ray://remote:10001"
+                    assert manager._is_initialized
+                    assert manager._cluster_address == "ray://remote:10001"
+
+    @pytest.mark.asyncio
+    async def test_connect_cluster_ray_unavailable(self, manager):
+        """Test cluster connection when Ray is unavailable."""
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', False):
+            result = await manager.connect_cluster("ray://remote:10001")
+            
+            assert result["status"] == "error"
+            assert "Ray is not available" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_submit_job_success(self, initialized_manager):
+        """Test successful job submission."""
+        mock_job_client = initialized_manager._job_client
+        mock_job_client.submit_job.return_value = "submitted_job_123"
+        
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                
+                result = await initialized_manager.submit_job(
+                    entrypoint="python train.py",
+                    runtime_env={"pip": ["numpy"]},
+                    job_id="custom_job",
+                    metadata={"owner": "test"}
+                )
+                
+                assert result["status"] == "submitted"
+                assert result["job_id"] == "submitted_job_123"
+
+    @pytest.mark.asyncio
+    async def test_submit_job_not_initialized(self, manager):
+        """Test job submission when not initialized."""
+        result = await manager.submit_job("python test.py")
+        assert result["status"] == "error"
+        assert "Ray is not initialized" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_cluster_resources_success(self, initialized_manager):
+        """Test successful cluster resources retrieval."""
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.cluster_resources.return_value = {"CPU": 12.0, "memory": 32000000000}
+                mock_ray.available_resources.return_value = {"CPU": 8.0, "memory": 16000000000}
+                
+                result = await initialized_manager.get_cluster_resources()
+                
+                assert result["status"] == "success"
+                assert "total_resources" in result or "cluster_resources" in result
+
+    @pytest.mark.asyncio
+    async def test_list_actors_success(self, initialized_manager):
+        """Test successful actor listing."""
+        mock_named_actors = [
+            {
+                "name": "test_actor",
+                "namespace": "default"
+            }
+        ]
+        
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.util.list_named_actors.return_value = mock_named_actors
+                
+                # Mock actor handle
+                mock_actor_handle = Mock()
+                mock_actor_handle._actor_id.hex.return_value = "actor123"
+                mock_ray.get_actor.return_value = mock_actor_handle
+                
+                result = await initialized_manager.list_actors()
+                
+                assert result["status"] == "success"
+                assert len(result["actors"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_kill_actor_success(self, initialized_manager):
+        """Test successful actor killing."""
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.kill.return_value = None
+                
+                result = await initialized_manager.kill_actor("actor123", no_restart=True)
+                
+                assert result["status"] == "killed"
+                assert result["actor_id"] == "actor123"
+
+    @pytest.mark.asyncio
+    async def test_get_logs_job_success(self, initialized_manager):
+        """Test successful job log retrieval."""
+        mock_job_client = initialized_manager._job_client
+        mock_job_client.get_job_logs.return_value = "Job log output"
+        
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                
+                result = await initialized_manager.get_logs(job_id="test_job", num_lines=50)
+                
+                assert result["status"] == "success"
+                assert result["logs"] == "Job log output"
+
+    @pytest.mark.asyncio
+    async def test_get_performance_metrics_success(self, initialized_manager):
+        """Test successful performance metrics retrieval."""
+        mock_cluster_resources = {"CPU": 12.0, "memory": 32000000000}
+        mock_available_resources = {"CPU": 8.0, "memory": 20000000000}
+        mock_nodes = [
+            {"NodeID": "node1", "Alive": True},
+            {"NodeID": "node2", "Alive": True}
+        ]
+        
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.cluster_resources.return_value = mock_cluster_resources
+                mock_ray.available_resources.return_value = mock_available_resources
+                mock_ray.nodes.return_value = mock_nodes
+                
+                result = await initialized_manager.get_performance_metrics()
+                
+                assert result["status"] == "success"
+                assert "cluster_overview" in result or "cluster_utilization" in result
+
+    @pytest.mark.asyncio
+    async def test_cluster_health_check_success(self, initialized_manager):
+        """Test successful cluster health check."""
+        mock_nodes = [{"NodeID": "node1", "Alive": True}]
+        
+        with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
+            with patch('ray_mcp.ray_manager.ray') as mock_ray:
+                mock_ray.nodes.return_value = mock_nodes
+                mock_ray.cluster_resources.return_value = {"CPU": 8.0}
+                mock_ray.available_resources.return_value = {"CPU": 4.0}
+                
+                result = await initialized_manager.cluster_health_check()
+                
+                assert result["status"] == "success"
+                assert "health_score" in result
+
+    def test_generate_health_recommendations(self, manager):
+        """Test health recommendation generation."""
+        health_checks = {
+            "nodes_healthy": False,
+            "resource_utilization_ok": False,
+            "jobs_running_smoothly": True,
+            "actors_healthy": True
+        }
+        
+        recommendations = manager._generate_health_recommendations(health_checks)
+        
+        assert len(recommendations) >= 1
+        assert any("nodes" in rec.lower() or "health" in rec.lower() for rec in recommendations)
 
 
 if __name__ == "__main__":
