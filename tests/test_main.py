@@ -234,6 +234,174 @@ class TestMain:
                 response_data = json.loads(result[0].text)
                 assert response_data["status"] == "connected"
 
+    @pytest.mark.asyncio
+    async def test_call_tool_all_cluster_management_tools(self):
+        """Test all cluster management tools to ensure coverage."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                # Setup mock return values
+                mock_manager.start_cluster = AsyncMock(return_value={"status": "started"})
+                mock_manager.stop_cluster = AsyncMock(return_value={"status": "stopped"})
+                mock_manager.get_cluster_resources = AsyncMock(return_value={"status": "success"})
+                mock_manager.get_cluster_nodes = AsyncMock(return_value={"status": "success"})
+                
+                # Test cluster_resources
+                result = cast(List[TextContent], await call_tool("cluster_resources", {}))
+                assert len(result) == 1
+                mock_manager.get_cluster_resources.assert_called_once()
+                
+                # Test cluster_nodes
+                result = cast(List[TextContent], await call_tool("cluster_nodes", {}))
+                assert len(result) == 1
+                mock_manager.get_cluster_nodes.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_call_tool_all_job_management_tools(self):
+        """Test all job management tools to ensure coverage."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                # Setup mock return values
+                mock_manager.submit_job = AsyncMock(return_value={"status": "submitted"})
+                mock_manager.list_jobs = AsyncMock(return_value={"status": "success"})
+                mock_manager.monitor_job_progress = AsyncMock(return_value={"status": "monitoring"})
+                mock_manager.debug_job = AsyncMock(return_value={"status": "debugging"})
+                
+                # Test submit_job
+                args = {"entrypoint": "python test.py", "runtime_env": {"pip": ["numpy"]}}
+                result = cast(List[TextContent], await call_tool("submit_job", args))
+                assert len(result) == 1
+                mock_manager.submit_job.assert_called_once_with(**args)
+                
+                # Test list_jobs
+                result = cast(List[TextContent], await call_tool("list_jobs", {}))
+                assert len(result) == 1
+                mock_manager.list_jobs.assert_called_once()
+                
+                # Test monitor_job
+                result = cast(List[TextContent], await call_tool("monitor_job", {"job_id": "test_job"}))
+                assert len(result) == 1
+                mock_manager.monitor_job_progress.assert_called_once_with("test_job")
+                
+                # Test debug_job
+                result = cast(List[TextContent], await call_tool("debug_job", {"job_id": "test_job"}))
+                assert len(result) == 1
+                mock_manager.debug_job.assert_called_once_with("test_job")
+
+    @pytest.mark.asyncio
+    async def test_call_tool_all_actor_management_tools(self):
+        """Test all actor management tools to ensure coverage."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                # Setup mock return values
+                mock_manager.list_actors = AsyncMock(return_value={"status": "success"})
+                mock_manager.kill_actor = AsyncMock(return_value={"status": "killed"})
+                
+                # Test list_actors without filters
+                result = cast(List[TextContent], await call_tool("list_actors", {}))
+                assert len(result) == 1
+                mock_manager.list_actors.assert_called_once_with(None)
+                
+                # Test kill_actor with default no_restart
+                result = cast(List[TextContent], await call_tool("kill_actor", {"actor_id": "test_actor"}))
+                assert len(result) == 1
+                mock_manager.kill_actor.assert_called_once_with("test_actor", False)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_all_monitoring_tools(self):
+        """Test all monitoring tools to ensure coverage."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                # Setup mock return values
+                mock_manager.optimize_cluster_config = AsyncMock(return_value={"status": "optimized"})
+                
+                # Test optimize_config
+                result = cast(List[TextContent], await call_tool("optimize_config", {}))
+                assert len(result) == 1
+                mock_manager.optimize_cluster_config.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_call_tool_schedule_job(self):
+        """Test schedule_job tool to ensure coverage."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                mock_manager.schedule_job = AsyncMock(return_value={"status": "scheduled"})
+                
+                args = {"entrypoint": "python daily_job.py", "schedule": "0 9 * * *"}
+                result = cast(List[TextContent], await call_tool("schedule_job", args))
+                
+                assert len(result) == 1
+                mock_manager.schedule_job.assert_called_once_with(**args)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_get_logs_all_parameters(self):
+        """Test get_logs tool with various parameter combinations."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                mock_manager.get_logs = AsyncMock(return_value={"status": "success"})
+                
+                # Test with all possible parameters
+                args = {"job_id": "test_job", "actor_id": "test_actor", "node_id": "test_node", "num_lines": 200}
+                result = cast(List[TextContent], await call_tool("get_logs", args))
+                
+                assert len(result) == 1
+                mock_manager.get_logs.assert_called_once_with(**args)
+
+    # ===== ADDITIONAL COVERAGE TESTS =====
+
+    @pytest.mark.asyncio
+    async def test_call_tool_stop_ray(self):
+        """Test stop_ray tool to ensure coverage."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                mock_manager.stop_cluster = AsyncMock(return_value={"status": "stopped"})
+                
+                result = cast(List[TextContent], await call_tool("stop_ray", {}))
+                
+                assert len(result) == 1
+                mock_manager.stop_cluster.assert_called_once()
+
+    def test_run_server_function_exists(self):
+        """Test that run_server function exists and is importable."""
+        from ray_mcp.main import run_server
+        assert callable(run_server)
+
+    def test_main_module_structure(self):
+        """Test that the main module has expected structure."""
+        import ray_mcp.main as main_module
+        
+        # Verify the main module has the expected attributes
+        assert hasattr(main_module, 'run_server')
+        assert hasattr(main_module, 'main')
+        assert hasattr(main_module, 'server')
+        assert hasattr(main_module, 'ray_manager')
+        assert callable(main_module.run_server)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_arguments_handling(self):
+        """Test call_tool with various argument scenarios."""
+        with patch('ray_mcp.main.RAY_AVAILABLE', True):
+            with patch('ray_mcp.main.ray_manager') as mock_manager:
+                mock_manager.get_cluster_status = AsyncMock(return_value={"status": "running"})
+                
+                # Test with empty dict
+                result = cast(List[TextContent], await call_tool("cluster_status", {}))
+                assert len(result) == 1
+                mock_manager.get_cluster_status.assert_called_once()
+
+    def test_main_function_import(self):
+        """Test that main function can be imported."""
+        from ray_mcp.main import main
+        import asyncio
+        assert asyncio.iscoroutinefunction(main)
+
+    def test_asyncio_run_mock(self):
+        """Test run_server function calls asyncio.run."""
+        with patch('ray_mcp.main.asyncio.run') as mock_asyncio_run:
+            from ray_mcp.main import run_server
+            run_server()
+            
+            mock_asyncio_run.assert_called_once()
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
