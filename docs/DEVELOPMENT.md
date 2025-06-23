@@ -21,7 +21,7 @@ tests/
 ├── test_integration.py         # Integration tests
 └── README.md                   # Test documentation
 
-config/
+docs/config/
 ├── claude_desktop_config.json # Claude Desktop configuration
 ├── mcp_server_config.json     # Comprehensive config examples
 └── README.md                  # Configuration guide
