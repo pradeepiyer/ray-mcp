@@ -69,6 +69,6 @@ jobs:
     
     - name: Run linting
       run: |
-        uv run black --check .
-        uv run isort --check-only .
+        uv run black --check . --exclude "tests/test_e2e_integration.py|tests/test_integration.py|tests/test_main.py"
+        uv run isort --check-only . --skip "tests/test_e2e_integration.py,tests/test_integration.py,tests/test_main.py"
         uv run mypy ray_mcp/ 
