@@ -13,55 +13,6 @@ A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distr
 
 ## Quick Start
 
-### Start a Multi-Node Cluster
-
-The server now defaults to starting multi-node clusters with 2 worker nodes:
-
-```json
-{
-  "tool": "start_ray",
-  "arguments": {
-    "num_cpus": 1
-  }
-}
-```
-
-This creates:
-- Head node: 1 CPU, 0 GPUs, 1GB object store memory
-- Worker node 1: 2 CPUs, 0 GPUs, 500MB object store memory  
-- Worker node 2: 2 CPUs, 0 GPUs, 500MB object store memory
-
-### Custom Multi-Node Setup
-
-```json
-{
-  "tool": "start_ray",
-  "arguments": {
-    "num_cpus": 1,
-    "num_gpus": 0,
-    "object_store_memory": 1000000000,
-    "worker_nodes": [
-      {
-        "num_cpus": 2,
-        "num_gpus": 0,
-        "object_store_memory": 500000000,
-        "node_name": "cpu-worker-1"
-      },
-      {
-        "num_cpus": 4,
-        "num_gpus": 1,
-        "object_store_memory": 1000000000,
-        "node_name": "gpu-worker-1",
-        "resources": {"custom_resource": 2}
-      }
-    ],
-    "head_node_port": 10001,
-    "dashboard_port": 8265,
-    "head_node_host": "127.0.0.1"
-  }
-}
-```
-
 ### Installation
 
 ```bash
@@ -79,10 +30,13 @@ uv pip install -e .
 source .venv/bin/activate
 ```
 
-### Basic Usage
+### Starting Ray Clusters
 
-```python
-# Start a simple cluster (head node only)
+The server supports both single-node and multi-node cluster configurations:
+
+#### Simple Single-Node Cluster
+
+```json
 {
   "tool": "start_ray",
   "arguments": {
@@ -90,55 +44,29 @@ source .venv/bin/activate
     "num_gpus": 1
   }
 }
+```
 
-# Start a multi-node cluster
+#### Multi-Node Cluster (Default)
+
+The server now defaults to starting multi-node clusters with 2 worker nodes:
+
+```json
 {
   "tool": "start_ray",
   "arguments": {
-    "num_cpus": 4,
-    "worker_nodes": [
-      {
-        "num_cpus": 2,
-        "num_gpus": 0,
-        "node_name": "cpu-worker"
-      },
-      {
-        "num_cpus": 2,
-        "num_gpus": 1,
-        "node_name": "gpu-worker"
-      }
-    ]
-  }
-}
-
-# Check cluster status
-{
-  "tool": "cluster_status"
-}
-
-# Submit a job
-{
-  "tool": "submit_job",
-  "arguments": {
-    "entrypoint": "python examples/simple_job.py"
+    "num_cpus": 1
   }
 }
 ```
 
-## Multi-Node Cluster Support
+This creates:
+- Head node: 1 CPU, 0 GPUs, 1GB object store memory
+- Worker node 1: 2 CPUs, 0 GPUs, 500MB object store memory  
+- Worker node 2: 2 CPUs, 0 GPUs, 500MB object store memory
 
-The enhanced `start_ray` tool now supports creating clusters with multiple worker nodes:
+#### Custom Multi-Node Setup
 
-### Worker Node Configuration
-
-Each worker node can be configured with:
-- **num_cpus**: Number of CPUs (required)
-- **num_gpus**: Number of GPUs (optional)
-- **object_store_memory**: Memory allocation in bytes (optional)
-- **node_name**: Custom name for the worker (optional)
-- **resources**: Custom resources (optional)
-
-### Example Multi-Node Setup
+For advanced configurations, you can specify custom worker nodes:
 
 ```json
 {
@@ -169,11 +97,22 @@ Each worker node can be configured with:
 }
 ```
 
-### Worker Node Management
+### Basic Usage
 
-- **worker_status**: Get detailed status of all worker nodes
-- **cluster_status**: Enhanced to include worker node information
-- **stop_ray**: Automatically stops all worker nodes when stopping the cluster
+```python
+# Check cluster status
+{
+  "tool": "cluster_status"
+}
+
+# Submit a job
+{
+  "tool": "submit_job",
+  "arguments": {
+    "entrypoint": "python examples/simple_job.py"
+  }
+}
+```
 
 ## Available Tools
 
