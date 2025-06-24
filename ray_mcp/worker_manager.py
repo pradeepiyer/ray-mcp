@@ -143,6 +143,8 @@ class WorkerManager:
             # Create process with proper environment
             env = os.environ.copy()
             env["RAY_DISABLE_USAGE_STATS"] = "1"
+            # Enable multi-node clusters on Windows and macOS
+            env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
             
             # Start the process
             process = subprocess.Popen(
