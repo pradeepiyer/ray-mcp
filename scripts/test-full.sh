@@ -3,7 +3,7 @@
 
 echo "🔍 Running complete test suite (this will take several minutes)..."
 
-pytest tests/ \
+python -m pytest tests/ \
     --tb=short \
     -v \
     --cov=ray_mcp \

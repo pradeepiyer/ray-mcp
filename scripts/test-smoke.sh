@@ -3,7 +3,7 @@
 
 echo "💨 Running smoke test suite..."
 
-pytest tests/ \
+python -m pytest tests/ \
     -m "smoke" \
     --tb=short \
     -v \

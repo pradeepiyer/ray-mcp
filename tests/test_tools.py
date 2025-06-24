@@ -4,8 +4,12 @@
 import asyncio
 import json
 import pytest
+import warnings
 from unittest.mock import Mock, patch, AsyncMock
 from typing import Dict, Any, Optional
+
+# Suppress the specific coroutine warning at module level
+warnings.filterwarnings("ignore", message="coroutine 'main' was never awaited", category=RuntimeWarning)
 
 from ray_mcp.tools import (
     # Basic cluster management
@@ -40,6 +44,15 @@ from ray_mcp.tools import (
     get_logs
 )
 from ray_mcp.ray_manager import RayManager
+
+
+# Mock the main function to prevent coroutine warnings
+@pytest.fixture(scope="session", autouse=True)
+def mock_main_function():
+    """Mock the main function to prevent unawaited coroutine warnings."""
+    # Simple mock that doesn't create coroutines
+    with patch('ray_mcp.main.main', new_callable=AsyncMock) as mock_main:
+        yield mock_main
 
 
 class TestToolFunctions:

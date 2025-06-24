@@ -3,7 +3,7 @@
 
 echo "🏃‍♂️ Running fast test suite (excludes e2e tests)..."
 
-pytest tests/ \
+python -m pytest tests/ \
     -m "not e2e and not slow" \
     --tb=short \
     -v \

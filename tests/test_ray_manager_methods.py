@@ -161,7 +161,7 @@ class TestRayManagerMethods:
                 
                 result = await ray_manager.submit_job(
                     entrypoint="python my_script.py",
-                    runtime_env={"pip": ["numpy", "pandas"]},
+                    runtime_env={"pip": ["requests", "click"]},
                     job_id="my_custom_job",
                     metadata={"owner": "test_user", "project": "ml_project"}
                 )
@@ -199,7 +199,7 @@ class TestRayManagerMethods:
         job1.start_time = 1234567890
         job1.end_time = None
         job1.metadata = {"owner": "user1"}
-        job1.runtime_env = {"pip": ["torch"]}
+        job1.runtime_env = {"pip": ["requests"]}
         
         job2 = Mock()
         job2.job_id = "job_2"
@@ -412,7 +412,7 @@ class TestRayManagerMethods:
         job_info.status = "RUNNING"
         job_info.start_time = 1234567890
         job_info.end_time = None
-        job_info.runtime_env = {"pip": ["numpy"]}
+        job_info.runtime_env = {"pip": ["requests"]}
         job_info.entrypoint = "python train.py"
         
         mock_job_client.get_job_info.return_value = job_info
@@ -438,11 +438,11 @@ class TestRayManagerMethods:
         # Mock job info with failure
         job_info = Mock()
         job_info.status = "FAILED"
-        job_info.runtime_env = {"pip": ["torch"]}
+        job_info.runtime_env = {"pip": ["requests"]}
         job_info.entrypoint = "python failing_script.py"
         
         mock_job_client.get_job_info.return_value = job_info
-        mock_job_client.get_job_logs.return_value = "ImportError: No module named 'torch'\nTraceback (most recent call last):\n  File 'failing_script.py', line 1"
+        mock_job_client.get_job_logs.return_value = "ImportError: No module named 'requests'\nTraceback (most recent call last):\n  File 'failing_script.py', line 1"
         
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray') as mock_ray:
@@ -565,7 +565,7 @@ class TestRayManagerMethods:
         job_info.status = "FAILED"
         
         # Test with import error logs
-        logs_with_import_error = "ImportError: No module named 'pandas'\nTraceback..."
+        logs_with_import_error = "ImportError: No module named 'requests'\nTraceback..."
         suggestions = ray_manager._generate_debug_suggestions(job_info, logs_with_import_error)
         
         assert len(suggestions) >= 2

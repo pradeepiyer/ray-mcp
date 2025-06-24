@@ -3,7 +3,7 @@
 
 echo "🔄 Running end-to-end test suite (this may take several minutes)..."
 
-pytest tests/ \
+python -m pytest tests/ \
     -m "e2e" \
     --tb=short \
     -v \

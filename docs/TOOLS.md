@@ -60,7 +60,7 @@ The Ray MCP Server provides **19 tools** for comprehensive Ray cluster managemen
 {
   "entrypoint": "python my_script.py",  // Required: command to run
   "runtime_env": {                      // Optional: runtime environment
-    "pip": ["numpy", "pandas"],
+    "pip": ["requests", "click"],
     "env_vars": {"MY_VAR": "value"}
   },
   "job_id": "my_job_123",              // Optional: custom job ID

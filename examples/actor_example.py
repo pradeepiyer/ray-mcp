@@ -69,56 +69,78 @@ class DataProcessor:
 
 def main():
     """Main function to demonstrate actors."""
-    # Initialize Ray
-    ray.init()
-    print("Ray initialized successfully!")
+    ray_initialized_by_script = False
     
-    print("=== Ray Actor Example ===")
-    
-    # Create counter actors
-    print("\n--- Creating Counter Actors ---")
-    counter1 = Counter.remote()  # type: ignore
-    counter2 = Counter.remote(100)  # type: ignore
-    
-    # Use counters
-    print("\n--- Using Counters ---")
-    result1 = ray.get(counter1.increment.remote(5))  # type: ignore
-    result2 = ray.get(counter2.decrement.remote(10))  # type: ignore
-    
-    print(f"Counter 1 value: {result1}")
-    print(f"Counter 2 value: {result2}")
-    
-    # Create data processors
-    print("\n--- Creating Data Processors ---")
-    processors = [DataProcessor.remote(f"processor_{i}") for i in range(3)]  # type: ignore
-    
-    # Process data
-    print("\n--- Processing Data ---")
-    test_data = [list(range(i*10, (i+1)*10)) for i in range(3)]
-    
-    futures = []
-    for i, processor in enumerate(processors):
-        future = processor.process_data.remote(test_data[i])  # type: ignore
-        futures.append(future)
-    
-    results = ray.get(futures)
-    print("Processing results:")
-    for i, result in enumerate(results):
-        print(f"  Processor {i}: {result[:5]}...")  # Show first 5 items
-    
-    # Get stats from processors
-    print("\n--- Processor Statistics ---")
-    stats_futures = [processor.get_stats.remote() for processor in processors]  # type: ignore
-    stats = ray.get(stats_futures)
-    
-    for stat in stats:
-        print(f"  {stat['processor_id']}: processed {stat['total_processed']} items")
-    
-    print("\nActor example completed!")
-    
-    # Shutdown Ray
-    ray.shutdown()
-    print("Ray shutdown complete.")
+    try:
+        # Check if Ray is already initialized (it should be in job context)
+        if not ray.is_initialized():
+            print("Ray is not initialized, initializing now...")
+            ray.init()
+            ray_initialized_by_script = True
+        else:
+            print("Ray is already initialized (job context)")
+        
+        print("=== Ray Actor Example ===")
+        
+        # Create counter actors
+        print("\n--- Creating Counter Actors ---")
+        counter1 = Counter.remote()  # type: ignore
+        counter2 = Counter.remote(100)  # type: ignore
+        
+        # Use counters
+        print("\n--- Using Counters ---")
+        result1 = ray.get(counter1.increment.remote(5))  # type: ignore
+        result2 = ray.get(counter2.decrement.remote(10))  # type: ignore
+        
+        print(f"Counter 1 value: {result1}")
+        print(f"Counter 2 value: {result2}")
+        
+        # Create data processors
+        print("\n--- Creating Data Processors ---")
+        processors = [DataProcessor.remote(f"processor_{i}") for i in range(3)]  # type: ignore
+        
+        # Process data
+        print("\n--- Processing Data ---")
+        test_data = [list(range(i*10, (i+1)*10)) for i in range(3)]
+        
+        futures = []
+        for i, processor in enumerate(processors):
+            future = processor.process_data.remote(test_data[i])  # type: ignore
+            futures.append(future)
+        
+        results = ray.get(futures)
+        print("Processing results:")
+        for i, result in enumerate(results):
+            print(f"  Processor {i}: {result[:5]}...")  # Show first 5 items
+        
+        # Get stats from processors
+        print("\n--- Processor Statistics ---")
+        stats_futures = [processor.get_stats.remote() for processor in processors]  # type: ignore
+        stats = ray.get(stats_futures)
+        
+        for stat in stats:
+            print(f"  {stat['processor_id']}: processed {stat['total_processed']} items")
+        
+        print("\nActor example completed!")
+        
+        # Only shutdown Ray if we initialized it
+        if ray_initialized_by_script:
+            ray.shutdown()
+            print("Ray shutdown complete (initialized by script).")
+        else:
+            print("Job execution complete (Ray managed externally).")
+            
+    except Exception as e:
+        print(f"ERROR: Actor example failed with exception: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        
+        # Cleanup: shutdown Ray if we initialized it
+        if ray_initialized_by_script and ray.is_initialized():
+            ray.shutdown()
+            print("Ray shutdown during error cleanup.")
+        
+        raise
 
 
 if __name__ == "__main__":

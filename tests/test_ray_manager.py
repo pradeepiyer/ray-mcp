@@ -222,7 +222,7 @@ class TestRayManager:
                 
                 result = await initialized_manager.submit_job(
                     entrypoint="python train.py",
-                    runtime_env={"pip": ["numpy"]},
+                    runtime_env={"pip": ["requests"]},
                     job_id="custom_job",
                     metadata={"owner": "test"}
                 )

@@ -8,7 +8,9 @@
 **Solutions**:
 ```bash
 # Check Ray installation
-pip install ray[default]
+uv add ray[default]
+# or if using development environment:
+uv sync
 
 # Check port availability
 ray start --head --port=6379
@@ -32,7 +34,8 @@ from ray.job_submission import JobSubmissionClient
 client = JobSubmissionClient("http://127.0.0.1:8265")
 
 # Check job dependencies
-pip list | grep ray
+uv pip list | grep ray
+# or: uv tree | grep ray
 
 # Verify script exists and is executable
 python my_script.py

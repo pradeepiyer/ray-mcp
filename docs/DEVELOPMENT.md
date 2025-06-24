@@ -36,21 +36,36 @@ docs/config/
 
 ## Setup for Development
 
+### Migration to uv
+> **📦 Package Manager Migration**: Ray MCP Server has migrated from `pip`/`requirements.txt` to `uv` for improved dependency management, faster installs, and better reproducibility. All installation and development commands now use `uv`.
+
 ### Prerequisites
-- Python 3.8 or higher
-- Ray 2.30.0 or higher (current latest: 2.47.1)
+- Python 3.10 or higher
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
+- Ray 2.47.0 or higher (current latest: 2.47.1)
 - MCP SDK 1.0.0 or higher
+
+### Install uv (if not already installed)
+```bash
+# Install uv package manager
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: pip install uv
+```
 
 ### Install from source
 ```bash
 git clone https://github.com/pradeepiyer/ray-mcp.git
 cd ray-mcp
-pip install -e .
+uv sync  # Install all dependencies including dev dependencies
 ```
 
-### Install dependencies only
+### Alternative installation methods
 ```bash
-pip install -r requirements.txt
+# Install package only (production)
+uv pip install -e .
+
+# Development setup (recommended)
+make dev-install
 ```
 
 ## Running Tests
@@ -161,7 +176,9 @@ ruff check ray_mcp/
 
 1. **Ray import errors**: Ensure Ray is properly installed
    ```bash
-   pip install ray[default]
+   uv add ray[default]
+   # or if using the development environment:
+   uv sync
    ```
 
 2. **MCP protocol issues**: Check server logs and client configuration

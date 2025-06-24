@@ -2,6 +2,8 @@
 
 This directory contains configuration files for setting up the Ray MCP Server with different MCP clients.
 
+> **🚀 UV Native**: Ray MCP Server is now fully migrated to UV for modern, fast Python package management. All installation commands use `uv` for improved reliability and speed.
+
 ## Configuration Files
 
 ### `claude_desktop_config.json`
@@ -135,12 +137,12 @@ Comprehensive configuration with examples and documentation for different Ray cl
 ### Common Issues
 
 1. **Console script not found**
-   - Ensure the package is installed: `pip install -e .`
+   - Ensure the package is installed: `uv sync` (recommended) or `uv pip install -e .`
    - Check the script path: `which ray-mcp`
    - Use full path in configuration
 
 2. **Module not found**
-   - Install the package: `pip install -e .`
+   - Install the package: `uv sync` (recommended) or `uv pip install -e .`
    - Check virtual environment activation
 
 3. **Ray connection issues**

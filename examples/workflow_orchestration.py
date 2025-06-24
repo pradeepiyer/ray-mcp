@@ -2,9 +2,9 @@
 """Workflow orchestration example for testing the MCP server."""
 
 import ray
-import numpy as np
 import time
 import json
+import random
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import asyncio
@@ -16,10 +16,10 @@ def fetch_data_task(source_id: str, delay: float = 1.0) -> Dict[str, Any]:
     print(f"Fetching data from source: {source_id}")
     time.sleep(delay)  # Simulate network delay
     
-    # Generate synthetic data
+    # Generate synthetic data using built-in random module
     data = {
         "source_id": source_id,
-        "records": [{"id": i, "value": np.random.uniform(0, 100)} for i in range(100)],
+        "records": [{"id": i, "value": random.uniform(0, 100)} for i in range(100)],
         "metadata": {
             "fetched_at": datetime.now().isoformat(),
             "record_count": 100,
@@ -131,13 +131,16 @@ def merge_data_task(transform_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             "transform_type": result["transform_type"]
         }
     
-    # Calculate merged statistics
+    # Calculate merged statistics using built-in functions
     if all_records:
         if "normalized_value" in all_records[0]:
             normalized_values = [r["normalized_value"] for r in all_records]
+            mean_val = sum(normalized_values) / len(normalized_values)
+            variance = sum((x - mean_val) ** 2 for x in normalized_values) / len(normalized_values)
+            std_val = variance ** 0.5
             stats = {
-                "mean_normalized": np.mean(normalized_values),
-                "std_normalized": np.std(normalized_values)
+                "mean_normalized": mean_val,
+                "std_normalized": std_val
             }
         elif "category" in all_records[0]:
             categories = [r["category"] for r in all_records]
@@ -199,17 +202,17 @@ def save_results_task(merge_result: Dict[str, Any], output_format: str = "summar
 
 @ray.remote
 class WorkflowOrchestrator:
-    """Orchestrate complex workflows with dependencies."""
+    """Ray actor for orchestrating complex workflows."""
     
     def __init__(self):
-        self.workflow_history: List[Dict[str, Any]] = []
-        self.active_workflows: Dict[str, Dict[str, Any]] = {}
-        print("WorkflowOrchestrator initialized")
+        self.workflow_history = []
+        self.active_workflows = {}
     
     def execute_workflow(self, workflow_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a complete workflow."""
+        """Execute a workflow with the given configuration."""
         print(f"Starting workflow: {workflow_id}")
         
+        # Record workflow start
         workflow_start = time.time()
         self.active_workflows[workflow_id] = {
             "status": "running",
@@ -218,9 +221,10 @@ class WorkflowOrchestrator:
         }
         
         try:
-            # Execute workflow based on config
+            # Execute the data pipeline workflow
             result = self._execute_data_pipeline_workflow(config)
             
+            # Record workflow completion
             execution_time = time.time() - workflow_start
             
             # Record workflow completion
@@ -265,7 +269,7 @@ class WorkflowOrchestrator:
         # Step 1: Fetch data from multiple sources
         fetch_futures = []
         for source_id in sources:
-            future = fetch_data_task.remote(source_id, delay=np.random.uniform(0.5, 2.0))  # type: ignore
+            future = fetch_data_task.remote(source_id, delay=random.uniform(0.5, 2.0))  # type: ignore
             fetch_futures.append(future)
         
         fetched_data = ray.get(fetch_futures)
@@ -323,100 +327,122 @@ class WorkflowOrchestrator:
 
 def main():
     """Main function to demonstrate workflow orchestration."""
-    # Initialize Ray
-    ray.init()
-    print("Ray initialized successfully!")
+    ray_initialized_by_script = False
     
-    print("=== Workflow Orchestration Example ===")
-    
-    # Create workflow orchestrator
-    print("\n--- Creating Workflow Orchestrator ---")
-    orchestrator = WorkflowOrchestrator.remote()
-    
-    # Define workflow configurations
-    workflows = [
-        {
-            "id": "normalize_workflow",
-            "config": {
-                "sources": ["source_A", "source_B"],
-                "transform_type": "normalize",
-                "output_format": "summary"
+    try:
+        # Check if Ray is already initialized (it should be in job context)
+        if not ray.is_initialized():
+            print("Ray is not initialized, initializing now...")
+            ray.init()
+            ray_initialized_by_script = True
+        else:
+            print("Ray is already initialized (job context)")
+        
+        print("=== Workflow Orchestration Example ===")
+        
+        # Create workflow orchestrator
+        print("\n--- Creating Workflow Orchestrator ---")
+        orchestrator = WorkflowOrchestrator.remote()
+        
+        # Define workflow configurations
+        workflows = [
+            {
+                "id": "normalize_workflow",
+                "config": {
+                    "sources": ["source_A", "source_B"],
+                    "transform_type": "normalize",
+                    "output_format": "summary"
+                }
+            },
+            {
+                "id": "categorize_workflow",
+                "config": {
+                    "sources": ["source_C", "source_D", "source_E"],
+                    "transform_type": "categorize",
+                    "output_format": "full"
+                }
             }
-        },
-        {
-            "id": "categorize_workflow",
-            "config": {
-                "sources": ["source_C", "source_D", "source_E"],
-                "transform_type": "categorize",
-                "output_format": "full"
-            }
+        ]
+        
+        print(f"\nExecuting {len(workflows)} workflows:")
+        for workflow in workflows:
+            print(f"  - {workflow['id']}: {workflow['config']}")
+        
+        # Execute workflows
+        print("\n--- Executing Workflows ---")
+        workflow_futures = []
+        
+        for workflow in workflows:
+            future = orchestrator.execute_workflow.remote(workflow["id"], workflow["config"])  # type: ignore
+            workflow_futures.append((workflow["id"], future))
+        
+        # Wait for all workflows to complete
+        workflow_results = []
+        for workflow_id, future in workflow_futures:
+            result = ray.get(future)
+            workflow_results.append(result)
+            print(f"Workflow {workflow_id} result: {result['status']}")  # type: ignore
+        
+        # Get workflow history
+        print("\n--- Workflow History ---")
+        history = ray.get(orchestrator.get_workflow_history.remote())  # type: ignore
+        
+        for workflow_record in history:
+            print(f"Workflow: {workflow_record['workflow_id']}")
+            print(f"  Status: {workflow_record['status']}")
+            print(f"  Execution time: {workflow_record['execution_time']:.2f}s")
+            if workflow_record["status"] == "completed":
+                result = workflow_record["result"]
+                print(f"  Records processed: {result['performance_metrics']['total_records_processed']}")
+            print()
+        
+        # Summary statistics
+        completed_workflows = [w for w in workflow_results if w["status"] == "completed"]
+        failed_workflows = [w for w in workflow_results if w["status"] == "failed"]
+        
+        total_records_processed = sum(
+            w["result"]["performance_metrics"]["total_records_processed"] 
+            for w in completed_workflows
+        )
+        
+        total_execution_time = sum(w["execution_time"] for w in workflow_results)
+        
+        orchestration_summary = {
+            "orchestration_completed": True,
+            "total_workflows": len(workflows),
+            "completed_workflows": len(completed_workflows),
+            "failed_workflows": len(failed_workflows),
+            "total_records_processed": total_records_processed,
+            "total_execution_time": total_execution_time,
+            "average_execution_time": total_execution_time / len(workflow_results),
+            "success_rate": len(completed_workflows) / len(workflow_results)
         }
-    ]
-    
-    print(f"\nExecuting {len(workflows)} workflows:")
-    for workflow in workflows:
-        print(f"  - {workflow['id']}: {workflow['config']}")
-    
-    # Execute workflows
-    print("\n--- Executing Workflows ---")
-    workflow_futures = []
-    
-    for workflow in workflows:
-        future = orchestrator.execute_workflow.remote(workflow["id"], workflow["config"])  # type: ignore
-        workflow_futures.append((workflow["id"], future))
-    
-    # Wait for all workflows to complete
-    workflow_results = []
-    for workflow_id, future in workflow_futures:
-        result = ray.get(future)
-        workflow_results.append(result)
-        print(f"Workflow {workflow_id} result: {result['status']}")  # type: ignore
-    
-    # Get workflow history
-    print("\n--- Workflow History ---")
-    history = ray.get(orchestrator.get_workflow_history.remote())  # type: ignore
-    
-    for workflow_record in history:
-        print(f"Workflow: {workflow_record['workflow_id']}")
-        print(f"  Status: {workflow_record['status']}")
-        print(f"  Execution time: {workflow_record['execution_time']:.2f}s")
-        if workflow_record["status"] == "completed":
-            result = workflow_record["result"]
-            print(f"  Records processed: {result['performance_metrics']['total_records_processed']}")
-        print()
-    
-    # Summary statistics
-    completed_workflows = [w for w in workflow_results if w["status"] == "completed"]
-    failed_workflows = [w for w in workflow_results if w["status"] == "failed"]
-    
-    total_records_processed = sum(
-        w["result"]["performance_metrics"]["total_records_processed"] 
-        for w in completed_workflows
-    )
-    
-    total_execution_time = sum(w["execution_time"] for w in workflow_results)
-    
-    orchestration_summary = {
-        "orchestration_completed": True,
-        "total_workflows": len(workflows),
-        "completed_workflows": len(completed_workflows),
-        "failed_workflows": len(failed_workflows),
-        "total_records_processed": total_records_processed,
-        "total_execution_time": total_execution_time,
-        "average_execution_time": total_execution_time / len(workflow_results),
-        "success_rate": len(completed_workflows) / len(workflow_results)
-    }
-    
-    print("--- Orchestration Summary ---")
-    print(json.dumps(orchestration_summary, indent=2))
-    
-    print("\nWorkflow orchestration example completed!")
-    
-    # Shutdown Ray
-    ray.shutdown()
-    print("Ray shutdown complete.")
-    
-    return orchestration_summary
+        
+        print("--- Orchestration Summary ---")
+        print(json.dumps(orchestration_summary, indent=2))
+        
+        print("\nWorkflow orchestration example completed!")
+        
+        # Only shutdown Ray if we initialized it
+        if ray_initialized_by_script:
+            ray.shutdown()
+            print("Ray shutdown complete (initialized by script).")
+        else:
+            print("Job execution complete (Ray managed externally).")
+        
+        return orchestration_summary
+        
+    except Exception as e:
+        print(f"ERROR: Workflow orchestration failed with exception: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        
+        # Cleanup: shutdown Ray if we initialized it
+        if ray_initialized_by_script and ray.is_initialized():
+            ray.shutdown()
+            print("Ray shutdown during error cleanup.")
+        
+        raise
 
 
 if __name__ == "__main__":

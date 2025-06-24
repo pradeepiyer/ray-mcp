@@ -141,7 +141,7 @@ class TestMCPIntegration:
                 # Step 1: Submit job
                 result = await call_tool("submit_job", {
                     "entrypoint": "python train.py",
-                    "runtime_env": {"pip": ["torch", "numpy"]}
+                    "runtime_env": {"pip": ["requests", "click"]}
                 })
                 response_data = json.loads(get_text_content(result).text)
                 assert response_data["status"] == "submitted"
@@ -280,7 +280,7 @@ class TestMCPIntegration:
                 complex_args = {
                     "entrypoint": "python complex_job.py",
                     "runtime_env": {
-                        "pip": ["torch==1.12.0", "transformers==4.20.0"],
+                        "pip": ["requests==2.28.0", "click==8.0.0"],
                         "env_vars": {"CUDA_VISIBLE_DEVICES": "0,1"},
                         "working_dir": "/workspace"
                     },

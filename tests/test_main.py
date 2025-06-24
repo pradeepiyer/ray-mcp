@@ -267,7 +267,7 @@ class TestMain:
                 mock_manager.debug_job = AsyncMock(return_value={"status": "debugging"})
                 
                 # Test submit_job
-                args = {"entrypoint": "python test.py", "runtime_env": {"pip": ["numpy"]}}
+                args = {"entrypoint": "python test.py", "runtime_env": {"pip": ["requests"]}}
                 result = cast(List[TextContent], await call_tool("submit_job", args))
                 assert len(result) == 1
                 mock_manager.submit_job.assert_called_once_with(**args)
@@ -393,6 +393,7 @@ class TestMain:
         from ray_mcp.main import main
         import asyncio
         assert asyncio.iscoroutinefunction(main)
+        # Don't call the function to avoid creating an unawaited coroutine
 
     def test_asyncio_run_mock(self):
         """Test run_server function calls asyncio.run."""

@@ -1,20 +1,20 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "ray-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP (Model Context Protocol) server for Ray distributed computing"
 authors = [
     {name = "claude 4 sonnet", email = "ray-mcp@example.com"}
 ]
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0",
-    "ray[default]>=2.30.0",
+    "ray[default]>=2.47.0",
     "typing-extensions>=4.5.0",
     "pydantic>=2.0.0",
     "requests>=2.28.0",
@@ -25,12 +25,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-examples = ["numpy>=1.21.0"]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.10.0",
-    "pytest-cov>=4.0.0",
+examples = [
+    # No additional dependencies needed for examples
 ]
 
 [project.urls]
@@ -42,16 +38,55 @@ Issues = "https://github.com/pradeepiyer/ray-mcp/issues"
 [project.scripts]
 ray-mcp = "ray_mcp.main:run_server"
 
+# UV Configuration
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.0.0",
+]
+
+[tool.uv.sources]
+# Add any local or git dependencies here if needed
+
+# Coverage Configuration
+[tool.coverage.run]
+source = ["ray_mcp"]
+data_file = ".coverage_data/.coverage"
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
+show_contexts = true
+
+# Development Tools Configuration
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py310']
 
 [tool.isort]
 profile = "black"
 line_length = 88
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -62,7 +97,6 @@ include = [
     "ray_mcp",
     "tests",
     "examples",
-    "setup.py"
 ]
 exclude = [
     "**/.venv",
@@ -77,6 +111,6 @@ exclude = [
 # Only analyze files in this repo, not external dependencies
 useLibraryCodeForTypes = true
 # Python version compatibility
-pythonVersion = "3.8"
+pythonVersion = "3.10"
 # Strict type checking for this project
 typeCheckingMode = "basic" 

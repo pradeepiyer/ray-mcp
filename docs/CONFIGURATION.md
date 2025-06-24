@@ -29,7 +29,7 @@ The server can be configured with any MCP-compatible client by pointing to the `
 
 ## Runtime Environment Support
 The server supports Ray's runtime environment features:
-- Python dependencies (`pip`, `conda`)
+- Python dependencies (`pip`, `conda`, `uv`)
 - Environment variables
 - Working directory specification
 - Container images
@@ -38,7 +38,7 @@ The server supports Ray's runtime environment features:
 ```json
 {
   "runtime_env": {
-    "pip": ["numpy", "pandas", "scikit-learn"],
+    "pip": ["requests", "click", "rich"],
     "env_vars": {
       "PYTHONPATH": "/custom/path",
       "MY_CONFIG": "production"
@@ -47,6 +47,8 @@ The server supports Ray's runtime environment features:
   }
 }
 ```
+
+**Note**: While Ray's runtime environment still uses `pip` for dependency specification, the Ray MCP server itself is managed with `uv` for better dependency resolution and faster installation.
 
 ## Ray Cluster Configuration
 

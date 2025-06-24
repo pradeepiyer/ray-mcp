@@ -4,8 +4,17 @@
 import asyncio
 import json
 import pytest
+import warnings
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from typing import Dict, Any, List, cast, Union
+
+# Configure pytest to ignore coroutine warnings
+pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
+
+# Suppress the specific coroutine warning at module level
+warnings.filterwarnings("ignore", message="coroutine 'main' was never awaited", category=RuntimeWarning)
+warnings.filterwarnings("ignore", message=".*coroutine.*main.*was never awaited.*", category=RuntimeWarning)
+warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*", category=RuntimeWarning)
 
 # Import the main server components
 from ray_mcp.main import call_tool, ray_manager
@@ -16,8 +25,13 @@ from mcp.types import TextContent, Content
 @pytest.fixture(scope="session", autouse=True)
 def mock_main_function():
     """Mock the main function to prevent unawaited coroutine warnings."""
+    # Mock both the main function and run_server to prevent any coroutine creation
     with patch('ray_mcp.main.main', new_callable=AsyncMock) as mock_main:
-        yield mock_main
+        with patch('ray_mcp.main.run_server', new_callable=Mock) as mock_run:
+            # Ensure the mock doesn't return a coroutine
+            mock_main.return_value = None
+            mock_run.return_value = None
+            yield mock_main
 
 
 def get_text_content(result: Any, index: int = 0) -> TextContent:
@@ -134,7 +148,7 @@ class TestMCPToolCalls:
             with patch('ray_mcp.main.RAY_AVAILABLE', True):
                 args = {
                     "entrypoint": "python my_script.py",
-                    "runtime_env": {"pip": ["numpy"]},
+                    "runtime_env": {"pip": ["requests"]},
                     "job_id": "my_job",
                     "metadata": {"owner": "test"}
                 }

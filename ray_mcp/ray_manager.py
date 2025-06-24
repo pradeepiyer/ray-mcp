@@ -53,6 +53,39 @@ class RayManager:
         if not self.is_initialized:
             raise RuntimeError("Ray is not initialized. Please start Ray first.")
 
+    def _initialize_job_client_with_retry(self, address: str, max_retries: int = 8, delay: float = 3.0):
+        """Initialize job client with retry logic to wait for dashboard agent to be ready."""
+        import time
+        
+        if JobSubmissionClient is None:
+            logger.error("JobSubmissionClient is not available")
+            return None
+        
+        for attempt in range(max_retries):
+            try:
+                job_client = JobSubmissionClient(address)
+                # Test the connection by doing a simple operation that requires the agent
+                job_client.list_jobs()
+                logger.info(f"Job client initialized successfully on attempt {attempt + 1}")
+                return job_client
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < max_retries - 1:
+                    # Check if it's a timeout or connection error that we should retry
+                    if any(keyword in error_msg.lower() for keyword in ['timeout', 'connection', 'agent', 'not found']):
+                        logger.warning(f"Job client initialization attempt {attempt + 1} failed (retryable): {e}. Retrying in {delay} seconds...")
+                        time.sleep(delay)
+                        # Exponential backoff for later attempts
+                        if attempt >= 3:
+                            delay *= 1.5
+                    else:
+                        logger.error(f"Job client initialization failed with non-retryable error: {e}")
+                        return None
+                else:
+                    logger.error(f"Failed to initialize job client after {max_retries} attempts: {e}")
+                    return None
+        return None
+
     async def start_cluster(
         self,
         head_node: bool = True,
@@ -98,9 +131,12 @@ class RayManager:
             self._is_initialized = True
             self._cluster_address = ray_context.address_info["address"]
             
-            # Initialize job client
-            if JobSubmissionClient is not None:
-                self._job_client = JobSubmissionClient(self._cluster_address)
+            # Initialize job client with retry logic - this must complete before returning success
+            job_client_status = "ready"
+            if JobSubmissionClient is not None and self._cluster_address:
+                self._job_client = self._initialize_job_client_with_retry(self._cluster_address)
+                if self._job_client is None:
+                    job_client_status = "unavailable"
 
             return {
                 "status": "started",
@@ -108,7 +144,8 @@ class RayManager:
                 "address": self._cluster_address,
                 "dashboard_url": ray_context.dashboard_url,
                 "node_id": ray.get_runtime_context().get_node_id() if ray is not None else None,
-                "session_name": getattr(ray_context, "session_name", "unknown")
+                "session_name": getattr(ray_context, "session_name", "unknown"),
+                "job_client_status": job_client_status
             }
 
         except Exception as e:
@@ -142,9 +179,12 @@ class RayManager:
             self._is_initialized = True
             self._cluster_address = ray_context.address_info["address"]
             
-            # Initialize job client
-            if JobSubmissionClient is not None:
-                self._job_client = JobSubmissionClient(self._cluster_address)
+            # Initialize job client with retry logic - this must complete before returning success
+            job_client_status = "ready"
+            if JobSubmissionClient is not None and self._cluster_address:
+                self._job_client = self._initialize_job_client_with_retry(self._cluster_address)
+                if self._job_client is None:
+                    job_client_status = "unavailable"
 
             return {
                 "status": "connected",
@@ -152,7 +192,8 @@ class RayManager:
                 "address": self._cluster_address,
                 "dashboard_url": ray_context.dashboard_url,
                 "node_id": ray.get_runtime_context().get_node_id() if ray is not None else None,
-                "session_name": getattr(ray_context, "session_name", "unknown")
+                "session_name": getattr(ray_context, "session_name", "unknown"),
+                "job_client_status": job_client_status
             }
 
         except Exception as e:

@@ -32,7 +32,7 @@ if echo "$CHANGED_FILES" | grep -E "(ray_mcp/main\.py|ray_mcp/ray_manager\.py|ra
 fi
 
 # Configuration changes
-if echo "$CHANGED_FILES" | grep -E "(setup\.py|pyproject\.toml|requirements\.txt)" > /dev/null; then
+if echo "$CHANGED_FILES" | grep -E "(pyproject\.toml|uv\.lock)" > /dev/null; then
     echo "🟠 Configuration changes detected"
     MAJOR_CHANGES=true
 fi
