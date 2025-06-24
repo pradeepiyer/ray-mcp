@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  test-fast:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -29,8 +29,8 @@ jobs:
     - name: Install dependencies
       run: uv sync --all-extras --dev
     
-    - name: Run tests
-      run: uv run python -m pytest tests/ -m "not slow and not e2e" --cov=ray_mcp --cov-report=xml
+    - name: Run fast test suite
+      run: uv run python -m pytest tests/ -m "fast" --tb=short -v --maxfail=3 --cov=ray_mcp --cov-report=xml --cov-report=term-missing
     
     - name: Check coverage file
       run: |
@@ -48,6 +48,32 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
         verbose: true
+
+  test-e2e:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v1
+      with:
+        version: "latest"
+    
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+    
+    - name: Run e2e tests
+      run: python -m pytest tests/ -m "e2e" --tb=short -v --maxfail=1
 
   lint:
     runs-on: ubuntu-latest
@@ -70,6 +96,6 @@ jobs:
     - name: Run linting
       run: |
         uv run black --check ray_mcp/ examples/ tests/ 
-        uv run isort --check-only ray_mcp/ examples/ tests/test_mcp_tools.py tests/test_multi_node_cluster.py tests/test_ray_manager.py tests/test_ray_manager_methods.py tests/test_tools.py tests/test_worker_manager.py
+        uv run isort --check-only ray_mcp/ examples/ tests/
         uv run pyright ray_mcp/ examples/ tests/
         
