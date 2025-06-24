@@ -16,6 +16,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
     - name: Install uv
       uses: astral-sh/setup-uv@v1
       with:
@@ -25,7 +30,7 @@ jobs:
       run: uv sync --all-extras --dev
     
     - name: Run tests
-      run: python -m pytest tests/ --cov=ray_mcp --cov-report=xml
+      run: uv run python -m pytest tests/ --cov=ray_mcp --cov-report=xml
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -38,8 +43,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    
     - name: Install uv
       uses: astral-sh/setup-uv@v1
+      with:
+        version: "latest"
     
     - name: Install dependencies
       run: uv sync --dev
