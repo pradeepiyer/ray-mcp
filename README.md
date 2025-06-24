@@ -19,13 +19,16 @@ A Model Context Protocol (MCP) server for comprehensive Ray cluster management, 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd mcp
+cd ray-mcp
 
 # Install dependencies
 uv sync
 
 # Install the package
 uv pip install -e .
+
+# activate venv
+source .venv/bin/activate
 ```
 
 ### Basic Usage
