@@ -178,4 +178,45 @@ ray-mcp --log-level DEBUG
 - **Log Retrieval**: Actor and node log retrieval has some limitations (job logs fully supported)
 - **Authentication**: No built-in authentication (relies on Ray cluster security)
 - **Multi-cluster**: Currently supports single cluster per server instance
-- **Windows**: Some Ray features may have limited Windows support 
+- **Windows**: Some Ray features may have limited Windows support
+
+## Multi-Node Cluster Issues
+
+### Worker Node Startup Failures
+**Problem**: Worker nodes fail to start or connect to the head node.
+
+**Solutions**:
+1. **Check Network Connectivity**: Ensure worker nodes can reach the head node
+2. **Verify Port Configuration**: Check that head_node_port (default: 10001) is accessible
+3. **Resource Availability**: Ensure sufficient CPU/memory resources for worker nodes
+4. **Firewall Settings**: Verify that Ray ports are open between nodes
+
+**Debug Steps**:
+```bash
+# Check worker node status
+"Use worker_status tool to check worker node status"
+
+# Check cluster status
+"Use cluster_status tool to verify cluster connectivity"
+
+# Check Ray logs
+"Check Ray logs in /tmp/ray/session_*/logs/"
+```
+
+### Worker Node Process Management
+**Problem**: Worker nodes stop unexpectedly or become unresponsive.
+
+**Solutions**:
+1. **Process Monitoring**: Use `worker_status` tool to monitor worker processes
+2. **Resource Monitoring**: Check CPU/memory usage on worker nodes
+3. **Graceful Shutdown**: Use `stop_ray` to properly shutdown all worker nodes
+4. **Force Restart**: If needed, manually kill worker processes and restart
+
+### Configuration Issues
+**Problem**: Worker node configuration errors or invalid parameters.
+
+**Solutions**:
+1. **Parameter Validation**: Ensure all required parameters (num_cpus) are provided
+2. **Resource Limits**: Check that requested resources are available
+3. **Node Names**: Ensure unique node names if specified
+4. **Custom Resources**: Verify custom resource syntax and availability 

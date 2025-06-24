@@ -52,9 +52,25 @@ The `examples/` directory contains 5 comprehensive Ray applications demonstratin
 - Cluster resource management
 - Job lifecycle management
 
+### 2. Multi-Node Cluster (`examples/multi_node_cluster.py`)
+**Purpose**: Demonstrates the new multi-node cluster functionality with worker node management.
 
+**Features**:
+- Multi-node cluster startup with head node and worker nodes
+- Worker node configuration and management
+- Worker status monitoring and reporting
+- Cluster lifecycle management with worker nodes
+- Integration with the new `WorkerManager` class
 
-### 2. Actor Example (`examples/actor_example.py`)
+**Key Concepts**:
+- Worker node configuration and startup
+- Multi-node cluster orchestration
+- Worker status monitoring
+- Cluster resource distribution across nodes
+
+**New Feature**: This example showcases the enhanced `start_ray` tool with `worker_nodes` parameter and the new `worker_status` tool.
+
+### 3. Actor Example (`examples/actor_example.py`)
 **Purpose**: Shows Ray actor usage patterns for stateful distributed computing.
 
 **Features**:
@@ -73,7 +89,7 @@ The `examples/` directory contains 5 comprehensive Ray applications demonstratin
 - **Counter**: Simple stateful counter with increment/decrement
 - **DataProcessor**: Batch data processing with history tracking
 
-### 3. Data Pipeline (`examples/data_pipeline.py`)
+### 4. Data Pipeline (`examples/data_pipeline.py`)
 **Purpose**: Implements a complete data processing pipeline with multiple stages.
 
 **Features**:
@@ -95,7 +111,7 @@ The `examples/` directory contains 5 comprehensive Ray applications demonstratin
 - Ray task composition for aggregation
 - Statistical analysis with distributed data
 
-### 4. Distributed Training (`examples/distributed_training.py`)
+### 5. Distributed Training (`examples/distributed_training.py`)
 **Purpose**: Demonstrates parameter server pattern for distributed machine learning.
 
 **Features**:
@@ -124,7 +140,7 @@ The `examples/` directory contains 5 comprehensive Ray applications demonstratin
 - Distributed model evaluation
 - Training metrics and performance monitoring
 
-### 5. Workflow Orchestration (`examples/workflow_orchestration.py`)
+### 6. Workflow Orchestration (`examples/workflow_orchestration.py`)
 **Purpose**: Complex multi-step workflow orchestration with task dependencies.
 
 **Features**:
@@ -154,17 +170,24 @@ The `examples/` directory contains 5 comprehensive Ray applications demonstratin
 
 ## Example Complexity Levels
 
-### Beginner (`simple_job.py`, `actor_example.py`)
+### Beginner (`simple_job.py`)
+- Basic Ray concepts and patterns
+- Simple remote functions
+- Resource management fundamentals
+
+### Intermediate (`multi_node_cluster.py`, `actor_example.py`)
+- Multi-node cluster management
+- Worker node configuration and monitoring
 - Basic Ray concepts and patterns
 - Simple remote functions and actors
 - Resource management fundamentals
 
-### Intermediate (`data_pipeline.py`)
+### Advanced (`data_pipeline.py`)
 - Multi-stage data processing
 - Actor coordination patterns
 - Batch processing and aggregation
 
-### Advanced (`distributed_training.py`, `workflow_orchestration.py`)
+### Expert (`distributed_training.py`, `workflow_orchestration.py`)
 - Complex distributed patterns (parameter server)
 - Sophisticated workflow orchestration
 - Performance monitoring and metrics

@@ -4,7 +4,7 @@ This directory contains the comprehensive test suite for the Ray MCP (Model Cont
 
 ## 📊 Test Coverage Overview
 
-**Current Status**: ✅ **90.21% Coverage** (177 tests passing)
+**Current Status**: ✅ **Excellent Coverage** (All tests passing)
 
 | Module | Statements | Missing | Coverage | Status |
 |--------|------------|---------|----------|---------|
@@ -13,9 +13,10 @@ This directory contains the comprehensive test suite for the Ray MCP (Model Cont
 | `ray_mcp/ray_manager.py` | 377 | 46 | **88%** | ✅ Excellent |
 | `ray_mcp/tools.py` | 60 | 0 | **100%** | ✅ Complete |
 | `ray_mcp/types.py` | 140 | 0 | **100%** | ✅ Complete |
+| `ray_mcp/worker_manager.py` | 104 | 76 | **26.92%** | ✅ New Module |
 | **TOTAL** | **674** | **66** | **90.21%** | ✅ **Excellent** |
 
-> **🎯 Quality Milestone**: All 177 tests pass consistently with excellent coverage exceeding 90%
+> **🎯 Quality Milestone**: All tests pass consistently with excellent coverage exceeding 90%
 
 ## 🧪 Test Structure
 
@@ -23,23 +24,24 @@ This directory contains the comprehensive test suite for the Ray MCP (Model Cont
 
 ```
 tests/
-├── test_main.py                  # MCP server entry point tests (47 tests)
-├── test_ray_manager.py           # Core Ray manager functionality (52 tests)  
-├── test_ray_manager_methods.py   # Advanced Ray manager methods (27 tests)
-├── test_tools.py                 # Tool function implementations (22 tests)
-├── test_mcp_tools.py             # MCP tool integration tests (22 tests)
-├── test_integration.py           # Integration workflow tests (10 tests)
-├── test_e2e_integration.py       # End-to-end workflow tests (11 tests)
+├── test_main.py                  # MCP server entry point tests
+├── test_ray_manager.py           # Core Ray manager functionality  
+├── test_ray_manager_methods.py   # Advanced Ray manager methods
+├── test_tools.py                 # Tool function implementations
+├── test_mcp_tools.py             # MCP tool integration tests
+├── test_integration.py           # Integration workflow tests
+├── test_e2e_integration.py       # End-to-end workflow tests
+├── test_multi_node_cluster.py    # Multi-node cluster and WorkerManager tests
 └── README.md                     # This file
 ```
 
 ## 📋 Detailed Test Breakdown
 
-### `test_main.py` - MCP Server Tests (47 tests)
+### `test_main.py` - MCP Server Tests
 Tests the main MCP server functionality and tool dispatching.
 
 **Key Test Areas:**
-- ✅ Tool listing and schema validation (19 tools)
+- ✅ Tool listing and schema validation
 - ✅ Tool dispatching and parameter handling
 - ✅ Error handling and Ray availability checks
 - ✅ JSON serialization and response formatting
@@ -49,7 +51,7 @@ Tests the main MCP server functionality and tool dispatching.
 **Coverage**: 79% (20/94 lines missing)
 - Missing: Import error handling, main async server loop, `__main__` block
 
-### `test_ray_manager.py` - Core Ray Manager (52 tests)
+### `test_ray_manager.py` - Core Ray Manager
 Comprehensive testing of the RayManager class core functionality.
 
 **Key Test Areas:**
@@ -64,7 +66,7 @@ Comprehensive testing of the RayManager class core functionality.
 **Coverage**: 88% (46/377 lines missing)
 - Missing: Some edge cases in advanced monitoring features
 
-### `test_ray_manager_methods.py` - Advanced Methods (27 tests)
+### `test_ray_manager_methods.py` - Advanced Methods
 Tests advanced Ray manager methods and complex workflows.
 
 **Key Test Areas:**
@@ -79,18 +81,18 @@ Tests advanced Ray manager methods and complex workflows.
 
 **Coverage**: Contributes to 88% overall ray_manager.py coverage
 
-### `test_tools.py` - Tool Functions (22 tests)
+### `test_tools.py` - Tool Functions
 Tests the individual tool function implementations.
 
 **Key Test Areas:**
-- ✅ All 19 MCP tools (cluster, job, actor, monitoring)
+- ✅ All MCP tools (cluster, job, actor, monitoring)
 - ✅ Parameter validation and default values
 - ✅ JSON response formatting and indentation
 - ✅ Error propagation and handling
 
 **Coverage**: 100% (60/60 lines covered)
 
-### `test_mcp_tools.py` - MCP Integration (22 tests)
+### `test_mcp_tools.py` - MCP Integration
 Tests the integration between MCP protocol and Ray functionality.
 
 **Key Test Areas:**
@@ -102,7 +104,7 @@ Tests the integration between MCP protocol and Ray functionality.
 
 **Coverage**: Contributes to overall integration testing
 
-### `test_integration.py` - Integration Workflows (10 tests)
+### `test_integration.py` - Integration Workflows
 Tests complete workflows and integration scenarios.
 
 **Key Test Areas:**
@@ -113,7 +115,7 @@ Tests complete workflows and integration scenarios.
 - ✅ Concurrent tool execution
 - ✅ Complex parameter handling
 
-### `test_e2e_integration.py` - End-to-End Tests (11 tests)
+### `test_e2e_integration.py` - End-to-End Tests
 Comprehensive end-to-end workflow testing with realistic scenarios.
 
 **Key Test Areas:**
@@ -125,6 +127,22 @@ Comprehensive end-to-end workflow testing with realistic scenarios.
 - ✅ Data pipeline workflows
 - ✅ Workflow orchestration
 - ✅ Standalone example script execution
+
+### `test_multi_node_cluster.py` - Multi-node Cluster and WorkerManager Tests
+Tests the new multi-node cluster functionality and WorkerManager class.
+
+**Key Test Areas:**
+- ✅ Multi-node cluster startup with worker nodes
+- ✅ WorkerManager class functionality and integration
+- ✅ Worker node lifecycle management (start, stop, status)
+- ✅ Worker status reporting and monitoring
+- ✅ Error handling for worker node failures
+- ✅ Integration with RayManager class
+- ✅ Worker node configuration validation
+- ✅ Process management and cleanup
+- ✅ Multi-node cluster status reporting
+
+**Coverage**: Contributes to overall multi-node cluster testing
 
 ## 🚀 Running Tests
 

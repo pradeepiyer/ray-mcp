@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 from ray_mcp.ray_manager import RayManager
 
 
+@pytest.mark.fast
 class TestRayManager:
     """Test cases for RayManager."""
 

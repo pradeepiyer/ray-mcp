@@ -8,7 +8,7 @@ test: test-fast
 # Fast test suite (excludes e2e tests) - for development
 test-fast:
 	@echo "🏃‍♂️ Running fast test suite..."
-	@python -m pytest tests/test_main.py tests/test_tools.py tests/test_ray_manager.py tests/test_ray_manager_methods.py tests/test_mcp_tools.py tests/test_integration.py --tb=short -v --maxfail=3 --cov=ray_mcp --cov-report=term-missing
+	@python -m pytest tests/ -m "fast" --tb=short -v --maxfail=3 --cov=ray_mcp --cov-report=term-missing
 
 # Smoke tests - minimal verification
 test-smoke:
@@ -79,12 +79,18 @@ clean:
 # Help
 help:
 	@echo "Available test commands:"
-	@echo "  make test       - Run fast test suite (default, excludes e2e)"
-	@echo "  make test-fast  - Run fast test suite (excludes e2e tests)"
+	@echo "  make test       - Run fast test suite (default, uses 'fast' marker)"
+	@echo "  make test-fast  - Run fast test suite (uses 'fast' marker, excludes e2e)"
 	@echo "  make test-smoke - Run smoke tests (minimal verification)"
 	@echo "  make test-e2e   - Run e2e tests only (for major changes)"
 	@echo "  make test-full  - Run complete test suite (includes e2e)"
 	@echo "  make test-smart - Smart test runner (detects changes)"
+	@echo ""
+	@echo "Test markers:"
+	@echo "  fast           - Fast unit and integration tests"
+	@echo "  e2e            - End-to-end tests"
+	@echo "  smoke          - Minimal smoke tests"
+	@echo "  slow           - Slow running tests"
 	@echo ""
 	@echo "UV dependency management:"
 	@echo "  make sync       - Install all dependencies (dev + prod)"

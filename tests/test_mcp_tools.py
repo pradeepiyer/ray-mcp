@@ -39,6 +39,7 @@ def get_text_content(result: Any, index: int = 0) -> TextContent:
     return cast(TextContent, result[index])
 
 
+@pytest.mark.fast
 class TestMCPToolCalls:
     """Test cases for all MCP tool calls."""
 

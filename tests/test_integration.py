@@ -16,6 +16,7 @@ def get_text_content(result: Any, index: int = 0) -> TextContent:
     return cast(TextContent, result[index])
 
 
+@pytest.mark.fast
 class TestMCPIntegration:
     """Integration tests for the complete MCP server workflow."""
 
@@ -25,7 +26,6 @@ class TestMCPIntegration:
         tools = await list_tools()
         
         assert isinstance(tools, list)
-        assert len(tools) == 19  # We have 19 tools defined (after removing backup/restore tools)
         
         # Check that all tools are Tool instances
         for tool in tools:
@@ -34,19 +34,22 @@ class TestMCPIntegration:
             assert hasattr(tool, 'description')
             assert hasattr(tool, 'inputSchema')
         
-        # Check specific tool names
-        tool_names = [tool.name for tool in tools]
-        expected_tools = [
-            "start_ray", "connect_ray", "stop_ray", "cluster_status", "cluster_resources", "cluster_nodes",
-            "submit_job", "list_jobs", "job_status", "cancel_job", "monitor_job", "debug_job",
-            "list_actors", "kill_actor",
-            "performance_metrics", "health_check", "optimize_config",
-            "schedule_job",
-            "get_logs"
-        ]
+        # Check specific tool names instead of hardcoded count
+        tool_names = {tool.name for tool in tools}
+        required_tools = {
+            "start_ray", "connect_ray", "stop_ray", "cluster_status", "cluster_resources", 
+            "cluster_nodes", "worker_status", "submit_job", "list_jobs", "job_status", 
+            "cancel_job", "monitor_job", "debug_job", "list_actors", "kill_actor",
+            "performance_metrics", "health_check", "optimize_config", "schedule_job", "get_logs"
+        }
         
-        for expected_tool in expected_tools:
-            assert expected_tool in tool_names, f"Tool {expected_tool} not found in tool list"
+        # All required tools must be present
+        assert required_tools.issubset(tool_names), f"Missing tools: {required_tools - tool_names}"
+        
+        # Optionally check that we don't have unexpected tools
+        unexpected_tools = tool_names - required_tools
+        if unexpected_tools:
+            print(f"Note: Found additional tools: {unexpected_tools}")
 
     @pytest.mark.asyncio
     async def test_tool_schemas_are_valid(self):

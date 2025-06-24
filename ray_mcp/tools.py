@@ -1,7 +1,7 @@
 """Tool functions for Ray cluster operations."""
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from .ray_manager import RayManager
 
@@ -15,15 +15,23 @@ async def start_ray_cluster(
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
     object_store_memory: Optional[int] = None,
+    worker_nodes: Optional[List[Dict[str, Any]]] = None,
+    head_node_port: int = 10001,
+    dashboard_port: int = 8265,
+    head_node_host: str = "127.0.0.1",
     **kwargs: Any
 ) -> str:
-    """Start a Ray cluster."""
+    """Start a Ray cluster with head node and optional worker nodes."""
     result = await ray_manager.start_cluster(
         head_node=head_node,
         address=address,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         object_store_memory=object_store_memory,
+        worker_nodes=worker_nodes,
+        head_node_port=head_node_port,
+        dashboard_port=dashboard_port,
+        head_node_host=head_node_host,
         **kwargs
     )
     return json.dumps(result, indent=2)

@@ -13,6 +13,7 @@ from typing import Dict, Any, List
 from ray_mcp.ray_manager import RayManager
 
 
+@pytest.mark.fast
 class TestRayManagerMethods:
     """Detailed test cases for RayManager methods."""
 
@@ -125,26 +126,29 @@ class TestRayManagerMethods:
 
     @pytest.mark.asyncio
     async def test_get_cluster_status_detailed(self, ray_manager):
-        """Test get cluster status with detailed information."""
+        """Test getting detailed cluster status."""
         ray_manager._is_initialized = True
-        ray_manager._cluster_address = "ray://127.0.0.1:10001"
+        
+        mock_nodes = [
+            {"NodeID": "node1", "Alive": True},
+            {"NodeID": "node2", "Alive": True},
+            {"NodeID": "node3", "Alive": False}
+        ]
+        expected_total_nodes = len(mock_nodes)
+        expected_alive_nodes = len([n for n in mock_nodes if n["Alive"]])
         
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray') as mock_ray:
                 mock_ray.is_initialized.return_value = True
                 mock_ray.cluster_resources.return_value = {"CPU": 8, "memory": 16000000000}
                 mock_ray.available_resources.return_value = {"CPU": 4, "memory": 8000000000}
-                mock_ray.nodes.return_value = [
-                    {"NodeID": "node1", "Alive": True},
-                    {"NodeID": "node2", "Alive": True},
-                    {"NodeID": "node3", "Alive": False}
-                ]
+                mock_ray.nodes.return_value = mock_nodes
                 
                 result = await ray_manager.get_cluster_status()
                 
                 assert result["status"] == "running"
-                assert result["nodes"] == 3
-                assert result["alive_nodes"] == 2
+                assert result["nodes"] == expected_total_nodes
+                assert result["alive_nodes"] == expected_alive_nodes
                 assert result["cluster_resources"]["CPU"] == 8
 
     # ===== JOB MANAGEMENT TESTS =====
@@ -210,7 +214,9 @@ class TestRayManagerMethods:
         job2.metadata = {}
         job2.runtime_env = {}
         
-        mock_job_client.list_jobs.return_value = [job1, job2]
+        mock_jobs = [job1, job2]
+        expected_job_count = len(mock_jobs)
+        mock_job_client.list_jobs.return_value = mock_jobs
         
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray') as mock_ray:
@@ -219,7 +225,7 @@ class TestRayManagerMethods:
                 result = await ray_manager.list_jobs()
                 
                 assert result["status"] == "success"
-                assert len(result["jobs"]) == 2
+                assert len(result["jobs"]) == expected_job_count
                 assert result["jobs"][0]["job_id"] == "job_1"
                 assert result["jobs"][1]["status"] == "SUCCEEDED"
 
@@ -267,6 +273,7 @@ class TestRayManagerMethods:
             {"name": "actor1", "namespace": "default", "actor_id": "actor_123"},
             {"name": "actor2", "namespace": "test", "actor_id": "actor_456"}
         ]
+        expected_actor_count = len(mock_actors)
         
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray') as mock_ray:
@@ -276,7 +283,7 @@ class TestRayManagerMethods:
                 result = await ray_manager.list_actors()
                 
                 assert result["status"] == "success"
-                assert len(result["actors"]) == 2
+                assert len(result["actors"]) == expected_actor_count
 
     @pytest.mark.asyncio
     async def test_kill_actor_by_id(self, ray_manager):
@@ -320,15 +327,18 @@ class TestRayManagerMethods:
         """Test getting performance metrics."""
         ray_manager._is_initialized = True
         
+        mock_nodes = [
+            {"NodeID": "node1", "Alive": True, "Resources": {"CPU": 8}, "UsedResources": {"CPU": 4}},
+            {"NodeID": "node2", "Alive": True, "Resources": {"CPU": 8}, "UsedResources": {"CPU": 4}}
+        ]
+        expected_node_count = len(mock_nodes)
+        
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray') as mock_ray:
                 mock_ray.is_initialized.return_value = True
                 mock_ray.cluster_resources.return_value = {"CPU": 16, "memory": 32000000000, "GPU": 2}
                 mock_ray.available_resources.return_value = {"CPU": 8, "memory": 16000000000, "GPU": 1}
-                mock_ray.nodes.return_value = [
-                    {"NodeID": "node1", "Alive": True, "Resources": {"CPU": 8}, "UsedResources": {"CPU": 4}},
-                    {"NodeID": "node2", "Alive": True, "Resources": {"CPU": 8}, "UsedResources": {"CPU": 4}}
-                ]
+                mock_ray.nodes.return_value = mock_nodes
                 
                 result = await ray_manager.get_performance_metrics()
                 
@@ -337,7 +347,7 @@ class TestRayManagerMethods:
                 assert result["cluster_overview"]["total_cpus"] == 16
                 assert result["cluster_overview"]["available_cpus"] == 8
                 assert "resource_details" in result
-                assert len(result["node_details"]) == 2
+                assert len(result["node_details"]) == expected_node_count
 
     @pytest.mark.asyncio
     async def test_cluster_health_check(self, ray_manager):

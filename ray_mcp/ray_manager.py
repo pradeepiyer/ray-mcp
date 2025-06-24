@@ -17,8 +17,7 @@ except ImportError:
     ray = None  # type: ignore
     JobSubmissionClient = None  # type: ignore
 
-
-
+from .worker_manager import WorkerManager
 from .types import (
     JobId, ActorId, NodeId,
     JobStatus, ActorState, HealthStatus,
@@ -39,6 +38,7 @@ class RayManager:
         self._is_initialized = False
         self._cluster_address: Optional[str] = None
         self._job_client: Optional[Any] = None  # Use Any to avoid type issues with conditional imports
+        self._worker_manager = WorkerManager()
 
     @property
     def is_initialized(self) -> bool:
@@ -93,9 +93,13 @@ class RayManager:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         object_store_memory: Optional[int] = None,
+        worker_nodes: Optional[List[Dict[str, Any]]] = None,
+        head_node_port: int = 10001,
+        dashboard_port: int = 8265,
+        head_node_host: str = "127.0.0.1",
         **kwargs: Any
     ) -> Dict[str, Any]:
-        """Start a Ray cluster."""
+        """Start a Ray cluster with head node and optional worker nodes."""
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {
@@ -103,7 +107,7 @@ class RayManager:
                     "message": "Ray is not available. Please install Ray."
                 }
 
-            # Prepare initialization arguments
+            # Prepare initialization arguments for head node
             init_kwargs: Dict[str, Any] = {}
             
             if address:
@@ -120,12 +124,18 @@ class RayManager:
                     init_kwargs["num_gpus"] = num_gpus
                 if object_store_memory is not None:
                     init_kwargs["object_store_memory"] = object_store_memory
+                
+                # Add head node specific configuration
+                # Note: Ray doesn't accept 'port' directly, it uses different parameters
+                # The dashboard_port and head_node_host are used for dashboard configuration
+                init_kwargs["dashboard_port"] = dashboard_port
+                init_kwargs["dashboard_host"] = head_node_host
 
             # Add any additional kwargs
             init_kwargs.update(kwargs)
             init_kwargs["ignore_reinit_error"] = True
 
-            # Initialize Ray
+            # Initialize Ray head node
             ray_context = ray.init(**init_kwargs)
             
             self._is_initialized = True
@@ -138,6 +148,14 @@ class RayManager:
                 if self._job_client is None:
                     job_client_status = "unavailable"
 
+            # Start worker nodes if specified
+            worker_results = []
+            if worker_nodes and isinstance(worker_nodes, list) and self._cluster_address:
+                worker_results = await self._worker_manager.start_worker_nodes(
+                    worker_nodes, 
+                    self._cluster_address
+                )
+
             return {
                 "status": "started",
                 "message": "Ray cluster started successfully",
@@ -145,7 +163,9 @@ class RayManager:
                 "dashboard_url": ray_context.dashboard_url,
                 "node_id": ray.get_runtime_context().get_node_id() if ray is not None else None,
                 "session_name": getattr(ray_context, "session_name", "unknown"),
-                "job_client_status": job_client_status
+                "job_client_status": job_client_status,
+                "worker_nodes": worker_results,
+                "total_nodes": 1 + len(worker_results)
             }
 
         except Exception as e:
@@ -218,6 +238,9 @@ class RayManager:
                     "message": "Ray cluster is not running"
                 }
 
+            # Stop worker nodes first
+            worker_stop_results = await self._worker_manager.stop_all_workers()
+
             # Shutdown Ray
             ray.shutdown()
             
@@ -227,7 +250,8 @@ class RayManager:
 
             return {
                 "status": "stopped",
-                "message": "Ray cluster stopped successfully"
+                "message": "Ray cluster stopped successfully",
+                "worker_nodes": worker_stop_results
             }
 
         except Exception as e:
@@ -257,13 +281,18 @@ class RayManager:
             available_resources = ray.available_resources()
             nodes = ray.nodes()
             
+            # Get worker node status
+            worker_status = self._worker_manager.get_worker_status()
+            
             return {
                 "status": "running",
                 "cluster_resources": cluster_resources,
                 "available_resources": available_resources,
                 "nodes": len(nodes),
                 "alive_nodes": len([n for n in nodes if n["Alive"]]),
-                "address": self._cluster_address
+                "address": self._cluster_address,
+                "worker_nodes": worker_status,
+                "total_worker_nodes": len(worker_status)
             }
 
         except Exception as e:
@@ -271,6 +300,31 @@ class RayManager:
             return {
                 "status": "error",
                 "message": f"Failed to get cluster status: {str(e)}"
+            }
+
+    async def get_worker_status(self) -> Dict[str, Any]:
+        """Get detailed status of worker nodes."""
+        try:
+            if not self.is_initialized:
+                return {
+                    "status": "error",
+                    "message": "Ray cluster is not running"
+                }
+            
+            worker_status = self._worker_manager.get_worker_status()
+            
+            return {
+                "status": "success",
+                "worker_nodes": worker_status,
+                "total_workers": len(worker_status),
+                "running_workers": len([w for w in worker_status if w["status"] == "running"])
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get worker status: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to get worker status: {str(e)}"
             }
 
     async def submit_job(

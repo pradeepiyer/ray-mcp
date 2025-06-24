@@ -1,164 +1,202 @@
 # Ray MCP Server
 
-A Model Context Protocol (MCP) server for interacting with [Ray](https://github.com/ray-project/ray) distributed computing clusters. This server provides AI assistants with tools to manage Ray clusters, submit jobs, monitor resources, and perform various Ray operations.
+A Model Context Protocol (MCP) server for comprehensive Ray cluster management, job submission, and monitoring.
 
-## ✨ Features
+## Features
 
-- **🔧 Cluster Management** - Start, stop, and connect to Ray clusters
-- **📋 Job Management** - Submit, monitor, and control Ray jobs  
-- **🎭 Actor Management** - List and manage Ray actors
-- **📊 Resource Monitoring** - Track cluster performance and health
-- **🔍 Advanced Operations** - Health checks, optimization recommendations, and debugging
-- **🚀 Modern Infrastructure** - Full UV package management with fast, reliable installs
-- **📝 Comprehensive Examples** - 5 detailed examples from basic to advanced workflows
-- **🧪 Robust Testing** - 177 tests with 90%+ coverage ensuring reliability
+- **Cluster Management**: Start, stop, and monitor Ray clusters
+- **Multi-Node Support**: Start clusters with head node and multiple worker nodes
+- **Worker Node Management**: Comprehensive worker node lifecycle management with the new `WorkerManager` class
+- **Job Operations**: Submit, monitor, and manage Ray jobs
+- **Actor Management**: List and control Ray actors
+- **Health Monitoring**: Comprehensive cluster health checks and performance metrics
+- **Resource Management**: Monitor and optimize cluster resources
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
-**Prerequisites**: Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first:
 ```bash
-# Install uv
-curl -Lk https://astral.sh/uv/install.sh | sh
-# or: pip install uv
-```
+# Clone the repository
+git clone <repository-url>
+cd mcp
 
-**Install Ray MCP:**
-```bash
-git clone https://github.com/pradeepiyer/ray-mcp.git
-cd ray-mcp
-uv sync  # Install all dependencies
-```
+# Install dependencies
+uv sync
 
-**Alternative installation methods:**
-```bash
-# Install package only (production)
+# Install the package
 uv pip install -e .
-
-# Development setup with all dev dependencies
-make dev-install
 ```
 
-### Run the Server
-```bash
-ray-mcp
-```
+### Basic Usage
 
-### Configure with AI Assistant
-Add to your MCP client configuration (e.g., Claude Desktop):
-
-```json
+```python
+# Start a simple cluster (head node only)
 {
-  "mcpServers": {
-    "ray-mcp": {
-      "command": "/path/to/your/venv/bin/ray-mcp",
-      "env": {
-        "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0"
+  "tool": "start_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "num_gpus": 1
+  }
+}
+
+# Start a multi-node cluster
+{
+  "tool": "start_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "worker_nodes": [
+      {
+        "num_cpus": 2,
+        "num_gpus": 0,
+        "node_name": "cpu-worker"
+      },
+      {
+        "num_cpus": 2,
+        "num_gpus": 1,
+        "node_name": "gpu-worker"
       }
-    }
+    ]
+  }
+}
+
+# Check cluster status
+{
+  "tool": "cluster_status"
+}
+
+# Submit a job
+{
+  "tool": "submit_job",
+  "arguments": {
+    "entrypoint": "python examples/simple_job.py"
   }
 }
 ```
 
-### Basic Usage
-**Important**: You must initialize Ray first before using other tools.
+## Multi-Node Cluster Support
 
+The enhanced `start_ray` tool now supports creating clusters with multiple worker nodes:
+
+### Worker Node Configuration
+
+Each worker node can be configured with:
+- **num_cpus**: Number of CPUs (required)
+- **num_gpus**: Number of GPUs (optional)
+- **object_store_memory**: Memory allocation in bytes (optional)
+- **node_name**: Custom name for the worker (optional)
+- **resources**: Custom resources (optional)
+
+### Example Multi-Node Setup
+
+```json
+{
+  "tool": "start_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "num_gpus": 0,
+    "object_store_memory": 1000000000,
+    "worker_nodes": [
+      {
+        "num_cpus": 2,
+        "num_gpus": 0,
+        "object_store_memory": 500000000,
+        "node_name": "cpu-worker-1"
+      },
+      {
+        "num_cpus": 4,
+        "num_gpus": 1,
+        "object_store_memory": 1000000000,
+        "node_name": "gpu-worker-1",
+        "resources": {"custom_resource": 2}
+      }
+    ],
+    "head_node_port": 10001,
+    "dashboard_port": 8265,
+    "head_node_host": "127.0.0.1"
+  }
+}
 ```
-"Start a Ray cluster with 4 CPUs"
-"Submit a job with entrypoint 'python examples/simple_job.py'"
-"Check cluster status"
-"List all running jobs"
-```
 
-## 🛠️ Available Tools
+### Worker Node Management
 
-The server provides **19 tools** organized into categories:
+- **worker_status**: Get detailed status of all worker nodes
+- **cluster_status**: Enhanced to include worker node information
+- **stop_ray**: Automatically stops all worker nodes when stopping the cluster
 
-- **Cluster Operations** (6 tools): `start_ray`, `connect_ray`, `stop_ray`, `cluster_status`, `cluster_resources`, `cluster_nodes`
-- **Job Operations** (7 tools): `submit_job`, `list_jobs`, `job_status`, `cancel_job`, `monitor_job`, `debug_job`, `get_logs`
-- **Actor Operations** (2 tools): `list_actors`, `kill_actor`
-- **Monitoring & Health** (3 tools): `performance_metrics`, `health_check`, `optimize_config`
-- **Advanced Features** (1 tool): `schedule_job`
+## Available Tools
 
-## 📚 Documentation
+The server provides a comprehensive set of tools for Ray management, covering cluster operations, job management, actor management, monitoring, and scheduling:
 
-- **[📖 Detailed Tools Reference](docs/TOOLS.md)** - Complete tool parameters and usage
-- **[🚀 Examples and Usage Patterns](docs/EXAMPLES.md)** - 5 comprehensive examples from basic to advanced
-- **[⚙️ Configuration Guide](docs/CONFIGURATION.md)** - Environment setup and client config
-- **[🔧 Development Guide](docs/DEVELOPMENT.md)** - Architecture, testing, and contributing
-- **[🩺 Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and debugging
+### Cluster Operations
+- `start_ray` - Start a new Ray cluster with head node and optional worker nodes
+- `connect_ray` - Connect to an existing Ray cluster
+- `stop_ray` - Stop the current Ray cluster
+- `cluster_status` - Get comprehensive cluster status
+- `cluster_resources` - Get resource usage information
+- `cluster_nodes` - List all cluster nodes
+- `worker_status` - Get detailed status of worker nodes
 
-## 💡 Example Scripts
+### Job Operations
+- `submit_job` - Submit a new job to the cluster
+- `list_jobs` - List all jobs (running, completed, failed)
+- `job_status` - Get detailed status of a specific job
+- `cancel_job` - Cancel a running or queued job
+- `monitor_job` - Monitor job progress
+- `debug_job` - Debug a job with detailed information
+- `get_logs` - Retrieve job logs and outputs
 
-The `examples/` directory contains 5 comprehensive Ray applications:
+### Actor Operations
+- `list_actors` - List all actors in the cluster
+- `kill_actor` - Terminate a specific actor
 
-1. **`simple_job.py`** - Basic Ray remote functions and job patterns
-2. **`actor_example.py`** - Stateful distributed computing with actors
-3. **`data_pipeline.py`** - Multi-stage data processing pipeline
-4. **`distributed_training.py`** - Parameter server pattern for ML training
-5. **`workflow_orchestration.py`** - Complex multi-step workflow management
+### Enhanced Monitoring
+- `performance_metrics` - Get detailed cluster performance metrics
+- `health_check` - Perform comprehensive cluster health check
+- `optimize_config` - Get cluster optimization recommendations
 
-**All examples can be run directly** - they auto-initialize Ray if needed:
+### Job Scheduling
+- `schedule_job` - Configure job scheduling parameters
+
+## Examples
+
+See the `examples/` directory for working examples:
+
+- `simple_job.py` - Basic Ray job example
+- `multi_node_cluster.py` - Multi-node cluster demonstration with worker node management
+- `actor_example.py` - Actor-based computation
+- `data_pipeline.py` - Data processing pipeline
+- `distributed_training.py` - Distributed machine learning
+- `workflow_orchestration.py` - Complex workflow orchestration
+
+## Configuration
+
+See `docs/config/` for configuration examples and setup instructions.
+
+## Development
+
+### Running Tests
+
 ```bash
-python examples/simple_job.py
-python examples/data_pipeline.py
-# ... or any other example
+# Run all tests
+uv run pytest
+
+# Run specific test categories
+uv run pytest tests/test_mcp_tools.py
+uv run pytest tests/test_multi_node_cluster.py
+uv run pytest tests/test_e2e_integration.py
 ```
 
-## 🔧 Prerequisites
+### Code Quality
 
-- Python 3.10 or higher
-- [uv](https://docs.astral.sh/uv/) package manager (modern Python package installer)
-- Ray 2.47.0 or higher  
-- MCP SDK 1.0.0 or higher
-
-> **🚀 Modern Python Package Management**: Ray MCP Server uses `uv` for fast, reliable dependency management and installation. `uv` provides faster installs, better dependency resolution, and improved reproducibility compared to `pip`.
-
-## 📊 Quality & Testing
-
-**Test Coverage**: ✅ **90.21%** coverage with **177 tests** all passing
-
-- **Unit Tests**: All core functionality with mocks
-- **Integration Tests**: End-to-end workflows
-- **E2E Tests**: Real Ray cluster scenarios
-- **Example Tests**: All example scripts verified
-
-Run tests:
 ```bash
-make test-full    # Complete test suite
-make test-fast    # Quick development tests
-make test-smoke   # Minimal verification
+# Run linting
+uv run ruff check .
+
+# Run type checking
+uv run mypy ray_mcp/
 ```
 
-## ⚡ Server Behavior
+## License
 
-⚠️ **Important**: Ray is NOT automatically initialized when the server starts. You must use `start_ray` or `connect_ray` tools first before using other functionality.
-
-**This design provides**:
-- 🎯 **Explicit Control** - Clear separation between server startup and Ray initialization
-- 💾 **Resource Efficiency** - No unnecessary Ray processes during server startup
-- 🔧 **Flexibility** - Choose your Ray cluster configuration when needed
-- 🚫 **Error Prevention** - Avoid connection issues during server boot
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Install development dependencies: `make dev-install`
-4. Make changes with tests: `make test-fast`
-5. Submit a pull request
-
-See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
-## 🌟 Related Projects
-
-- [Ray](https://github.com/ray-project/ray) - Distributed computing framework
-- [Model Context Protocol](https://github.com/modelcontextprotocol) - Protocol specification
-- [Claude Desktop](https://claude.ai/desktop) - AI assistant with MCP support
-- [uv](https://docs.astral.sh/uv/) - Fast Python package installer and resolver 
+This project is licensed under the MIT License - see the LICENSE file for details. 

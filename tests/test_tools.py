@@ -55,6 +55,7 @@ def mock_main_function():
         yield mock_main
 
 
+@pytest.mark.fast
 class TestToolFunctions:
     """Test cases for all tool functions in tools.py."""
 
@@ -84,7 +85,11 @@ class TestToolFunctions:
             address=None,
             num_cpus=None,
             num_gpus=None,
-            object_store_memory=None
+            object_store_memory=None,
+            worker_nodes=None,
+            head_node_port=10001,
+            dashboard_port=8265,
+            head_node_host='127.0.0.1'
         )
 
     @pytest.mark.asyncio
@@ -112,6 +117,10 @@ class TestToolFunctions:
             num_cpus=8,
             num_gpus=2,
             object_store_memory=1000000000,
+            worker_nodes=None,
+            head_node_port=10001,
+            dashboard_port=8265,
+            head_node_host='127.0.0.1',
             custom_param="test"
         )
 

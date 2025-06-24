@@ -81,4 +81,47 @@ ray-mcp
 Access Ray dashboard:
 ```
 http://localhost:8265
-``` 
+```
+
+## Multi-Node Cluster Configuration
+
+The Ray MCP Server now supports multi-node cluster configuration through the `start_ray` tool:
+
+### Worker Node Configuration
+```json
+{
+  "tool": "start_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "worker_nodes": [
+      {
+        "num_cpus": 2,
+        "num_gpus": 0,
+        "node_name": "cpu-worker-1"
+      },
+      {
+        "num_cpus": 4,
+        "num_gpus": 1,
+        "node_name": "gpu-worker-1"
+      }
+    ]
+  }
+}
+```
+
+### Worker Node Parameters
+- **num_cpus**: Number of CPUs (required)
+- **num_gpus**: Number of GPUs (optional, default: 0)
+- **object_store_memory**: Memory allocation in bytes (optional)
+- **node_name**: Custom name for the worker (optional)
+- **resources**: Custom resources dictionary (optional)
+
+### Worker Status Monitoring
+Use the new `worker_status` tool to monitor worker nodes:
+```json
+{
+  "tool": "worker_status"
+}
+```
+
+This returns detailed information about all worker nodes including status, process IDs, and configuration details. 

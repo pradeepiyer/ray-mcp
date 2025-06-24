@@ -1,14 +1,15 @@
 # Available Tools
 
-The Ray MCP Server provides **19 tools** for comprehensive Ray cluster management:
+The Ray MCP Server provides a comprehensive set of tools for Ray cluster management, covering cluster operations, job management, actor management, monitoring, and scheduling:
 
 ## Cluster Operations
-- `start_ray` - Start a new Ray cluster (head node)
+- `start_ray` - Start a new Ray cluster with head node and optional worker nodes
 - `connect_ray` - Connect to an existing Ray cluster
 - `stop_ray` - Stop the current Ray cluster
 - `cluster_status` - Get comprehensive cluster status
 - `cluster_resources` - Get resource usage information
 - `cluster_nodes` - List all cluster nodes
+- `worker_status` - Get detailed status of worker nodes (powered by the new `WorkerManager` class)
 
 ## Job Operations
 - `submit_job` - Submit a new job to the cluster
@@ -36,9 +37,42 @@ The Ray MCP Server provides **19 tools** for comprehensive Ray cluster managemen
 ### start_ray
 ```json
 {
-  "num_cpus": 4,              // Number of CPUs to allocate (default: 4)
-  "num_gpus": 1,              // Number of GPUs to allocate  
-  "object_store_memory": 1000000000  // Object store memory in bytes
+  "num_cpus": 4,              // Number of CPUs for head node (default: 4)
+  "num_gpus": 1,              // Number of GPUs for head node
+  "object_store_memory": 1000000000,  // Object store memory in bytes for head node
+  "worker_nodes": [           // Array of worker node configurations
+    {
+      "num_cpus": 2,          // Number of CPUs for this worker
+      "num_gpus": 0,          // Number of GPUs for this worker
+      "object_store_memory": 500000000,  // Object store memory for this worker
+      "node_name": "worker-1", // Optional name for this worker
+      "resources": {           // Optional custom resources
+        "custom_resource": 2
+      }
+    }
+  ],
+  "head_node_port": 10001,    // Port for head node (default: 10001)
+  "dashboard_port": 8265,     // Port for Ray dashboard (default: 8265)
+  "head_node_host": "127.0.0.1"  // Host address for head node (default: 127.0.0.1)
+}
+```
+
+**Multi-Node Cluster Example:**
+```json
+{
+  "num_cpus": 4,
+  "worker_nodes": [
+    {
+      "num_cpus": 2,
+      "num_gpus": 0,
+      "node_name": "cpu-worker"
+    },
+    {
+      "num_cpus": 2,
+      "num_gpus": 1,
+      "node_name": "gpu-worker"
+    }
+  ]
 }
 ```
 
@@ -54,6 +88,19 @@ The Ray MCP Server provides **19 tools** for comprehensive Ray cluster managemen
 - `127.0.0.1:10001`
 - `ray://head-node-ip:10001`
 - `ray://cluster.example.com:10001`
+
+### worker_status
+```json
+{
+  // No parameters required
+}
+```
+
+**Returns detailed information about worker nodes including:**
+- Status of each worker node (running/stopped)
+- Process IDs
+- Node names
+- Configuration details
 
 ### submit_job
 ```json
@@ -84,4 +131,30 @@ The Ray MCP Server provides **19 tools** for comprehensive Ray cluster managemen
 **🔧 Ray initialization tools:**
 - `start_ray` - Start a new Ray cluster
 - `connect_ray` - Connect to an existing Ray cluster
-- `stop_ray` - Stop the current Ray cluster 
+- `stop_ray` - Stop the current Ray cluster
+
+## WorkerManager Class
+
+The Ray MCP Server includes a new `WorkerManager` class (`ray_mcp/worker_manager.py`) that provides comprehensive worker node lifecycle management:
+
+### Key Features
+- **Worker Node Startup**: Start multiple worker nodes with custom configurations
+- **Process Management**: Monitor and manage worker node subprocesses
+- **Status Reporting**: Get detailed status of all worker nodes
+- **Graceful Shutdown**: Stop worker nodes gracefully or force termination
+- **Error Handling**: Robust error handling for worker node failures
+
+### Worker Node Configuration
+Each worker node can be configured with:
+- **num_cpus**: Number of CPUs (required)
+- **num_gpus**: Number of GPUs (optional)
+- **object_store_memory**: Memory allocation in bytes (optional)
+- **node_name**: Custom name for the worker (optional)
+- **resources**: Custom resources (optional)
+
+### Integration with RayManager
+The `WorkerManager` is integrated into the `RayManager` class and automatically handles:
+- Worker node startup when using `start_ray` with `worker_nodes` parameter
+- Worker node shutdown when using `stop_ray`
+- Worker status reporting via the `worker_status` tool
+- Enhanced cluster status with worker node information 

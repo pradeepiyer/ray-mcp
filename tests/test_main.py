@@ -13,6 +13,7 @@ from ray_mcp.main import run_server, list_tools, call_tool
 from mcp.types import TextContent
 
 
+@pytest.mark.fast
 class TestMain:
     """Test cases for main.py functions."""
 
@@ -402,6 +403,31 @@ class TestMain:
             run_server()
             
             mock_asyncio_run.assert_called_once()
+
+    def test_run_server_entrypoint(self, monkeypatch):
+        import ray_mcp.main
+        called = {}
+        def fake_run(arg):
+            called['ran'] = True
+        monkeypatch.setattr(ray_mcp.main.asyncio, 'run', fake_run)
+        ray_mcp.main.run_server()
+        assert called['ran']
+
+    def test_main_ray_unavailable_branch(self, monkeypatch):
+        import ray_mcp.main
+        import asyncio
+        monkeypatch.setattr(ray_mcp.main, 'RAY_AVAILABLE', False)
+        called = {}
+        def fake_exit(code):
+            called['exited'] = code
+            raise SystemExit
+        monkeypatch.setattr(ray_mcp.main.sys, 'exit', fake_exit)
+        # Should exit early due to RAY_AVAILABLE = False
+        try:
+            asyncio.run(ray_mcp.main.main())
+        except SystemExit:
+            pass
+        assert called['exited'] == 1
 
 
 if __name__ == "__main__":

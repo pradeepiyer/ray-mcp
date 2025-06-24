@@ -53,13 +53,31 @@ async def list_tools() -> List[Tool]:
         # Basic cluster management
         Tool(
             name="start_ray",
-            description="Start a new Ray cluster (head node)",
+            description="Start a new Ray cluster with head node and optional worker nodes",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "num_cpus": {"type": "integer", "minimum": 1, "default": 4},
-                    "num_gpus": {"type": "integer", "minimum": 0},
-                    "object_store_memory": {"type": "integer", "minimum": 0}
+                    "num_cpus": {"type": "integer", "minimum": 1, "default": 4, "description": "Number of CPUs for head node"},
+                    "num_gpus": {"type": "integer", "minimum": 0, "description": "Number of GPUs for head node"},
+                    "object_store_memory": {"type": "integer", "minimum": 0, "description": "Object store memory in bytes for head node"},
+                    "worker_nodes": {
+                        "type": "array",
+                        "description": "Configuration for worker nodes to start",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "num_cpus": {"type": "integer", "minimum": 1, "description": "Number of CPUs for this worker node"},
+                                "num_gpus": {"type": "integer", "minimum": 0, "description": "Number of GPUs for this worker node"},
+                                "object_store_memory": {"type": "integer", "minimum": 0, "description": "Object store memory in bytes for this worker node"},
+                                "resources": {"type": "object", "description": "Additional custom resources for this worker node"},
+                                "node_name": {"type": "string", "description": "Optional name for this worker node"}
+                            },
+                            "required": ["num_cpus"]
+                        }
+                    },
+                    "head_node_port": {"type": "integer", "minimum": 10000, "maximum": 65535, "default": 10001, "description": "Port for head node"},
+                    "dashboard_port": {"type": "integer", "minimum": 1000, "maximum": 65535, "default": 8265, "description": "Port for Ray dashboard"},
+                    "head_node_host": {"type": "string", "default": "127.0.0.1", "description": "Host address for head node"}
                 }
             }
         ),
@@ -97,7 +115,11 @@ async def list_tools() -> List[Tool]:
             description="Get cluster node information",
             inputSchema={"type": "object", "properties": {}}
         ),
-
+        Tool(
+            name="worker_status",
+            description="Get detailed status of worker nodes",
+            inputSchema={"type": "object", "properties": {}}
+        ),
         
         # Job management
         Tool(
@@ -263,6 +285,8 @@ async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Li
             result = await ray_manager.get_cluster_resources()
         elif name == "cluster_nodes":
             result = await ray_manager.get_cluster_nodes()
+        elif name == "worker_status":
+            result = await ray_manager.get_worker_status()
 
             
         # Job management
