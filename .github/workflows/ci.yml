@@ -32,11 +32,22 @@ jobs:
     - name: Run tests
       run: uv run python -m pytest tests/ -m "not slow and not e2e" --cov=ray_mcp --cov-report=xml
     
+    - name: Check coverage file
+      run: |
+        if [ -f "coverage.xml" ]; then
+          echo "Coverage file exists"
+          ls -la coverage.xml
+        else
+          echo "Coverage file not found"
+          exit 1
+        fi
+    
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml
-        fail_ci_if_error: true
+        fail_ci_if_error: false
+        verbose: true
 
   lint:
     runs-on: ubuntu-latest
