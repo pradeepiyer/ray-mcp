@@ -3,20 +3,13 @@
 
 import asyncio
 import json
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import cast
-from unittest.mock import AsyncMock
-from unittest.mock import Mock
-from unittest.mock import patch
+from typing import Any, Dict, List, cast
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from mcp.types import TextContent
-from mcp.types import Tool
-from ray_mcp.main import call_tool
-from ray_mcp.main import list_tools
+from mcp.types import TextContent, Tool
+from ray_mcp.main import call_tool, list_tools
 
 
 def get_text_content(result: Any, index: int = 0) -> TextContent:

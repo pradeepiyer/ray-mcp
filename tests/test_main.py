@@ -5,21 +5,13 @@ import asyncio
 import json
 import sys
 from io import StringIO
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import cast
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
-from unittest.mock import Mock
-from unittest.mock import patch
+from typing import Any, Dict, List, cast
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from mcp.types import TextContent
-from ray_mcp.main import call_tool
-from ray_mcp.main import list_tools
-from ray_mcp.main import run_server
+from ray_mcp.main import call_tool, list_tools, run_server
 
 
 @pytest.mark.fast

@@ -9,22 +9,17 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import psutil
 import pytest
 import pytest_asyncio
 import ray
 
-from mcp.types import TextContent
-from mcp.types import Tool
+from mcp.types import TextContent, Tool
 
 # Import the MCP server functions directly for testing
-from ray_mcp.main import call_tool
-from ray_mcp.main import list_tools
+from ray_mcp.main import call_tool, list_tools
 from ray_mcp.ray_manager import RayManager
 
 
