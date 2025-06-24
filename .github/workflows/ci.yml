@@ -71,4 +71,5 @@ jobs:
       run: |
         uv run black --check ray_mcp/ examples/ tests/ 
         uv run isort --check-only ray_mcp/ examples/ tests/
-        uv run mypy ray_mcp/ examples/ tests/
+        uv run pyright ray_mcp/ examples/ tests/
+        
