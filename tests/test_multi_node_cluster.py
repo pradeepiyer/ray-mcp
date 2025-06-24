@@ -88,7 +88,7 @@ class TestMultiNodeCluster:
 
     @pytest.mark.asyncio
     async def test_start_cluster_without_worker_nodes(self):
-        """Test starting a cluster without worker nodes (backward compatibility)."""
+        """Test starting a cluster without worker nodes (now defaults to multi-node)."""
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray.is_initialized', return_value=True):
                 with patch('ray_mcp.ray_manager.ray.init') as mock_init:
@@ -100,11 +100,28 @@ class TestMultiNodeCluster:
                         mock_init.return_value = mock_context
                         mock_get_runtime_context.return_value.get_node_id.return_value = "test_node"
                         ray_manager = RayManager()
-                        result = await ray_manager.start_cluster(num_cpus=4)
-                        assert result["status"] == "started"
-                        assert result["total_nodes"] == 1  # Only head node
-                        assert "worker_nodes" in result
-                        assert len(result["worker_nodes"]) == 0  # No workers
+                        with patch.object(ray_manager._worker_manager, 'start_worker_nodes', new_callable=AsyncMock) as mock_start_workers:
+                            mock_start_workers.return_value = [
+                                {
+                                    "status": "started",
+                                    "node_name": "default-worker-1",
+                                    "message": "Worker node 'default-worker-1' started successfully",
+                                    "process_id": 1001,
+                                    "config": {"num_cpus": 2, "num_gpus": 0, "object_store_memory": 500000000, "node_name": "default-worker-1"}
+                                },
+                                {
+                                    "status": "started",
+                                    "node_name": "default-worker-2",
+                                    "message": "Worker node 'default-worker-2' started successfully",
+                                    "process_id": 1002,
+                                    "config": {"num_cpus": 2, "num_gpus": 0, "object_store_memory": 500000000, "node_name": "default-worker-2"}
+                                }
+                            ]
+                            result = await ray_manager.start_cluster(num_cpus=4)
+                            assert result["status"] == "started"
+                            assert result["total_nodes"] == 3  # 1 head + 2 default workers
+                            assert "worker_nodes" in result
+                            assert len(result["worker_nodes"]) == 2  # 2 default workers
 
     @pytest.mark.asyncio
     async def test_stop_cluster_with_workers(self):

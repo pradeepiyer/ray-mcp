@@ -53,11 +53,11 @@ async def list_tools() -> List[Tool]:
         # Basic cluster management
         Tool(
             name="start_ray",
-            description="Start a new Ray cluster with head node and optional worker nodes",
+            description="Start a new Ray cluster with head node and worker nodes (defaults to multi-node with 2 workers)",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "num_cpus": {"type": "integer", "minimum": 1, "default": 4, "description": "Number of CPUs for head node"},
+                    "num_cpus": {"type": "integer", "minimum": 1, "default": 1, "description": "Number of CPUs for head node"},
                     "num_gpus": {"type": "integer", "minimum": 0, "description": "Number of GPUs for head node"},
                     "object_store_memory": {"type": "integer", "minimum": 0, "description": "Object store memory in bytes for head node"},
                     "worker_nodes": {

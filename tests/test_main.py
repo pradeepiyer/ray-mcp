@@ -38,7 +38,7 @@ class TestMain:
         # Verify tool schemas
         start_ray_tool = next(tool for tool in tools if tool.name == "start_ray")
         assert "num_cpus" in start_ray_tool.inputSchema["properties"]
-        assert start_ray_tool.inputSchema["properties"]["num_cpus"]["default"] == 4
+        assert start_ray_tool.inputSchema["properties"]["num_cpus"]["default"] == 1
 
     @pytest.mark.asyncio
     async def test_call_tool_ray_unavailable(self):
@@ -405,13 +405,24 @@ class TestMain:
             mock_asyncio_run.assert_called_once()
 
     def test_run_server_entrypoint(self, monkeypatch):
+        """Test run_server function calls asyncio.run."""
         import ray_mcp.main
         called = {}
-        def fake_run(arg):
-            called['ran'] = True
+
+        async def fake_main():
+            called['main_called'] = True
+            return {"status": "test"}
+
+        def fake_run(coro):
+            called['run_called'] = True
+            import asyncio
+            return asyncio.get_event_loop().run_until_complete(coro)
+
+        monkeypatch.setattr(ray_mcp.main, 'main', fake_main)
         monkeypatch.setattr(ray_mcp.main.asyncio, 'run', fake_run)
         ray_mcp.main.run_server()
-        assert called['ran']
+        assert called['main_called']
+        assert called['run_called']
 
     def test_main_ray_unavailable_branch(self, monkeypatch):
         import ray_mcp.main

@@ -536,7 +536,7 @@ class TestRayManagerMethods:
 
     @pytest.mark.asyncio
     async def test_start_cluster_default_cpu_setting(self, ray_manager, mock_ray_context):
-        """Test that default num_cpus is set to 4 when not specified."""
+        """Test that default num_cpus is set to 1 when not specified."""
         with patch('ray_mcp.ray_manager.RAY_AVAILABLE', True):
             with patch('ray_mcp.ray_manager.ray') as mock_ray:
                 with patch('ray_mcp.ray_manager.JobSubmissionClient'):
@@ -547,9 +547,9 @@ class TestRayManagerMethods:
                     result = await ray_manager.start_cluster()
                     
                     assert result["status"] == "started"
-                    # Verify default num_cpus=4 was set
+                    # Verify default num_cpus=1 was set
                     call_kwargs = mock_ray.init.call_args[1]
-                    assert call_kwargs["num_cpus"] == 4
+                    assert call_kwargs["num_cpus"] == 1
 
     @pytest.mark.asyncio
     async def test_start_cluster_with_no_job_submission_client(self, ray_manager, mock_ray_context):

@@ -114,11 +114,11 @@ class RayManager:
                 init_kwargs["address"] = address
             else:
                 # Starting as head node
-                # Set default num_cpus to 4 if not specified
+                # Set default num_cpus to 1 if not specified
                 if num_cpus is not None:
                     init_kwargs["num_cpus"] = num_cpus
                 else:
-                    init_kwargs["num_cpus"] = 4
+                    init_kwargs["num_cpus"] = 1
                     
                 if num_gpus is not None:
                     init_kwargs["num_gpus"] = num_gpus
@@ -148,6 +148,10 @@ class RayManager:
                 if self._job_client is None:
                     job_client_status = "unavailable"
 
+            # Set default worker nodes if none specified
+            if worker_nodes is None:
+                worker_nodes = self._get_default_worker_config()
+            
             # Start worker nodes if specified
             worker_results = []
             if worker_nodes and isinstance(worker_nodes, list) and self._cluster_address:
@@ -174,6 +178,23 @@ class RayManager:
                 "status": "error",
                 "message": f"Failed to start Ray cluster: {str(e)}"
             }
+
+    def _get_default_worker_config(self) -> List[Dict[str, Any]]:
+        """Get default worker node configuration for multi-node cluster."""
+        return [
+            {
+                "num_cpus": 2,
+                "num_gpus": 0,
+                "object_store_memory": 500000000,  # 500MB
+                "node_name": "default-worker-1"
+            },
+            {
+                "num_cpus": 2,
+                "num_gpus": 0,
+                "object_store_memory": 500000000,  # 500MB
+                "node_name": "default-worker-2"
+            }
+        ]
 
     async def connect_cluster(self, address: str, **kwargs: Any) -> Dict[str, Any]:
         """Connect to an existing Ray cluster."""

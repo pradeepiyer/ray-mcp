@@ -13,7 +13,7 @@
     "connection_options": {
       "start_new_cluster": {
         "tool": "start_ray",
-        "description": "Start a new Ray cluster (head node) - defaults to 4 CPUs",
+        "description": "Start a new Ray cluster (head node) - defaults to 1 CPU",
         "example": {
           "arguments": {
             "num_cpus": 8,
@@ -21,7 +21,7 @@
             "object_store_memory": 2000000000
           }
         },
-        "note": "If num_cpus is not specified, defaults to 4 CPUs"
+        "note": "If num_cpus is not specified, defaults to 1 CPU"
       },
       "connect_to_existing_cluster": {
         "tool": "connect_ray",

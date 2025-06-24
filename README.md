@@ -1,18 +1,66 @@
 # Ray MCP Server
 
-A Model Context Protocol (MCP) server for comprehensive Ray cluster management, job submission, and monitoring.
+A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distributed computing workflows.
 
 ## Features
 
-- **Cluster Management**: Start, stop, and monitor Ray clusters
-- **Multi-Node Support**: Start clusters with head node and multiple worker nodes
-- **Worker Node Management**: Comprehensive worker node lifecycle management with the new `WorkerManager` class
-- **Job Operations**: Submit, monitor, and manage Ray jobs
-- **Actor Management**: List and control Ray actors
-- **Health Monitoring**: Comprehensive cluster health checks and performance metrics
-- **Resource Management**: Monitor and optimize cluster resources
+- **Multi-Node Cluster Management**: Start and manage Ray clusters with head nodes and worker nodes
+- **Job Management**: Submit, monitor, and manage Ray jobs
+- **Actor Management**: Create and manage Ray actors
+- **Real-time Monitoring**: Get cluster status, resource usage, and performance metrics
+- **Logging and Debugging**: Access logs and debug job issues
+- **Scheduling**: Schedule jobs with cron-like syntax
 
 ## Quick Start
+
+### Start a Multi-Node Cluster
+
+The server now defaults to starting multi-node clusters with 2 worker nodes:
+
+```json
+{
+  "tool": "start_ray",
+  "arguments": {
+    "num_cpus": 1
+  }
+}
+```
+
+This creates:
+- Head node: 1 CPU, 0 GPUs, 1GB object store memory
+- Worker node 1: 2 CPUs, 0 GPUs, 500MB object store memory  
+- Worker node 2: 2 CPUs, 0 GPUs, 500MB object store memory
+
+### Custom Multi-Node Setup
+
+```json
+{
+  "tool": "start_ray",
+  "arguments": {
+    "num_cpus": 1,
+    "num_gpus": 0,
+    "object_store_memory": 1000000000,
+    "worker_nodes": [
+      {
+        "num_cpus": 2,
+        "num_gpus": 0,
+        "object_store_memory": 500000000,
+        "node_name": "cpu-worker-1"
+      },
+      {
+        "num_cpus": 4,
+        "num_gpus": 1,
+        "object_store_memory": 1000000000,
+        "node_name": "gpu-worker-1",
+        "resources": {"custom_resource": 2}
+      }
+    ],
+    "head_node_port": 10001,
+    "dashboard_port": 8265,
+    "head_node_host": "127.0.0.1"
+  }
+}
+```
 
 ### Installation
 

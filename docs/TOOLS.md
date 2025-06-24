@@ -35,12 +35,14 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 ## Tool Parameters
 
 ### start_ray
+Start a new Ray cluster with head node and worker nodes. **Defaults to multi-node cluster with 2 worker nodes.**
+
 ```json
 {
-  "num_cpus": 4,              // Number of CPUs for head node (default: 4)
+  "num_cpus": 1,              // Number of CPUs for head node (default: 1)
   "num_gpus": 1,              // Number of GPUs for head node
   "object_store_memory": 1000000000,  // Object store memory in bytes for head node
-  "worker_nodes": [           // Array of worker node configurations
+  "worker_nodes": [           // Array of worker node configurations (optional)
     {
       "num_cpus": 2,          // Number of CPUs for this worker
       "num_gpus": 0,          // Number of GPUs for this worker
@@ -57,10 +59,16 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 }
 ```
 
-**Multi-Node Cluster Example:**
+**Default Multi-Node Configuration:**
+When no `worker_nodes` parameter is specified, the cluster will start with:
+- Head node: 1 CPU, 0 GPUs, 1GB object store memory
+- Worker node 1: 2 CPUs, 0 GPUs, 500MB object store memory
+- Worker node 2: 2 CPUs, 0 GPUs, 500MB object store memory
+
+**Custom Worker Configuration Example:**
 ```json
 {
-  "num_cpus": 4,
+  "num_cpus": 1,
   "worker_nodes": [
     {
       "num_cpus": 2,
@@ -73,6 +81,14 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
       "node_name": "gpu-worker"
     }
   ]
+}
+```
+
+**Single-Node Cluster (if needed):**
+```json
+{
+  "num_cpus": 8,
+  "worker_nodes": []  // Empty array for single-node cluster
 }
 ```
 
