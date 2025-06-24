@@ -47,7 +47,7 @@ dev-dependencies = [
     "pytest-cov>=4.0.0",
     "black>=24.0.0",
     "isort>=5.12.0",
-    "mypy>=1.0.0",
+    "pyright>=1.1.0",
 ]
 
 [tool.uv.sources]
@@ -89,12 +89,6 @@ profile = "black"
 line_length = 88
 multi_line_output = 3
 combine_as_imports = true
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
 
 [tool.pyright]
 # Restrict analysis to this repository only
