@@ -180,11 +180,18 @@ uv run pytest tests/test_e2e_integration.py
 ### Code Quality
 
 ```bash
-# Run linting
-uv run ruff check .
+# Run linting and formatting checks
+make lint
+
+# Format code automatically
+make format
 
 # Run type checking
-uv run mypy ray_mcp/
+uv run pyright ray_mcp/
+
+# Run code formatting
+uv run black ray_mcp/
+uv run isort ray_mcp/
 ```
 
 ## License
