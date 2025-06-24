@@ -1,12 +1,12 @@
 """Tool functions for Ray cluster operations."""
 
 import json
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from .ray_manager import RayManager
 
-
 # ===== BASIC CLUSTER MANAGEMENT =====
+
 
 async def start_ray_cluster(
     ray_manager: RayManager,
@@ -19,7 +19,7 @@ async def start_ray_cluster(
     head_node_port: int = 10001,
     dashboard_port: int = 8265,
     head_node_host: str = "127.0.0.1",
-    **kwargs: Any
+    **kwargs: Any,
 ) -> str:
     """Start a Ray cluster with head node and optional worker nodes."""
     result = await ray_manager.start_cluster(
@@ -32,15 +32,13 @@ async def start_ray_cluster(
         head_node_port=head_node_port,
         dashboard_port=dashboard_port,
         head_node_host=head_node_host,
-        **kwargs
+        **kwargs,
     )
     return json.dumps(result, indent=2)
 
 
 async def connect_ray_cluster(
-    ray_manager: RayManager,
-    address: str,
-    **kwargs: Any
+    ray_manager: RayManager, address: str, **kwargs: Any
 ) -> str:
     """Connect to an existing Ray cluster."""
     result = await ray_manager.connect_cluster(address=address, **kwargs)
@@ -71,10 +69,8 @@ async def get_cluster_nodes(ray_manager: RayManager) -> str:
     return json.dumps(result, indent=2)
 
 
-
-
-
 # ===== JOB MANAGEMENT =====
+
 
 async def submit_job(
     ray_manager: RayManager,
@@ -82,7 +78,7 @@ async def submit_job(
     runtime_env: Optional[Dict[str, Any]] = None,
     job_id: Optional[str] = None,
     metadata: Optional[Dict[str, str]] = None,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> str:
     """Submit a job to the Ray cluster."""
     result = await ray_manager.submit_job(
@@ -90,7 +86,7 @@ async def submit_job(
         runtime_env=runtime_env,
         job_id=job_id,
         metadata=metadata,
-        **kwargs
+        **kwargs,
     )
     return json.dumps(result, indent=2)
 
@@ -127,9 +123,9 @@ async def debug_job(ray_manager: RayManager, job_id: str) -> str:
 
 # ===== ACTOR MANAGEMENT =====
 
+
 async def list_actors(
-    ray_manager: RayManager,
-    filters: Optional[Dict[str, Any]] = None
+    ray_manager: RayManager, filters: Optional[Dict[str, Any]] = None
 ) -> str:
     """List actors in the cluster."""
     result = await ray_manager.list_actors(filters)
@@ -137,18 +133,15 @@ async def list_actors(
 
 
 async def kill_actor(
-    ray_manager: RayManager,
-    actor_id: str,
-    no_restart: bool = False
+    ray_manager: RayManager, actor_id: str, no_restart: bool = False
 ) -> str:
     """Kill an actor."""
     result = await ray_manager.kill_actor(actor_id, no_restart)
     return json.dumps(result, indent=2)
 
 
-
-
 # ===== ENHANCED MONITORING =====
+
 
 async def get_performance_metrics(ray_manager: RayManager) -> str:
     """Get detailed performance metrics for the cluster."""
@@ -172,37 +165,27 @@ async def optimize_cluster_config(ray_manager: RayManager) -> str:
 
 
 async def schedule_job(
-    ray_manager: RayManager,
-    entrypoint: str,
-    schedule: str,
-    **kwargs: Any
+    ray_manager: RayManager, entrypoint: str, schedule: str, **kwargs: Any
 ) -> str:
     """Schedule a job with cron-like scheduling."""
     result = await ray_manager.schedule_job(
-        entrypoint=entrypoint,
-        schedule=schedule,
-        **kwargs
+        entrypoint=entrypoint, schedule=schedule, **kwargs
     )
     return json.dumps(result, indent=2)
 
 
-
-
-
 # ===== LOGS & DEBUGGING =====
+
 
 async def get_logs(
     ray_manager: RayManager,
     job_id: Optional[str] = None,
     actor_id: Optional[str] = None,
     node_id: Optional[str] = None,
-    num_lines: int = 100
+    num_lines: int = 100,
 ) -> str:
     """Get logs from Ray cluster."""
     result = await ray_manager.get_logs(
-        job_id=job_id,
-        actor_id=actor_id,
-        node_id=node_id,
-        num_lines=num_lines
+        job_id=job_id, actor_id=actor_id, node_id=node_id, num_lines=num_lines
     )
-    return json.dumps(result, indent=2) 
+    return json.dumps(result, indent=2)
