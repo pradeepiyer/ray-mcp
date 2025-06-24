@@ -29,6 +29,21 @@ test-full:
 test-smart:
 	@scripts/smart-test.sh
 
+# Linting - matches CI workflow
+lint:
+	@echo "🔍 Running linting checks..."
+	@uv run black --check ray_mcp/ examples/ tests/
+	@uv run isort --check-only ray_mcp/ examples/ tests/
+	@uv run mypy ray_mcp/ examples/ tests/
+	@echo "✅ All linting checks passed!"
+
+# Format code - apply formatting fixes
+format:
+	@echo "🎨 Formatting code..."
+	@uv run black ray_mcp/ examples/ tests/
+	@uv run isort ray_mcp/ examples/ tests/
+	@echo "✅ Code formatting complete!"
+
 # UV Installation commands
 install:
 	@echo "📦 Installing package with uv..."
@@ -85,6 +100,10 @@ help:
 	@echo "  make test-e2e   - Run e2e tests only (for major changes)"
 	@echo "  make test-full  - Run complete test suite (includes e2e)"
 	@echo "  make test-smart - Smart test runner (detects changes)"
+	@echo ""
+	@echo "Linting and formatting:"
+	@echo "  make lint       - Run linting checks (black, isort, mypy)"
+	@echo "  make format     - Format code with black and isort"
 	@echo ""
 	@echo "Test markers:"
 	@echo "  fast           - Fast unit and integration tests"
