@@ -34,7 +34,7 @@ lint:
 	@echo "🔍 Running linting checks..."
 	@uv run black --check ray_mcp/ examples/ tests/
 	@uv run isort --check-only ray_mcp/ examples/ tests/
-	@uv run pyright --check-only ray_mcp/ examples/ tests/
+	@uv run pyright ray_mcp/ examples/ tests/
 	@echo "✅ All linting checks passed!"
 
 # Format code - apply formatting fixes
