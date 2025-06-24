@@ -70,5 +70,5 @@ jobs:
     - name: Run linting
       run: |
         uv run black --check ray_mcp/ examples/ tests/ --exclude "tests/test_e2e_integration.py|tests/test_integration.py|tests/test_main.py"
-        uv run isort --check-only ray_mcp/ examples/ tests/ --skip "tests/test_e2e_integration.py,tests/test_integration.py,tests/test_main.py"
+        uv run isort --check-only ray_mcp/ examples/ tests/test_mcp_tools.py tests/test_multi_node_cluster.py tests/test_ray_manager.py tests/test_ray_manager_methods.py tests/test_tools.py tests/test_worker_manager.py
         uv run mypy ray_mcp/ 
