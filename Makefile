@@ -8,7 +8,7 @@ test: test-fast
 # Fast test suite (excludes e2e tests) - for development
 test-fast:
 	@echo "🏃‍♂️ Running fast test suite..."
-	@python -m pytest tests/ -m "fast" --tb=short -v --maxfail=3 --cov=ray_mcp --cov-report=term-missing
+	@./scripts/test-fast.sh
 
 # Smoke tests - minimal verification
 test-smoke:
@@ -18,12 +18,12 @@ test-smoke:
 # End-to-end tests only - for major changes
 test-e2e:
 	@echo "🔄 Running e2e tests (this may take several minutes)..."
-	@python -m pytest tests/ -m "e2e" --tb=short -v --maxfail=1
+	@./scripts/test-e2e.sh
 
 # Full test suite - all tests including e2e
 test-full:
 	@echo "🔍 Running complete test suite..."
-	@python -m pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=term-missing --cov-report=html
+	@./scripts/test-full.sh
 
 # Smart test runner - detects changes and runs appropriate tests
 test-smart:

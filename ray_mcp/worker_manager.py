@@ -103,9 +103,10 @@ class WorkerManager:
             cmd.extend(["--num-gpus", str(config["num_gpus"])])
 
         if "object_store_memory" in config:
-            # Convert to MB for Ray CLI
-            memory_mb = config["object_store_memory"] // (1024 * 1024)
-            cmd.extend(["--object-store-memory", str(memory_mb)])
+            # Ensure it's at least 75MB (Ray's minimum) in bytes
+            min_memory_bytes = 75 * 1024 * 1024  # 75MB in bytes
+            memory_bytes = max(min_memory_bytes, config["object_store_memory"])
+            cmd.extend(["--object-store-memory", str(memory_bytes)])
 
         # Add custom resources if specified
         if "resources" in config and isinstance(config["resources"], dict):

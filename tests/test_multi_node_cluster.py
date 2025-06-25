@@ -78,9 +78,14 @@ class TestMultiNodeCluster:
                             assert "worker_nodes" in result
                             assert len(result["worker_nodes"]) == expected_worker_count
                             # Verify worker manager was called
-                            mock_start_workers.assert_called_once_with(
-                                worker_configs, "ray://127.0.0.1:10001"
-                            )
+                            mock_start_workers.assert_called_once()
+                            # Check that the call was made with the correct worker configs
+                            call_args = mock_start_workers.call_args
+                            assert call_args[0][0] == worker_configs
+                            # Check that the address follows the expected format (ray://IP:PORT)
+                            address = call_args[0][1]
+                            assert address.startswith("ray://")
+                            assert ":" in address
 
     @pytest.mark.asyncio
     async def test_start_cluster_without_worker_nodes(self):

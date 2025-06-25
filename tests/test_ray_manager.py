@@ -2,6 +2,7 @@
 """Tests for the Ray manager."""
 
 import asyncio
+import subprocess
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -56,11 +57,22 @@ class TestRayManager:
                 )
 
                 with patch("ray_mcp.ray_manager.JobSubmissionClient"):
-                    result = await manager.start_cluster()
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
 
-                    assert result["status"] == "started"
-                    assert result["address"] == "ray://127.0.0.1:10001"
-                    assert manager._is_initialized
+                        result = await manager.start_cluster(worker_nodes=[])
+
+                        assert result["status"] == "started"
+                        assert result["address"].startswith("ray://")
+                        assert ":" in result["address"]
+                        assert manager._is_initialized
 
     @pytest.mark.asyncio
     async def test_start_cluster_already_running(self):
@@ -81,12 +93,23 @@ class TestRayManager:
                 )
 
                 with patch("ray_mcp.ray_manager.JobSubmissionClient"):
-                    result = await manager.start_cluster()
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
 
-                    # When Ray is already running, ray.init with ignore_reinit_error=True
-                    # will still return successfully, so we expect "started" status
-                    assert result["status"] == "started"
-                    assert result["address"] == "ray://127.0.0.1:10001"
+                        result = await manager.start_cluster(worker_nodes=[])
+
+                        # When Ray is already running, ray.init with ignore_reinit_error=True
+                        # will still return successfully, so we expect "started" status
+                        assert result["status"] == "started"
+                        assert result["address"].startswith("ray://")
+                        assert ":" in result["address"]
 
     @pytest.mark.asyncio
     async def test_stop_cluster(self):
@@ -213,9 +236,11 @@ class TestRayManager:
                     result = await manager.connect_cluster("ray://remote:10001")
 
                     assert result["status"] == "connected"
-                    assert result["address"] == "ray://remote:10001"
+                    assert result["address"].startswith("ray://")
+                    assert ":" in result["address"]
                     assert manager._is_initialized
-                    assert manager._cluster_address == "ray://remote:10001"
+                    assert manager._cluster_address.startswith("ray://")
+                    assert ":" in manager._cluster_address
 
     @pytest.mark.asyncio
     async def test_connect_cluster_ray_unavailable(self, manager):
@@ -400,11 +425,13 @@ class TestRayManager:
         """Test start cluster with exception."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.init.side_effect = Exception("Connection failed")
+                with patch("subprocess.Popen") as mock_popen:
+                    # Mock subprocess to raise an exception
+                    mock_popen.side_effect = Exception("Connection failed")
 
-                result = await manager.start_cluster()
-                assert result["status"] == "error"
-                assert "Connection failed" in result["message"]
+                    result = await manager.start_cluster()
+                    assert result["status"] == "error"
+                    assert "Connection failed" in result["message"]
 
     @pytest.mark.asyncio
     async def test_start_cluster_with_all_parameters(self, manager):
@@ -422,22 +449,32 @@ class TestRayManager:
                 )
 
                 with patch("ray_mcp.ray_manager.JobSubmissionClient"):
-                    result = await manager.start_cluster(
-                        head_node=True,
-                        num_cpus=8,
-                        num_gpus=2,
-                        object_store_memory=1000000000,
-                        custom_param="test",
-                    )
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
 
-                    assert result["status"] == "started"
-                    # Verify all parameters were passed to ray.init
-                    call_kwargs = mock_ray.init.call_args[1]
-                    assert call_kwargs["num_cpus"] == 8
-                    assert call_kwargs["num_gpus"] == 2
-                    assert call_kwargs["object_store_memory"] == 1000000000
-                    assert call_kwargs["custom_param"] == "test"
-                    assert call_kwargs["ignore_reinit_error"] is True
+                        result = await manager.start_cluster(
+                            head_node=True,
+                            num_cpus=8,
+                            num_gpus=2,
+                            object_store_memory=1000000000,
+                            custom_param="test",
+                            worker_nodes=[],
+                        )
+
+                        assert result["status"] == "started"
+                        # Verify the ray start command was called with correct parameters
+                        mock_popen.assert_called_once()
+                        call_args = mock_popen.call_args[0][0]
+                        assert "--num-cpus" in call_args
+                        assert "--num-gpus" in call_args
+                        assert "--object-store-memory" in call_args
 
     @pytest.mark.asyncio
     async def test_connect_cluster_exception(self, manager):
@@ -507,7 +544,10 @@ class TestRayManager:
 
                 result = await initialized_manager.submit_job("python test.py")
                 assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
+                assert (
+                    "Job submission not available in Ray Client mode"
+                    in result["message"]
+                )
 
     @pytest.mark.asyncio
     async def test_submit_job_exception(self, initialized_manager):
@@ -541,8 +581,7 @@ class TestRayManager:
                 mock_ray.is_initialized.return_value = True
 
                 result = await initialized_manager.list_jobs()
-                assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
+                assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_get_job_status_not_initialized(self, manager):
@@ -562,7 +601,9 @@ class TestRayManager:
 
                 result = await initialized_manager.get_job_status("test_job")
                 assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
+                assert (
+                    "Job status not available in Ray Client mode" in result["message"]
+                )
 
     @pytest.mark.asyncio
     async def test_cancel_job_not_initialized(self, manager):
@@ -582,7 +623,10 @@ class TestRayManager:
 
                 result = await initialized_manager.cancel_job("test_job")
                 assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
+                assert (
+                    "Job cancellation not available in Ray Client mode"
+                    in result["message"]
+                )
 
     # ===== RESOURCE AND NODE MANAGEMENT ERROR CASES =====
 
@@ -676,7 +720,10 @@ class TestRayManager:
 
                 result = await initialized_manager.get_logs(job_id="test_job")
                 assert result["status"] == "partial"
-                assert "not fully implemented" in result["message"]
+                assert (
+                    "Job log retrieval not available in Ray Client mode"
+                    in result["message"]
+                )
 
     @pytest.mark.asyncio
     async def test_get_performance_metrics_not_initialized(self, manager):

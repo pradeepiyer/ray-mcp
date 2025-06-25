@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
@@ -51,6 +52,7 @@ class RayManager:
             None  # Use Any to avoid type issues with conditional imports
         )
         self._worker_manager = WorkerManager()
+        self._head_node_process: Optional[Any] = None  # Track head node process
 
     @property
     def is_initialized(self) -> bool:
@@ -134,48 +136,152 @@ class RayManager:
                     "message": "Ray is not available. Please install Ray.",
                 }
 
-            # Prepare initialization arguments for head node
-            init_kwargs: Dict[str, Any] = {}
+            def find_free_port(start_port=10001, max_tries=50):
+                port = start_port
+                for _ in range(max_tries):
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        try:
+                            s.bind(("", port))
+                            return port
+                        except OSError:
+                            port += 1
+                raise RuntimeError("No free port found.")
+
+            def parse_dashboard_url(stdout: str) -> Optional[str]:
+                import re
+
+                pattern = r"View the Ray dashboard at (http://[^\s]+)"
+                match = re.search(pattern, stdout)
+                return match.group(1) if match else None
+
+            def parse_gcs_address(stdout: str) -> Optional[str]:
+                import re
+
+                pattern = r"--address='([\d\.]+:\d+)'"
+                match = re.search(pattern, stdout)
+                return match.group(1) if match else None
 
             if address:
-                init_kwargs["address"] = address
+                # Connect to existing cluster
+                init_kwargs: Dict[str, Any] = {
+                    "address": address,
+                    "ignore_reinit_error": True,
+                }
+                init_kwargs.update(kwargs)
+                ray_context = ray.init(**init_kwargs)
+                self._is_initialized = True
+                self._cluster_address = ray_context.address_info["address"]
+                dashboard_url = ray_context.dashboard_url
             else:
-                # Starting as head node
-                # Set default num_cpus to 1 if not specified
+                import os
+                import subprocess
+
+                # Find a free port for the Ray Client server
+                ray_client_port = find_free_port(20000)
+
+                # Find a free port for the GCS server (start from ray_client_port + 1)
+                gcs_port = find_free_port(ray_client_port + 1)
+
+                # Find a free dashboard port
+                dashboard_port = find_free_port(8265)
+
+                # Build ray start command for head node
+                head_cmd = [
+                    "ray",
+                    "start",
+                    "--head",
+                    "--port",
+                    str(gcs_port),
+                    "--ray-client-server-port",
+                    str(ray_client_port),
+                    "--dashboard-port",
+                    str(dashboard_port),
+                ]
                 if num_cpus is not None:
-                    init_kwargs["num_cpus"] = num_cpus
+                    head_cmd.extend(["--num-cpus", str(num_cpus)])
                 else:
-                    init_kwargs["num_cpus"] = 1
-
+                    head_cmd.extend(["--num-cpus", "1"])
                 if num_gpus is not None:
-                    init_kwargs["num_gpus"] = num_gpus
+                    head_cmd.extend(["--num-gpus", str(num_gpus)])
                 if object_store_memory is not None:
-                    init_kwargs["object_store_memory"] = object_store_memory
-
-                # Add head node specific configuration
-                # Note: Ray doesn't accept 'port' directly, it uses different parameters
-                # The dashboard_port and head_node_host are used for dashboard configuration
-                init_kwargs["dashboard_port"] = dashboard_port
-                init_kwargs["dashboard_host"] = head_node_host
-
-            # Add any additional kwargs
-            init_kwargs.update(kwargs)
-            init_kwargs["ignore_reinit_error"] = True
-
-            # Initialize Ray head node
-            ray_context = ray.init(**init_kwargs)
-
-            self._is_initialized = True
-            self._cluster_address = ray_context.address_info["address"]
+                    # Ensure it's at least 75MB (Ray's minimum) in bytes
+                    min_memory_bytes = 75 * 1024 * 1024  # 75MB in bytes
+                    memory_bytes = max(min_memory_bytes, object_store_memory)
+                    head_cmd.extend(["--object-store-memory", str(memory_bytes)])
+                head_cmd.extend(
+                    ["--dashboard-host", head_node_host, "--disable-usage-stats"]
+                )
+                env = os.environ.copy()
+                env["RAY_DISABLE_USAGE_STATS"] = "1"
+                env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
+                print(f"Starting head node with command: {' '.join(head_cmd)}")
+                head_process = subprocess.Popen(
+                    head_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    text=True,
+                )
+                self._head_node_process = head_process
+                await asyncio.sleep(2)
+                stdout, stderr = head_process.communicate()
+                exit_code = head_process.poll()
+                if exit_code != 0 or "Ray runtime started" not in stdout:
+                    return {
+                        "status": "error",
+                        "message": f"Failed to start head node (exit code: {exit_code}). stdout: {stdout}, stderr: {stderr}",
+                    }
+                dashboard_url = parse_dashboard_url(stdout)
+                gcs_address = parse_gcs_address(stdout)
+                if not gcs_address:
+                    return {
+                        "status": "error",
+                        "message": f"Could not parse GCS address from head node output. stdout: {stdout}, stderr: {stderr}",
+                    }
+                # Use the Ray Client server port and the head node IP for ray://
+                head_ip = gcs_address.split(":")[0]
+                ray_address = f"ray://{head_ip}:{ray_client_port}"
+                init_kwargs: Dict[str, Any] = {
+                    "address": ray_address,
+                    "ignore_reinit_error": True,
+                }
+                init_kwargs.update(kwargs)
+                try:
+                    ray_context = ray.init(**init_kwargs)
+                    self._is_initialized = True
+                    self._cluster_address = ray_address
+                except Exception as e:
+                    logger.error(f"Failed to connect to head node: {e}")
+                    logger.error(f"Head node stdout: {stdout}")
+                    logger.error(f"Head node stderr: {stderr}")
+                    return {
+                        "status": "error",
+                        "message": f"Failed to connect to head node: {str(e)}",
+                    }
 
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
             if JobSubmissionClient is not None and self._cluster_address:
-                self._job_client = self._initialize_job_client_with_retry(
-                    self._cluster_address
-                )
-                if self._job_client is None:
+                # Skip job client initialization when using Ray Client to avoid conflicts
+                if self._cluster_address.startswith("ray://"):
+                    logger.info(
+                        "Skipping job client initialization for Ray Client connection"
+                    )
                     job_client_status = "unavailable"
+                else:
+                    # Use the GCS address for job client, not the Ray Client address
+                    if address:
+                        # For existing clusters, use the provided address
+                        job_client_address = address
+                    else:
+                        # For new clusters, use the GCS address (not the Ray Client address)
+                        job_client_address = f"ray://{gcs_address}"
+
+                    self._job_client = self._initialize_job_client_with_retry(
+                        job_client_address
+                    )
+                    if self._job_client is None:
+                        job_client_status = "unavailable"
 
             # Set default worker nodes if none specified
             if worker_nodes is None:
@@ -196,7 +302,7 @@ class RayManager:
                 "status": "started",
                 "message": "Ray cluster started successfully",
                 "address": self._cluster_address,
-                "dashboard_url": ray_context.dashboard_url,
+                "dashboard_url": dashboard_url,
                 "node_id": (
                     ray.get_runtime_context().get_node_id() if ray is not None else None
                 ),
@@ -297,8 +403,28 @@ class RayManager:
             # Stop worker nodes first
             worker_stop_results = await self._worker_manager.stop_all_workers()
 
-            # Shutdown Ray
+            # Shutdown Ray client connection
             ray.shutdown()
+
+            # Stop head node if we started it
+            head_stop_result = None
+            if self._head_node_process is not None:
+                try:
+                    import subprocess
+
+                    # Use ray stop to properly stop the head node
+                    stop_cmd = ["ray", "stop"]
+                    stop_process = subprocess.run(
+                        stop_cmd, capture_output=True, text=True, timeout=10
+                    )
+                    if stop_process.returncode == 0:
+                        head_stop_result = "stopped"
+                    else:
+                        head_stop_result = f"error: {stop_process.stderr}"
+                except Exception as e:
+                    head_stop_result = f"error: {str(e)}"
+                finally:
+                    self._head_node_process = None
 
             self._is_initialized = False
             self._cluster_address = None
@@ -308,6 +434,7 @@ class RayManager:
                 "status": "stopped",
                 "message": "Ray cluster stopped successfully",
                 "worker_nodes": worker_stop_results,
+                "head_node": head_stop_result,
             }
 
         except Exception as e:
@@ -392,10 +519,44 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                return {
-                    "status": "error",
-                    "message": "Job submission client not available",
-                }
+                # Use Ray's built-in job submission for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+
+                    # Prepare submit arguments
+                    submit_kwargs: Dict[str, Any] = {
+                        "entrypoint": entrypoint,
+                    }
+
+                    if runtime_env is not None:
+                        submit_kwargs["runtime_env"] = runtime_env
+                    if job_id is not None:
+                        submit_kwargs["job_id"] = job_id
+                    if metadata is not None:
+                        submit_kwargs["metadata"] = metadata
+
+                    # Add any additional kwargs
+                    for key, value in kwargs.items():
+                        if key not in submit_kwargs and value is not None:
+                            submit_kwargs[key] = value
+
+                    # Submit the job
+                    submitted_job_id = job_client.submit_job(**submit_kwargs)
+
+                    return {
+                        "status": "submitted",
+                        "job_id": submitted_job_id,
+                        "message": f"Job {submitted_job_id} submitted successfully",
+                    }
+                except Exception as e:
+                    logger.error(f"Failed to submit job using Ray built-in client: {e}")
+                    return {
+                        "status": "error",
+                        "message": f"Job submission not available in Ray Client mode: {str(e)}",
+                    }
 
             # Type the submit_kwargs properly to avoid pyright errors
             submit_kwargs: Dict[str, Any] = {
@@ -433,10 +594,35 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                return {
-                    "status": "error",
-                    "message": "Job submission client not available",
-                }
+                # Use Ray's built-in job listing for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    jobs = job_client.list_jobs()
+
+                    return {
+                        "status": "success",
+                        "jobs": [
+                            {
+                                "job_id": job.job_id,
+                                "status": job.status,
+                                "entrypoint": job.entrypoint,
+                                "start_time": job.start_time,
+                                "end_time": job.end_time,
+                                "metadata": job.metadata or {},
+                                "runtime_env": job.runtime_env or {},
+                            }
+                            for job in jobs
+                        ],
+                    }
+                except Exception as e:
+                    logger.error(f"Failed to list jobs using Ray built-in client: {e}")
+                    return {
+                        "status": "error",
+                        "message": f"Job listing not available in Ray Client mode: {str(e)}",
+                    }
 
             jobs = self._job_client.list_jobs()
 
@@ -466,10 +652,33 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                return {
-                    "status": "error",
-                    "message": "Job submission client not available",
-                }
+                # Use Ray's built-in job status for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_details = job_client.get_job_info(job_id)
+
+                    return {
+                        "status": "success",
+                        "job_id": job_id,
+                        "job_status": job_details.status,
+                        "entrypoint": job_details.entrypoint,
+                        "start_time": job_details.start_time,
+                        "end_time": job_details.end_time,
+                        "metadata": job_details.metadata or {},
+                        "runtime_env": job_details.runtime_env or {},
+                        "message": job_details.message or "",
+                    }
+                except Exception as e:
+                    logger.error(
+                        f"Failed to get job status using Ray built-in client: {e}"
+                    )
+                    return {
+                        "status": "error",
+                        "message": f"Job status not available in Ray Client mode: {str(e)}",
+                    }
 
             job_details = self._job_client.get_job_info(job_id)
 
@@ -495,10 +704,32 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                return {
-                    "status": "error",
-                    "message": "Job submission client not available",
-                }
+                # Use Ray's built-in job cancellation for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    success = job_client.stop_job(job_id)
+
+                    if success:
+                        return {
+                            "status": "cancelled",
+                            "job_id": job_id,
+                            "message": f"Job {job_id} cancelled successfully",
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "job_id": job_id,
+                            "message": f"Failed to cancel job {job_id}",
+                        }
+                except Exception as e:
+                    logger.error(f"Failed to cancel job using Ray built-in client: {e}")
+                    return {
+                        "status": "error",
+                        "message": f"Job cancellation not available in Ray Client mode: {str(e)}",
+                    }
 
             success = self._job_client.stop_job(job_id)
 
@@ -688,15 +919,40 @@ class RayManager:
         try:
             self._ensure_initialized()
 
-            if job_id and self._job_client:
-                # Get job logs
-                logs = self._job_client.get_job_logs(job_id)
-                return {
-                    "status": "success",
-                    "log_type": "job",
-                    "job_id": job_id,
-                    "logs": logs,
-                }
+            if job_id:
+                if self._job_client:
+                    # Get job logs using job client
+                    logs = self._job_client.get_job_logs(job_id)
+                    return {
+                        "status": "success",
+                        "log_type": "job",
+                        "job_id": job_id,
+                        "logs": logs,
+                    }
+                else:
+                    # Use Ray's built-in job log functionality for Ray Client mode
+                    try:
+                        import ray.job_submission
+
+                        # Create a job submission client using the current Ray context
+                        job_client = ray.job_submission.JobSubmissionClient()
+                        logs = job_client.get_job_logs(job_id)
+
+                        return {
+                            "status": "success",
+                            "log_type": "job",
+                            "job_id": job_id,
+                            "logs": logs,
+                        }
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to get job logs using Ray built-in client: {e}"
+                        )
+                        return {
+                            "status": "partial",
+                            "message": f"Job log retrieval not available in Ray Client mode: {str(e)}",
+                            "suggestion": "Check Ray dashboard for comprehensive log viewing",
+                        }
             else:
                 # For actor/node logs, we'd need to implement log collection
                 # This is a simplified version
@@ -928,14 +1184,25 @@ class RayManager:
         try:
             self._ensure_initialized()
 
-            if not self._job_client:
-                return {
-                    "status": "error",
-                    "message": "Job submission client not available",
-                }
+            if self._job_client:
+                # Use job client if available
+                job_info = self._job_client.get_job_info(job_id)
+                job_logs = self._job_client.get_job_logs(job_id)
+            else:
+                # Use Ray's built-in job debugging for Ray Client mode
+                try:
+                    import ray.job_submission
 
-            job_info = self._job_client.get_job_info(job_id)
-            job_logs = self._job_client.get_job_logs(job_id)
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_info = job_client.get_job_info(job_id)
+                    job_logs = job_client.get_job_logs(job_id)
+                except Exception as e:
+                    logger.error(f"Failed to debug job using Ray built-in client: {e}")
+                    return {
+                        "status": "error",
+                        "message": f"Job debugging not available in Ray Client mode: {str(e)}",
+                    }
 
             # Extract debugging information
             debug_info = {
