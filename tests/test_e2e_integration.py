@@ -4,11 +4,11 @@
 import asyncio
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import psutil
@@ -1340,8 +1340,8 @@ async def test_simple_job_standalone():
     # This avoids the hanging issue with Ray + uv + subprocess
     import contextlib
     import importlib.util
-    import sys
     from io import StringIO
+    import sys
 
     # Capture stdout to verify output
     captured_output = StringIO()

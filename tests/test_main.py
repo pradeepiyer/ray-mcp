@@ -2,9 +2,9 @@
 """Unit tests for main.py functions."""
 
 import asyncio
+from io import StringIO
 import json
 import sys
-from io import StringIO
 from typing import Any, Dict, List, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 

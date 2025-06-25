@@ -1,7 +1,7 @@
 """Type definitions for the Ray MCP server."""
 
-import time
 from enum import Enum
+import time
 from typing import Any, Dict, List, Literal, Optional, Protocol, TypedDict, Union
 
 # ===== BASIC TYPE ALIASES =====

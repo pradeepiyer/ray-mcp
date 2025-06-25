@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Data processing pipeline example for testing the MCP server."""
 
+from datetime import datetime
 import json
 import random
 import statistics
 import time
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
