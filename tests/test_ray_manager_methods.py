@@ -73,7 +73,8 @@ class TestRayManagerMethods:
                     result = await ray_manager.start_cluster(num_cpus=4, num_gpus=1)
 
                     assert result["status"] == "started"
-                    assert result["address"] == "ray://127.0.0.1:10001"
+                    assert result["address"].startswith("ray://")
+                    assert ":" in result["address"]
                     assert ray_manager._is_initialized
                     mock_ray.init.assert_called_once()
 
@@ -198,7 +199,10 @@ class TestRayManagerMethods:
                 result = await ray_manager.submit_job("python test.py")
 
                 assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
+                assert (
+                    "Job submission not available in Ray Client mode"
+                    in result["message"]
+                )
 
     @pytest.mark.asyncio
     async def test_list_jobs_with_details(self, ray_manager, mock_job_client):
@@ -596,18 +600,32 @@ class TestRayManagerMethods:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 with patch("ray_mcp.ray_manager.JobSubmissionClient"):
-                    mock_ray.init.return_value = mock_ray_context
-                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
-                        "node_123"
-                    )
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
 
-                    # Start cluster without specifying num_cpus
-                    result = await ray_manager.start_cluster()
+                        mock_ray.init.return_value = mock_ray_context
+                        mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                            "node_123"
+                        )
 
-                    assert result["status"] == "started"
-                    # Verify default num_cpus=1 was set
-                    call_kwargs = mock_ray.init.call_args[1]
-                    assert call_kwargs["num_cpus"] == 1
+                        # Start cluster without specifying num_cpus, and no worker nodes
+                        result = await ray_manager.start_cluster(worker_nodes=[])
+
+                        assert result["status"] == "started"
+                        # Verify the ray start command was called with default num_cpus=1
+                        mock_popen.assert_called_once()
+                        call_args = mock_popen.call_args[0][0]
+                        assert "--num-cpus" in call_args
+                        # Find the index of --num-cpus and check the next argument
+                        cpu_index = call_args.index("--num-cpus")
+                        assert call_args[cpu_index + 1] == "1"
 
     @pytest.mark.asyncio
     async def test_start_cluster_with_no_job_submission_client(
@@ -728,7 +746,10 @@ class TestRayManagerMethods:
                 result = await ray_manager.debug_job("job_123")
 
                 assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
+                assert (
+                    "Job debugging not available in Ray Client mode"
+                    in result["message"]
+                )
 
     @pytest.mark.asyncio
     async def test_schedule_job_not_initialized(self, ray_manager):

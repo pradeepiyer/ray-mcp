@@ -57,7 +57,7 @@ class TestWorkerManager:
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert "--object-store-memory" in cmd
-        assert "953" in cmd  # 1000000000 // (1024 * 1024) = 953 MB
+        assert "1000000000" in cmd  # Bytes are passed directly
 
     def test_build_worker_command_with_resources(self, worker_manager):
         """Test building worker command with custom resources."""
