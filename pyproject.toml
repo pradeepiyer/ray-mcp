@@ -10,7 +10,7 @@ authors = [
     {name = "claude 4 sonnet", email = "ray-mcp@example.com"}
 ]
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0",
