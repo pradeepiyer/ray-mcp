@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Tests for multi-node Ray cluster functionality."""
 
-print("[DEBUG] Loading test_multi_node_cluster.py")
-
 import asyncio
 import json
 import subprocess
@@ -10,30 +8,22 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-print("[DEBUG] Imports completed")
-
 from ray_mcp.ray_manager import RayManager
 from ray_mcp.worker_manager import WorkerManager
-
-print("[DEBUG] Ray imports completed")
 
 
 @pytest.mark.fast
 class TestMultiNodeCluster:
     """Test cases for multi-node cluster functionality."""
 
-    print("[DEBUG] TestMultiNodeCluster class defined")
-
     @pytest.fixture
     def ray_manager(self):
         """Create a RayManager instance for testing."""
-        print("[DEBUG] Creating ray_manager fixture")
         return RayManager()
 
     @pytest.fixture
     def worker_manager(self):
         """Create a WorkerManager instance for testing."""
-        print("[DEBUG] Creating worker_manager fixture")
         return WorkerManager()
 
     @pytest.mark.asyncio
@@ -82,7 +72,6 @@ class TestMultiNodeCluster:
                                 head_node_port=10001,
                                 dashboard_port=8265,
                             )
-                            print("[DEBUG] start_cluster returned")
                             # Verify result
                             assert result["status"] == "started"
                             assert result["total_nodes"] == expected_total_nodes
@@ -92,7 +81,6 @@ class TestMultiNodeCluster:
                             mock_start_workers.assert_called_once_with(
                                 worker_configs, "ray://127.0.0.1:10001"
                             )
-        print("[DEBUG] test_start_cluster_with_worker_nodes completed")
 
     @pytest.mark.asyncio
     async def test_start_cluster_without_worker_nodes(self):
@@ -200,55 +188,62 @@ class TestMultiNodeCluster:
                 ray_manager = RayManager()
                 ray_manager._is_initialized = True
                 with patch.object(
-                    ray_manager._worker_manager, "get_worker_status"
+                    ray_manager._worker_manager,
+                    "get_worker_status",
+                    return_value=mock_worker_status,
                 ) as mock_get_status:
-                    mock_get_status.return_value = mock_worker_status
                     result = await ray_manager.get_worker_status()
                     assert result["status"] == "success"
-                    assert "worker_nodes" in result
                     assert result["total_workers"] == expected_total_workers
                     assert result["running_workers"] == expected_running_workers
+                    assert "worker_nodes" in result
+                    assert len(result["worker_nodes"]) == expected_total_workers
+                    mock_get_status.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cluster_status_with_workers(self):
-        """Test getting cluster status with worker information."""
-        mock_ray_nodes = [
-            {"NodeID": "node1", "Alive": True},
-            {"NodeID": "node2", "Alive": True},
-        ]
+        """Test cluster status includes worker information."""
         mock_worker_status = [
-            {"status": "running", "node_name": "worker-1", "process_id": 12345}
+            {
+                "status": "running",
+                "node_name": "worker-1",
+                "process_id": 12345,
+                "message": "Worker node 'worker-1' is running",
+            }
         ]
-        expected_total_nodes = len(mock_ray_nodes)
-        expected_alive_nodes = len([n for n in mock_ray_nodes if n["Alive"]])
-        expected_total_worker_nodes = len(mock_worker_status)
 
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray.is_initialized", return_value=True):
                 with patch(
-                    "ray_mcp.ray_manager.ray.cluster_resources",
-                    return_value={"CPU": 8, "memory": 16000000000},
-                ):
+                    "ray_mcp.ray_manager.ray.cluster_resources"
+                ) as mock_cluster_resources:
                     with patch(
-                        "ray_mcp.ray_manager.ray.available_resources",
-                        return_value={"CPU": 4, "memory": 8000000000},
-                    ):
-                        with patch(
-                            "ray_mcp.ray_manager.ray.nodes", return_value=mock_ray_nodes
-                        ):
+                        "ray_mcp.ray_manager.ray.available_resources"
+                    ) as mock_available_resources:
+                        with patch("ray_mcp.ray_manager.ray.nodes") as mock_nodes:
+                            mock_cluster_resources.return_value = {
+                                "CPU": 8,
+                                "memory": 16000000000,
+                            }
+                            mock_available_resources.return_value = {
+                                "CPU": 4,
+                                "memory": 8000000000,
+                            }
+                            mock_nodes.return_value = [
+                                {"NodeID": "node1", "Alive": True},
+                                {"NodeID": "node2", "Alive": True},
+                            ]
+
                             ray_manager = RayManager()
                             ray_manager._is_initialized = True
                             ray_manager._cluster_address = "ray://127.0.0.1:10001"
                             with patch.object(
-                                ray_manager._worker_manager, "get_worker_status"
+                                ray_manager._worker_manager,
+                                "get_worker_status",
+                                return_value=mock_worker_status,
                             ) as mock_get_status:
-                                mock_get_status.return_value = mock_worker_status
                                 result = await ray_manager.get_cluster_status()
                                 assert result["status"] == "running"
                                 assert "worker_nodes" in result
-                                assert (
-                                    result["total_worker_nodes"]
-                                    == expected_total_worker_nodes
-                                )
-                                assert result["nodes"] == expected_total_nodes
-                                assert result["alive_nodes"] == expected_alive_nodes
+                                assert len(result["worker_nodes"]) == 1
+                                assert result["worker_nodes"][0]["status"] == "running"

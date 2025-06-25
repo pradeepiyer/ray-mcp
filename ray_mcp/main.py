@@ -4,8 +4,8 @@
 import asyncio
 import json
 import logging
-import sys
 import os
+import sys
 from typing import Any, Dict, List, Optional, Union
 
 # Import MCP types
@@ -369,8 +369,10 @@ async def call_tool(
             result = {"status": "error", "message": f"Unknown tool: {name}"}
 
         # Check if enhanced output is enabled via environment variable
-        enhanced_output = os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
-        
+        enhanced_output = (
+            os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
+        )
+
         if enhanced_output:
             # Wrap the result with a system prompt for LLM enhancement
             enhanced_output = _wrap_with_system_prompt(name, result)
@@ -381,11 +383,16 @@ async def call_tool(
 
     except Exception as e:
         logger.error(f"Error executing {name}: {e}")
-        error_result = {"status": "error", "message": f"Error executing {name}: {str(e)}"}
-        
+        error_result = {
+            "status": "error",
+            "message": f"Error executing {name}: {str(e)}",
+        }
+
         # Check if enhanced output is enabled
-        enhanced_output = os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
-        
+        enhanced_output = (
+            os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
+        )
+
         if enhanced_output:
             enhanced_error = _wrap_with_system_prompt(name, error_result)
             return [TextContent(type="text", text=enhanced_error)]
@@ -395,14 +402,14 @@ async def call_tool(
 
 def _wrap_with_system_prompt(tool_name: str, result: Dict[str, Any]) -> str:
     """Wrap tool output with a system prompt for LLM enhancement.
-    
+
     This approach uses the LLM's capabilities to generate suggestions and next steps
     based on the tool response, without requiring external API calls.
     """
-    
+
     # Convert result to JSON string
     result_json = json.dumps(result, indent=2)
-    
+
     # Create a system prompt that instructs the LLM to enhance the output
     system_prompt = f"""You are an AI assistant helping with Ray cluster management. A user just called the '{tool_name}' tool and received the following response:
 

@@ -9,8 +9,8 @@ from typing import Any, Dict, List, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-
 from mcp.types import TextContent
+
 from ray_mcp.main import call_tool, list_tools, run_server
 
 
