@@ -6,9 +6,9 @@ import json
 from typing import Any, Dict, List, cast
 from unittest.mock import AsyncMock, Mock, patch
 
+from mcp.types import TextContent, Tool
 import pytest
 
-from mcp.types import TextContent, Tool
 from ray_mcp.main import call_tool, list_tools
 
 
