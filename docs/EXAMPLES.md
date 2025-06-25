@@ -21,6 +21,116 @@ When using the Ray MCP Server through an AI assistant, you **must first initiali
 
 **Important**: If you try to use MCP tools like `submit_job`, `list_jobs`, etc. before initializing Ray, you'll get an error message: "Ray is not initialized. Please start Ray first."
 
+## Enhanced Output Examples
+
+The Ray MCP Server supports LLM-enhanced tool responses that provide human-readable summaries and suggested next steps. This feature is controlled by the `RAY_MCP_ENHANCED_OUTPUT` environment variable.
+
+### Standard Output (Default)
+
+When `RAY_MCP_ENHANCED_OUTPUT=false` (default), tools return standard JSON responses:
+
+```json
+{
+  "tool": "start_ray",
+  "arguments": {"num_cpus": 4}
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Ray cluster started successfully",
+  "cluster_info": {
+    "num_cpus": 4,
+    "num_gpus": 0,
+    "object_store_memory": "1000000000"
+  }
+}
+```
+
+### Enhanced Output
+
+When `RAY_MCP_ENHANCED_OUTPUT=true`, tools return system prompts that instruct the LLM to generate enhanced responses:
+
+```json
+{
+  "tool": "start_ray",
+  "arguments": {"num_cpus": 4}
+}
+```
+
+**Response (Enhanced):**
+```
+You are an AI assistant helping with Ray cluster management. A user just called the 'start_ray' tool and received the following response:
+
+{
+  "status": "success",
+  "message": "Ray cluster started successfully",
+  "cluster_info": {
+    "num_cpus": 4,
+    "num_gpus": 0,
+    "object_store_memory": "1000000000"
+  }
+}
+
+Please provide a human-readable summary of what happened, add relevant context, and suggest logical next steps. Format your response as follows:
+
+**Tool Result Summary:**
+[Brief summary of what the tool call accomplished or revealed]
+
+**Context:**
+[Additional context about what this means for the Ray cluster or workflow]
+
+**Suggested Next Steps:**
+[List 2-3 relevant next actions the user might want to take, with specific tool names]
+
+**Available Commands:**
+[Quick reference of commonly used Ray MCP tools]
+
+Keep your response concise, helpful, and actionable. Focus on practical next steps that would be most useful for someone managing a Ray cluster.
+```
+
+The LLM will then generate a response like:
+
+```
+**Tool Result Summary:**
+Successfully started a Ray cluster with 4 CPUs and 1GB of object store memory.
+
+**Context:**
+Your Ray cluster is now running and ready to accept jobs. The cluster has 4 CPU cores available for distributed computing tasks.
+
+**Suggested Next Steps:**
+• Check cluster status with 'cluster_status' to verify all nodes are healthy
+• Submit jobs with 'submit_job' to start distributed computing tasks
+• Monitor resources with 'cluster_resources' to track usage
+
+**Available Commands:**
+• `cluster_status` - Check cluster health
+• `cluster_resources` - View resource usage
+• `list_jobs` - See all running jobs
+• `performance_metrics` - Get detailed metrics
+```
+
+### Configuration
+
+To enable enhanced output, set the environment variable in your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/your/venv/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
+      }
+    }
+  }
+}
+```
+
 ## Direct Script Execution
 
 All example scripts can also be run directly without the MCP server. They will automatically initialize Ray if needed:

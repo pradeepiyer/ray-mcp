@@ -33,6 +33,7 @@ docs/config/
 - **RayManager**: Core class managing Ray cluster operations
 - **Tool Functions**: Individual async functions for each MCP tool
 - **Error Handling**: Comprehensive error handling and status reporting
+- **Enhanced Output**: System prompt wrapper for LLM-generated suggestions and next steps
 
 ## Setup for Development
 
@@ -196,6 +197,57 @@ ruff check ray_mcp/
 - Ray Dashboard: `http://localhost:8265`
 - MCP Server logs: Check stdout/stderr
 - Ray logs: Usually in `/tmp/ray/session_*/logs/` 
+
+## Enhanced Output Development
+
+The Ray MCP Server includes an optional enhanced output feature that wraps tool responses with system prompts for LLM-generated suggestions and next steps.
+
+### How It Works
+
+1. **Environment Variable Control**: The feature is controlled by `RAY_MCP_ENHANCED_OUTPUT` environment variable
+2. **System Prompt Wrapper**: When enabled, tool responses are wrapped with structured prompts
+3. **LLM Enhancement**: The LLM generates human-readable summaries, context, and next steps
+4. **Backward Compatibility**: Default behavior returns standard JSON responses
+
+### Development Configuration
+
+```bash
+# Enable enhanced output for development
+export RAY_MCP_ENHANCED_OUTPUT=true
+
+# Disable enhanced output (default)
+export RAY_MCP_ENHANCED_OUTPUT=false
+```
+
+### Testing Enhanced Output
+
+```bash
+# Test with enhanced output enabled
+RAY_MCP_ENHANCED_OUTPUT=true uv run python -m pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
+
+# Test with standard output (default)
+uv run python -m pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
+```
+
+### Implementation Details
+
+- **Location**: `ray_mcp/main.py` - `_wrap_with_system_prompt()` function
+- **Configuration**: Environment variable `RAY_MCP_ENHANCED_OUTPUT`
+- **Fallback**: Returns original JSON if environment variable is not set to "true"
+- **Structure**: System prompts include tool name, JSON response, and LLM instructions
+
+### Customizing the Prompt
+
+To modify the system prompt structure, edit the `_wrap_with_system_prompt()` function in `ray_mcp/main.py`:
+
+```python
+def _wrap_with_system_prompt(tool_name: str, result: Dict[str, Any]) -> str:
+    # Customize the prompt structure here
+    system_prompt = f"""You are an AI assistant helping with Ray cluster management...
+    # ... rest of the prompt
+    """
+    return system_prompt
+```
 
 ## Recent Features
 

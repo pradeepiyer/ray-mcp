@@ -10,6 +10,7 @@ A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distr
 - **Real-time Monitoring**: Get cluster status, resource usage, and performance metrics
 - **Logging and Debugging**: Access logs and debug job issues
 - **Scheduling**: Schedule jobs with cron-like syntax
+- **LLM-Enhanced Output**: Optional system prompts that generate human-readable summaries and next steps
 
 ## Quick Start
 
@@ -113,6 +114,48 @@ For advanced configurations, you can specify custom worker nodes:
   }
 }
 ```
+
+## Enhanced Output Configuration
+
+The Ray MCP Server supports LLM-enhanced tool responses that provide human-readable summaries, context, and suggested next steps. This feature is controlled by the `RAY_MCP_ENHANCED_OUTPUT` environment variable:
+
+### Default Behavior (RAY_MCP_ENHANCED_OUTPUT=false)
+Returns standard JSON responses for backward compatibility:
+```json
+{
+  "status": "success",
+  "message": "Ray cluster started successfully",
+  "cluster_info": {
+    "num_cpus": 4,
+    "num_gpus": 1
+  }
+}
+```
+
+### Enhanced Output (RAY_MCP_ENHANCED_OUTPUT=true)
+Wraps responses with system prompts that instruct the LLM to generate:
+- **Tool Result Summary**: Brief summary of what the tool call accomplished
+- **Context**: Additional context about what the result means
+- **Suggested Next Steps**: Relevant next actions with specific tool names
+- **Available Commands**: Quick reference of commonly used tools
+
+**Configuration Example:**
+```json
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/your/venv/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
+      }
+    }
+  }
+}
+```
+
+This approach leverages the LLM's capabilities to provide actionable insights without requiring external API calls or tool-specific code.
 
 ## Available Tools
 

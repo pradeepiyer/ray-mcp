@@ -4,7 +4,8 @@
       "command": "/path/to/your/venv/bin/ray-mcp",
       "env": {
         "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0"
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "false"
       }
     }
   },
@@ -51,6 +52,10 @@
       "RAY_DASHBOARD_PORT": {
         "description": "Ray dashboard port",
         "default": "8265"
+      },
+      "RAY_MCP_ENHANCED_OUTPUT": {
+        "description": "If set to 'true', tool responses will be wrapped with a system prompt for LLM suggestions and next steps. Default is 'false' (plain JSON output).",
+        "default": "false"
       }
     },
     "usage_scenarios": {

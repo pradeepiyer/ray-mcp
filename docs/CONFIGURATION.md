@@ -4,6 +4,34 @@
 - `RAY_ADDRESS` - Ray cluster address (used by tools when provided, but doesn't auto-initialize Ray)
 - `RAY_DASHBOARD_HOST` - Dashboard host (default: 0.0.0.0)
 - `RAY_DASHBOARD_PORT` - Dashboard port (default: 8265)
+- `RAY_MCP_ENHANCED_OUTPUT` - Enable LLM-enhanced tool responses (default: false)
+
+### Enhanced Output Configuration
+
+The `RAY_MCP_ENHANCED_OUTPUT` environment variable controls whether tool responses include LLM-generated suggestions and next steps:
+
+- **`false`** (default): Returns plain JSON responses for backward compatibility
+- **`true`**: Wraps tool responses with system prompts that instruct the LLM to generate:
+  - Human-readable summaries of tool results
+  - Context about what the results mean
+  - Suggested next steps with specific tool names
+  - Available commands reference
+
+**Example with enhanced output enabled:**
+```json
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/your/venv/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
+      }
+    }
+  }
+}
+```
 
 ## MCP Client Configuration
 
@@ -17,7 +45,8 @@ Add to your Claude Desktop configuration:
       "command": "/path/to/your/venv/bin/ray-mcp",
       "env": {
         "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0"
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "false"
       }
     }
   }

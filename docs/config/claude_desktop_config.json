@@ -5,7 +5,8 @@
       "args": [],
       "env": {
         "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0"
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "false"
       }
     }
   }
