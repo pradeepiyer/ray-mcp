@@ -474,6 +474,8 @@ class TestMain:
 
                 assert len(result) == 1
                 mock_manager.stop_cluster.assert_called_once()
+                response_data = json.loads(result[0].text)
+                assert response_data["status"] == "stopped"
 
     def test_run_server_function_exists(self):
         """Test that run_server function exists and is importable."""
