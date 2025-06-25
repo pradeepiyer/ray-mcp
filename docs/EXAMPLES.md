@@ -145,7 +145,7 @@ python examples/data_pipeline.py
 
 ## Example Scripts
 
-The `examples/` directory contains 5 comprehensive Ray applications demonstrating different patterns and use cases:
+The `examples/` directory contains six comprehensive Ray applications demonstrating different patterns and use cases:
 
 ### 1. Simple Job (`examples/simple_job.py`)
 **Purpose**: Demonstrates basic Ray remote functions and job execution patterns.
