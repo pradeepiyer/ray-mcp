@@ -366,7 +366,8 @@ ray stop
 Choose examples based on your use case:
 
 - **Learning Ray basics**: Start with `simple_job.py`
+- **Multi-node clusters**: Try `multi_node_cluster.py`
 - **Stateful distributed computing**: Use `actor_example.py`
 - **Data processing pipelines**: Try `data_pipeline.py`
 - **Machine learning training**: Explore `distributed_training.py`
-- **Complex workflows**: Study `workflow_orchestration.py` 
+- **Complex workflows**: Study `workflow_orchestration.py`
