@@ -923,6 +923,8 @@ class RayManager:
                 if self._job_client:
                     # Get job logs using job client
                     logs = self._job_client.get_job_logs(job_id)
+                    if num_lines > 0:
+                        logs = "\n".join(logs.split("\n")[-num_lines:])
                     return {
                         "status": "success",
                         "log_type": "job",
@@ -937,6 +939,8 @@ class RayManager:
                         # Create a job submission client using the current Ray context
                         job_client = ray.job_submission.JobSubmissionClient()
                         logs = job_client.get_job_logs(job_id)
+                        if num_lines > 0:
+                            logs = "\n".join(logs.split("\n")[-num_lines:])
 
                         return {
                             "status": "success",
