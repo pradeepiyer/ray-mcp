@@ -1,14 +1,10 @@
 name: CI
 
-# DISABLED: GitHub Actions temporarily disabled
-# on:
-#   push:
-#     branches: [ main, develop ]
-#   pull_request:
-#     branches: [ main ]
-
-# Manual trigger only
 on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:

@@ -15,7 +15,7 @@ warnings.filterwarnings(
 )
 
 from ray_mcp.ray_manager import RayManager
-from ray_mcp.tools import (  # Basic cluster management; Job management; Actor management; Enhanced monitoring; Workflow & orchestration; Logs & debugging
+from ray_mcp.tools import (
     cancel_job,
     cluster_health_check,
     connect_ray_cluster,
