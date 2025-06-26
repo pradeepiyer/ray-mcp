@@ -269,7 +269,11 @@ class WorkerManager:
 
             # Start the process
             process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, text=True
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                text=True,
             )
 
             # Give it a moment to start
@@ -283,9 +287,9 @@ class WorkerManager:
                 return process
             else:
                 # Process failed to start
-                stdout, stderr = process.communicate()
+                exit_code = process.poll()
                 logger.error(
-                    f"Worker node '{node_name}' failed to start. stdout: {stdout}, stderr: {stderr}"
+                    f"Worker node '{node_name}' failed to start with exit code: {exit_code}"
                 )
                 return None
 

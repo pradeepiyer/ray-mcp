@@ -224,7 +224,11 @@ class RayManager:
                 )
                 self._head_node_process = head_process
                 await asyncio.sleep(2)
-                stdout, stderr = head_process.communicate()
+
+                # Consume output asynchronously to prevent deadlocks
+                stdout, stderr = await asyncio.get_event_loop().run_in_executor(
+                    None, head_process.communicate
+                )
                 exit_code = head_process.poll()
                 if exit_code != 0 or "Ray runtime started" not in stdout:
                     return {

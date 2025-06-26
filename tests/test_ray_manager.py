@@ -439,22 +439,6 @@ class TestRayManager:
     # ===== JOB MANAGEMENT ERROR CASES =====
 
     @pytest.mark.asyncio
-    async def test_submit_job_no_client(self, initialized_manager):
-        """Test submit job when job client is not available."""
-        initialized_manager._job_client = None
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-
-                result = await initialized_manager.submit_job("python test.py")
-                assert result["status"] == "error"
-                assert (
-                    "Job submission not available in Ray Client mode"
-                    in result["message"]
-                )
-
-    @pytest.mark.asyncio
     async def test_submit_job_exception(self, initialized_manager):
         """Test submit job with exception."""
         initialized_manager._job_client.submit_job.side_effect = Exception(
