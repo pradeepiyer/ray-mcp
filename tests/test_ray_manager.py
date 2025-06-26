@@ -507,7 +507,9 @@ class TestRayManager:
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
                 # Patch the actual ray.job_submission.JobSubmissionClient used in the fallback
-                with patch("ray.job_submission.JobSubmissionClient") as mock_job_submission:
+                with patch(
+                    "ray.job_submission.JobSubmissionClient"
+                ) as mock_job_submission:
                     mock_job_submission.side_effect = Exception(
                         "Could not find any running Ray instance"
                     )
