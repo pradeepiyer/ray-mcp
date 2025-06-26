@@ -48,6 +48,7 @@ class RayManager:
     def __init__(self) -> None:
         self._is_initialized = False
         self._cluster_address: Optional[str] = None
+        self._gcs_address: Optional[str] = None
         self._job_client: Optional[Any] = (
             None  # Use Any to avoid type issues with conditional imports
         )
@@ -171,6 +172,10 @@ class RayManager:
                 ray_context = ray.init(**init_kwargs)
                 self._is_initialized = True
                 self._cluster_address = ray_context.address_info["address"]
+                gcs_addr = ray_context.address_info["address"]
+                if isinstance(gcs_addr, str) and gcs_addr.startswith("ray://"):
+                    gcs_addr = gcs_addr[len("ray://") :]
+                self._gcs_address = gcs_addr
                 dashboard_url = ray_context.dashboard_url
             else:
                 import os
@@ -250,6 +255,7 @@ class RayManager:
                     ray_context = ray.init(**init_kwargs)
                     self._is_initialized = True
                     self._cluster_address = ray_address
+                    self._gcs_address = gcs_address
                 except Exception as e:
                     logger.error(f"Failed to connect to head node: {e}")
                     logger.error(f"Head node stdout: {stdout}")
@@ -292,10 +298,10 @@ class RayManager:
             if (
                 worker_nodes
                 and isinstance(worker_nodes, list)
-                and self._cluster_address
+                and self._gcs_address
             ):
                 worker_results = await self._worker_manager.start_worker_nodes(
-                    worker_nodes, self._cluster_address
+                    worker_nodes, self._gcs_address
                 )
 
             return {
@@ -359,6 +365,10 @@ class RayManager:
 
             self._is_initialized = True
             self._cluster_address = ray_context.address_info["address"]
+            gcs_addr = ray_context.address_info["address"]
+            if isinstance(gcs_addr, str) and gcs_addr.startswith("ray://"):
+                gcs_addr = gcs_addr[len("ray://") :]
+            self._gcs_address = gcs_addr
 
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
@@ -428,6 +438,7 @@ class RayManager:
 
             self._is_initialized = False
             self._cluster_address = None
+            self._gcs_address = None
             self._job_client = None
 
             return {

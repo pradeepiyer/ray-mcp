@@ -82,9 +82,9 @@ class TestMultiNodeCluster:
                             # Check that the call was made with the correct worker configs
                             call_args = mock_start_workers.call_args
                             assert call_args[0][0] == worker_configs
-                            # Check that the address follows the expected format (ray://IP:PORT)
+                            # Check that the address follows the expected format (IP:PORT without ray://)
                             address = call_args[0][1]
-                            assert address.startswith("ray://")
+                            assert not address.startswith("ray://")
                             assert ":" in address
 
     @pytest.mark.asyncio
