@@ -40,7 +40,6 @@ class TestMain:
             "performance_metrics",
             "health_check",
             "optimize_config",
-            "schedule_job",
             "get_logs",
         ]
 
@@ -415,21 +414,6 @@ class TestMain:
                 result = cast(List[TextContent], await call_tool("optimize_config", {}))
                 assert len(result) == 1
                 mock_manager.optimize_cluster_config.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_call_tool_schedule_job(self):
-        """Test schedule_job tool to ensure coverage."""
-        with patch("ray_mcp.main.RAY_AVAILABLE", True):
-            with patch("ray_mcp.main.ray_manager") as mock_manager:
-                mock_manager.schedule_job = AsyncMock(
-                    return_value={"status": "scheduled"}
-                )
-
-                args = {"entrypoint": "python daily_job.py", "schedule": "0 9 * * *"}
-                result = cast(List[TextContent], await call_tool("schedule_job", args))
-
-                assert len(result) == 1
-                mock_manager.schedule_job.assert_called_once_with(**args)
 
     @pytest.mark.asyncio
     async def test_call_tool_get_logs_all_parameters(self):

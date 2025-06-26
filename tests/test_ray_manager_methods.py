@@ -164,14 +164,21 @@ class TestRayManagerMethods:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
+                # Mock the ray.job_submission import to raise an exception
+                with patch(
+                    "ray_mcp.ray_manager.ray.job_submission"
+                ) as mock_job_submission:
+                    mock_job_submission.JobSubmissionClient.side_effect = ImportError(
+                        "Job submission not available"
+                    )
 
-                result = await ray_manager.submit_job("python test.py")
+                    result = await ray_manager.submit_job("python test.py")
 
-                assert result["status"] == "error"
-                assert (
-                    "Job submission not available in Ray Client mode"
-                    in result["message"]
-                )
+                    assert result["status"] == "error"
+                    assert (
+                        "Job submission not available in Ray Client mode"
+                        in result["message"]
+                    )
 
     @pytest.mark.asyncio
     async def test_list_jobs_with_details(self, ray_manager, mock_job_client):
@@ -476,63 +483,39 @@ class TestRayManagerMethods:
                 assert len(result["debug_info"]["debugging_suggestions"]) > 0
 
     @pytest.mark.asyncio
-    async def test_schedule_job(self, ray_manager):
-        """Test job scheduling functionality."""
-        ray_manager._is_initialized = True
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-
-                result = await ray_manager.schedule_job(
-                    entrypoint="python daily_report.py",
-                    schedule="0 9 * * *",
-                    timeout=3600,
-                    retry_count=3,
-                )
-
-                assert result["status"] == "job_scheduled"
-                assert result["entrypoint"] == "python daily_report.py"
-                assert result["schedule"] == "0 9 * * *"
-                assert "config" in result
-
-    @pytest.mark.asyncio
     async def test_optimize_cluster_config(self, ray_manager):
-        """Test cluster optimization recommendations."""
+        """Test cluster optimization functionality."""
         ray_manager._is_initialized = True
 
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
+                mock_ray.nodes.return_value = [
+                    {"NodeID": "node1", "Alive": True},
+                    {"NodeID": "node2", "Alive": True},
+                ]
                 mock_ray.cluster_resources.return_value = {
                     "CPU": 16,
                     "memory": 32000000000,
-                    "GPU": 2,
                 }
                 mock_ray.available_resources.return_value = {
-                    "CPU": 2,
-                    "memory": 4000000000,
-                    "GPU": 0,
+                    "CPU": 8,
+                    "memory": 16000000000,
                 }
-                mock_ray.nodes.return_value = [
-                    {
-                        "NodeID": "node1",
-                        "Alive": True,
-                        "Resources": {"CPU": 8, "memory": 16000000000},
-                    },
-                    {
-                        "NodeID": "node2",
-                        "Alive": True,
-                        "Resources": {"CPU": 8, "memory": 16000000000, "GPU": 2},
-                    },
-                ]
 
                 result = await ray_manager.optimize_cluster_config()
 
                 assert result["status"] == "success"
-                assert "suggestions" in result
                 assert "analysis" in result
+                assert "suggestions" in result
                 assert "timestamp" in result
+
+    @pytest.mark.asyncio
+    async def test_optimize_cluster_config_not_initialized(self, ray_manager):
+        """Test optimize cluster config when not initialized."""
+        result = await ray_manager.optimize_cluster_config()
+        assert result["status"] == "error"
+        assert "Ray is not initialized" in result["message"]
 
     @pytest.mark.asyncio
     async def test_get_logs_with_all_parameters(self, ray_manager, mock_job_client):
@@ -719,20 +702,6 @@ class TestRayManagerMethods:
                     "Job debugging not available in Ray Client mode"
                     in result["message"]
                 )
-
-    @pytest.mark.asyncio
-    async def test_schedule_job_not_initialized(self, ray_manager):
-        """Test schedule job when not initialized."""
-        result = await ray_manager.schedule_job("python test.py", "0 * * * *")
-        assert result["status"] == "error"
-        assert "Ray is not initialized" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_optimize_cluster_config_not_initialized(self, ray_manager):
-        """Test optimize cluster config when not initialized."""
-        result = await ray_manager.optimize_cluster_config()
-        assert result["status"] == "error"
-        assert "Ray is not initialized" in result["message"]
 
 
 if __name__ == "__main__":

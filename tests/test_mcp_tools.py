@@ -106,9 +106,6 @@ class TestMCPToolCalls:
             return_value={"status": "success", "suggestions": []}
         )
 
-        manager.schedule_job = AsyncMock(
-            return_value={"status": "job_scheduled", "schedule": "0 * * * *"}
-        )
         manager.get_logs = AsyncMock(
             return_value={"status": "success", "logs": "test logs"}
         )
@@ -306,24 +303,6 @@ class TestMCPToolCalls:
                 assert response_data["status"] == "success"
 
                 mock_ray_manager.optimize_cluster_config.assert_called_once()
-
-    # ===== WORKFLOW & ORCHESTRATION TESTS =====
-
-    @pytest.mark.asyncio
-    async def test_schedule_job_tool(self, mock_ray_manager):
-        """Test schedule_job tool call."""
-        with patch("ray_mcp.main.ray_manager", mock_ray_manager):
-            with patch("ray_mcp.main.RAY_AVAILABLE", True):
-                args = {
-                    "entrypoint": "python daily_job.py",
-                    "schedule": "0 2 * * *",  # Daily at 2 AM
-                }
-                result = await call_tool("schedule_job", args)
-
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "job_scheduled"
-
-                mock_ray_manager.schedule_job.assert_called_once_with(**args)
 
     # ===== LOGS & DEBUGGING TESTS =====
 

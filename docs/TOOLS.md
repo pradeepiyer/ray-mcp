@@ -26,9 +26,6 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 - `health_check` - Perform comprehensive cluster health check
 - `optimize_config` - Get cluster optimization recommendations
 
-## Job Scheduling
-- `schedule_job` - Configure job scheduling parameters (stores metadata only)
-
 ## Tool Parameters
 
 ### start_ray

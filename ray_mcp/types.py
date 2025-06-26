@@ -127,14 +127,6 @@ class HealthReport(TypedDict):
     recommendations: List[str]
 
 
-class ScheduleConfig(TypedDict):
-    """Job scheduling configuration."""
-
-    entrypoint: str
-    schedule: str
-    created_at: float
-
-
 # ===== BACKUP TYPES =====
 
 
@@ -152,20 +144,16 @@ class ClusterState(TypedDict):
 # ===== CONFIGURATION TYPES =====
 
 
-class JobSubmissionConfig(TypedDict, total=False):
-    """Configuration for job submission."""
+class JobConfig(TypedDict):
+    """Job configuration."""
 
     entrypoint: str
-    runtime_env: Optional[JsonDict]
-    job_id: Optional[JobId]
+    runtime_env: Optional[Dict[str, Any]]
+    job_id: Optional[str]
     metadata: Optional[Dict[str, str]]
-    entrypoint_num_cpus: Optional[Union[int, float]]
-    entrypoint_num_gpus: Optional[Union[int, float]]
-    entrypoint_memory: Optional[int]
-    entrypoint_resources: Optional[Dict[str, float]]
 
 
-class ActorConfig(TypedDict, total=False):
+class ActorConfig(TypedDict):
     """Configuration for actor creation."""
 
     name: Optional[str]

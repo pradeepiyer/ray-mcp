@@ -29,7 +29,6 @@ from ray_mcp.tools import (
     list_jobs,
     monitor_job_progress,
     optimize_cluster_config,
-    schedule_job,
     start_ray_cluster,
     stop_ray_cluster,
     submit_job,
@@ -471,27 +470,6 @@ class TestToolFunctions:
         assert result_data == expected_result
 
         mock_ray_manager.optimize_cluster_config.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_schedule_job(self, mock_ray_manager):
-        """Test schedule_job function."""
-        expected_result = {
-            "status": "job_scheduled",
-            "schedule": "0 * * * *",
-            "entrypoint": "python hourly_task.py",
-        }
-        mock_ray_manager.schedule_job = AsyncMock(return_value=expected_result)
-
-        result = await schedule_job(
-            mock_ray_manager, "python hourly_task.py", "0 * * * *"
-        )
-
-        result_data = json.loads(result)
-        assert result_data == expected_result
-
-        mock_ray_manager.schedule_job.assert_called_once_with(
-            entrypoint="python hourly_task.py", schedule="0 * * * *"
-        )
 
     @pytest.mark.asyncio
     async def test_get_logs_with_parameters(self, mock_ray_manager):

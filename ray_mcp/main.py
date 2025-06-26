@@ -36,7 +36,6 @@ from .types import (
     JobId,
     JobInfo,
     JobStatus,
-    JobSubmissionConfig,
     NodeId,
     NodeInfo,
     PerformanceMetrics,
@@ -73,7 +72,6 @@ async def list_tools() -> List[Tool]:
     - Job management: submit_job, list_jobs, job_status, cancel_job, monitor_job, debug_job
     - Actor management: list_actors, kill_actor
     - Enhanced monitoring: performance_metrics, health_check, optimize_config
-    - Workflow & orchestration: schedule_job
     - Logs & debugging: get_logs
 
     Failure modes:
@@ -282,28 +280,15 @@ async def list_tools() -> List[Tool]:
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="schedule_job",
-            description="Schedule a job to run periodically",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "entrypoint": {"type": "string"},
-                    "schedule": {"type": "string"},
-                },
-                "required": ["entrypoint", "schedule"],
-            },
-        ),
-        # Logs & debugging
-        Tool(
             name="get_logs",
-            description="Get logs from jobs, actors, or nodes",
+            description="Get logs from Ray cluster components",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "job_id": {"type": "string"},
                     "actor_id": {"type": "string"},
                     "node_id": {"type": "string"},
-                    "num_lines": {"type": "integer", "minimum": 1, "default": 100},
+                    "num_lines": {"type": "integer", "default": 100},
                 },
             },
         ),
@@ -371,8 +356,7 @@ async def call_tool(
         - health_check: no parameters
         - optimize_config: no parameters
 
-    Workflow & Logging:
-        - schedule_job: entrypoint (required), schedule (required)
+    Logging:
         - get_logs: job_id, actor_id, node_id, num_lines (all optional)
 
     Failure modes:
@@ -440,9 +424,6 @@ async def call_tool(
         elif name == "optimize_config":
             result = await ray_manager.optimize_cluster_config()
 
-        elif name == "schedule_job":
-            result = await ray_manager.schedule_job(**args)
-
         # Logs & debugging
         elif name == "get_logs":
             result = await ray_manager.get_logs(**args)
@@ -497,9 +478,9 @@ def _wrap_with_system_prompt(tool_name: str, result: Dict[str, Any]) -> str:
              with human-readable summaries, context, and suggested next steps
 
     The enhanced output includes:
-        - Tool Result Summary: Brief summary of what the tool accomplished
+        - Tool Result Summary: Brief summary of what the tool call accomplished or revealed
         - Context: Additional context about what this means for the Ray cluster
-        - Suggested Next Steps: 2-3 relevant next actions with specific tool names
+        - Suggested Next Steps: 2-3 relevant next actions the user might want to take, with specific tool names
         - Available Commands: Quick reference of commonly used Ray MCP tools
         - Original Response: The complete JSON response for reference
     """

@@ -53,7 +53,6 @@ class TestMCPIntegration:
             "performance_metrics",
             "health_check",
             "optimize_config",
-            "schedule_job",
             "debug_job",
         }
 

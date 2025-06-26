@@ -5,12 +5,10 @@ A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distr
 ## Features
 
 - **Multi-Node Cluster Management**: Start and manage Ray clusters with head nodes and worker nodes
-- **Job Management**: Submit, monitor, and manage Ray jobs
-- **Actor Management**: Create and manage Ray actors
-- **Real-time Monitoring**: Get cluster status, resource usage, and performance metrics
-- **Logging and Debugging**: Access logs and debug job issues
-- **Scheduling**: Schedule jobs with cron-like syntax
-- **LLM-Enhanced Output**: Optional system prompts that generate human-readable summaries and next steps
+- **Job Management**: Submit, monitor, and cancel distributed jobs
+- **Actor Management**: List and manage Ray actors
+- **Monitoring**: Performance metrics, health checks, and optimization
+- **Debugging**: Log retrieval and job debugging tools
 
 ## Quick Start
 
@@ -189,9 +187,6 @@ The server provides a comprehensive set of tools for Ray management, covering cl
 - `performance_metrics` - Get detailed cluster performance metrics
 - `health_check` - Perform comprehensive cluster health check
 - `optimize_config` - Get cluster optimization recommendations
-
-### Job Scheduling
-- `schedule_job` - Configure job scheduling parameters
 
 ## Examples
 

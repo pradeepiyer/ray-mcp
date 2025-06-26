@@ -30,7 +30,6 @@ from .types import (
     JobId,
     JobInfo,
     JobStatus,
-    JobSubmissionConfig,
     NodeId,
     NodeInfo,
     PerformanceMetrics,
@@ -1138,33 +1137,7 @@ class RayManager:
 
     # ===== WORKFLOW & ORCHESTRATION =====
 
-    async def schedule_job(
-        self, entrypoint: str, schedule: str, **kwargs: Any
-    ) -> Dict[str, Any]:
-        """Schedule a job with cron-like scheduling."""
-        try:
-            self._ensure_initialized()
-
-            schedule_config = {
-                "entrypoint": entrypoint,
-                "schedule": schedule,
-                "created_at": time.time(),
-                **kwargs,
-            }
-
-            return {
-                "status": "job_scheduled",
-                "entrypoint": entrypoint,
-                "schedule": schedule,
-                "config": schedule_config,
-                "message": f"Job scheduled with cron expression: {schedule}",
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to schedule job: {e}")
-            return {"status": "error", "message": f"Failed to schedule job: {str(e)}"}
-
-    # ===== DEVELOPER TOOLS =====
+    # ===== LOGS & DEBUGGING =====
 
     async def debug_job(self, job_id: str) -> Dict[str, Any]:
         """Interactive debugging tools for jobs."""

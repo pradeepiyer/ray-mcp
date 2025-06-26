@@ -9,7 +9,6 @@ Key Features:
     - Job Management: Submit, monitor, and cancel distributed jobs
     - Actor Management: List and manage Ray actors
     - Monitoring: Performance metrics, health checks, and optimization
-    - Workflow Orchestration: Scheduled job execution
     - Debugging: Log retrieval and job debugging tools
 
 The server supports both single-node and multi-node Ray clusters, with automatic

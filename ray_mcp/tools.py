@@ -630,51 +630,6 @@ async def optimize_cluster_config(ray_manager: RayManager) -> str:
 # ===== WORKFLOW & ORCHESTRATION =====
 
 
-async def schedule_job(
-    ray_manager: RayManager, entrypoint: str, schedule: str, **kwargs: Any
-) -> str:
-    """Schedule a job with cron-like scheduling.
-
-    Schedules a job to run periodically using cron-like syntax. The job will be
-    automatically submitted to the cluster according to the specified schedule.
-
-    Args:
-        ray_manager: The RayManager instance to use for cluster operations
-        entrypoint: Command or Python script to execute
-        schedule: Cron-like schedule string (e.g., "0 0 * * *" for daily at midnight)
-        **kwargs: Additional job submission parameters (runtime_env, metadata, etc.)
-
-    Returns:
-        JSON string containing scheduling status and job information:
-        - schedule_id: Unique identifier for the scheduled job
-        - entrypoint: Command to be executed
-        - schedule: Cron schedule string
-        - next_run: Next scheduled execution time
-        - status: Schedule status (ACTIVE, PAUSED, etc.)
-        - job_history: List of previous executions
-
-        When RAY_MCP_ENHANCED_OUTPUT=true, returns LLM-enhanced output with:
-        - Tool Result Summary: Brief summary of what the tool accomplished
-        - Context: Additional context about what this means for the Ray cluster
-        - Suggested Next Steps: 2-3 relevant next actions with specific tool names
-        - Available Commands: Quick reference of commonly used Ray MCP tools
-        - Original Response: Complete JSON response for reference
-
-        When RAY_MCP_ENHANCED_OUTPUT=false (default), returns raw JSON response.
-
-    Failure modes:
-        - Invalid schedule format: Returns schedule parsing errors
-        - Invalid entrypoint: Returns command validation errors
-        - Scheduling service unavailable: Returns "scheduling not available" error
-        - Permission issues: Returns access denied errors
-        - Resource constraints: Returns insufficient resources errors
-    """
-    result = await ray_manager.schedule_job(
-        entrypoint=entrypoint, schedule=schedule, **kwargs
-    )
-    return json.dumps(result, indent=2)
-
-
 # ===== LOGS & DEBUGGING =====
 
 
