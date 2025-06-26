@@ -105,6 +105,46 @@ class TestRayManagerMethods:
                     assert args["address"] == "ray://remote:10001"
 
     @pytest.mark.asyncio
+    async def test_start_cluster_workers_only(self, ray_manager, mock_ray_context):
+        """Start worker nodes on an existing cluster when head_node is False."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_ray_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "node_123"
+                )
+
+                with patch.object(
+                    ray_manager, "connect_cluster", new_callable=AsyncMock
+                ) as mock_connect:
+                    mock_connect.return_value = {
+                        "status": "connected",
+                        "address": "ray://remote:10001",
+                        "dashboard_url": "http://remote:8265",
+                        "node_id": "node",
+                        "session_name": "session",
+                        "job_client_status": "ready",
+                        "message": "connected",
+                    }
+
+                    with patch.object(
+                        ray_manager._worker_manager,
+                        "start_worker_nodes",
+                        new_callable=AsyncMock,
+                    ) as mock_start_workers:
+                        mock_start_workers.return_value = []
+
+                        result = await ray_manager.start_cluster(
+                            head_node=False,
+                            address="ray://remote:10001",
+                            worker_nodes=[],
+                        )
+
+                        assert result["status"] == "started"
+                        mock_connect.assert_called_once_with("ray://remote:10001")
+                        mock_start_workers.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_stop_cluster_success(self, ray_manager):
         """Test successful cluster stop."""
         ray_manager._is_initialized = True

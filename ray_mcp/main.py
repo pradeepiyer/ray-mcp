@@ -64,6 +64,15 @@ async def list_tools() -> List[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "head_node": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Start a head node. Set to false to add workers to an existing cluster",
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "Existing cluster address when head_node is false",
+                    },
                     "num_cpus": {
                         "type": "integer",
                         "minimum": 1,

@@ -36,9 +36,12 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 
 ### start_ray
 Start a new Ray cluster with head node and worker nodes. **Defaults to multi-node cluster with 2 worker nodes.**
+Set `head_node` to `false` to attach additional workers to an existing cluster specified via `address`.
 
 ```json
 {
+  "head_node": true,         // Start a head node (set false to add workers only)
+  "address": "ray://127.0.0.1:10001",  // Existing cluster address when head_node is false
   "num_cpus": 1,              // Number of CPUs for head node (default: 1)
   "num_gpus": 1,              // Number of GPUs for head node
   "object_store_memory": 1000000000,  // Object store memory in bytes for head node
@@ -91,6 +94,8 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
   "worker_nodes": []  // Empty array for single-node cluster
 }
 ```
+
+When `head_node` is `false`, you must provide the `address` of the running cluster to attach workers.
 
 ### connect_ray
 ```json

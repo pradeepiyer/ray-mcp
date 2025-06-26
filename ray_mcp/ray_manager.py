@@ -161,6 +161,41 @@ class RayManager:
                 match = re.search(pattern, stdout)
                 return match.group(1) if match else None
 
+            if not head_node:
+                if not address:
+                    return {
+                        "status": "error",
+                        "message": "address is required when head_node is False",
+                    }
+
+                connect_result = await self.connect_cluster(address, **kwargs)
+                if connect_result.get("status") == "error":
+                    return connect_result
+
+                if worker_nodes is None:
+                    worker_nodes = self._get_default_worker_config()
+
+                worker_results: List[Dict[str, Any]] = []
+                if (
+                    worker_nodes
+                    and isinstance(worker_nodes, list)
+                    and self._cluster_address
+                ):
+                    worker_results = await self._worker_manager.start_worker_nodes(
+                        worker_nodes, self._cluster_address
+                    )
+
+                connect_result.update(
+                    {
+                        "status": "started",
+                        "message": "Worker nodes started on existing cluster",
+                        "worker_nodes": worker_results,
+                        "total_nodes": 1 + len(worker_results),
+                    }
+                )
+
+                return connect_result
+
             if address:
                 # Connect to existing cluster
                 init_kwargs: Dict[str, Any] = {

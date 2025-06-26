@@ -53,6 +53,8 @@ class TestMain:
         start_ray_tool = next(tool for tool in tools if tool.name == "start_ray")
         assert "num_cpus" in start_ray_tool.inputSchema["properties"]
         assert start_ray_tool.inputSchema["properties"]["num_cpus"]["default"] == 1
+        assert "head_node" in start_ray_tool.inputSchema["properties"]
+        assert start_ray_tool.inputSchema["properties"]["head_node"]["default"] is True
 
     @pytest.mark.asyncio
     async def test_call_tool_ray_unavailable(self):
