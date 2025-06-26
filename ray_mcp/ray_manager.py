@@ -69,11 +69,10 @@ class RayManager:
         if not self.is_initialized:
             raise RuntimeError("Ray is not initialized. Please start Ray first.")
 
-    def _initialize_job_client_with_retry(
+    async def _initialize_job_client_with_retry(
         self, address: str, max_retries: int = 8, delay: float = 3.0
     ):
         """Initialize job client with retry logic to wait for dashboard agent to be ready."""
-        import time
 
         if JobSubmissionClient is None:
             logger.error("JobSubmissionClient is not available")
@@ -99,7 +98,7 @@ class RayManager:
                         logger.warning(
                             f"Job client initialization attempt {attempt + 1} failed (retryable): {e}. Retrying in {delay} seconds..."
                         )
-                        time.sleep(delay)
+                        await asyncio.sleep(delay)
                         # Exponential backoff for later attempts
                         if attempt >= 3:
                             delay *= 1.5
@@ -273,7 +272,7 @@ class RayManager:
                 # Use the dashboard URL (HTTP address) for job client
                 job_client_address = ray_context.dashboard_url
                 if job_client_address:
-                    self._job_client = self._initialize_job_client_with_retry(
+                    self._job_client = await self._initialize_job_client_with_retry(
                         job_client_address
                     )
                     if self._job_client is None:
@@ -381,7 +380,7 @@ class RayManager:
                 # Use the dashboard URL (HTTP address) for job client
                 job_client_address = ray_context.dashboard_url
                 if job_client_address:
-                    self._job_client = self._initialize_job_client_with_retry(
+                    self._job_client = await self._initialize_job_client_with_retry(
                         job_client_address
                     )
                     if self._job_client is None:
