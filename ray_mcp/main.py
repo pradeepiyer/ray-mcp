@@ -55,7 +55,31 @@ logger = logging.getLogger(__name__)
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
-    """List available Ray tools."""
+    """List available Ray tools with their schemas and descriptions.
+
+    Returns a comprehensive list of all available Ray cluster management tools
+    that can be called by LLM agents. Each tool includes detailed input schemas
+    with parameter descriptions, types, and validation rules.
+
+    Returns:
+        List[Tool]: List of Tool objects containing:
+            - name: Tool identifier (e.g., "start_ray", "submit_job")
+            - description: Human-readable description of tool functionality
+            - inputSchema: JSON schema defining required and optional parameters
+                with types, constraints, and descriptions for each parameter
+
+    The tools are organized into categories:
+    - Basic cluster management: start_ray, connect_ray, stop_ray, cluster_info
+    - Job management: submit_job, list_jobs, job_status, cancel_job, monitor_job, debug_job
+    - Actor management: list_actors, kill_actor
+    - Enhanced monitoring: performance_metrics, health_check, optimize_config
+    - Workflow & orchestration: schedule_job
+    - Logs & debugging: get_logs
+
+    Failure modes:
+        - No tools available: Returns empty list (should not occur in normal operation)
+        - Schema generation errors: Returns tools with basic schemas
+    """
     return [
         # Basic cluster management
         Tool(
@@ -199,7 +223,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="monitor_job",
-            description="Monitor job progress",
+            description="Get real-time progress monitoring for a job",
             inputSchema={
                 "type": "object",
                 "properties": {"job_id": {"type": "string"}},
@@ -208,7 +232,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="debug_job",
-            description="Debug a job with detailed information",
+            description="Interactive debugging tools for jobs",
             inputSchema={
                 "type": "object",
                 "properties": {"job_id": {"type": "string"}},
@@ -218,10 +242,15 @@ async def list_tools() -> List[Tool]:
         # Actor management
         Tool(
             name="list_actors",
-            description="List all actors in the cluster",
+            description="List actors in the cluster",
             inputSchema={
                 "type": "object",
-                "properties": {"filters": {"type": "object"}},
+                "properties": {
+                    "filters": {
+                        "type": "object",
+                        "description": "Optional filters for actor list",
+                    }
+                },
             },
         ),
         Tool(
@@ -239,17 +268,17 @@ async def list_tools() -> List[Tool]:
         # Enhanced monitoring
         Tool(
             name="performance_metrics",
-            description="Get detailed cluster performance metrics",
+            description="Get detailed performance metrics for the cluster",
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="health_check",
-            description="Perform comprehensive cluster health check",
+            description="Perform automated cluster health monitoring",
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="optimize_config",
-            description="Get cluster optimization recommendations",
+            description="Analyze cluster usage and suggest optimizations",
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
@@ -285,7 +314,81 @@ async def list_tools() -> List[Tool]:
 async def call_tool(
     name: str, arguments: Optional[Dict[str, Any]] = None
 ) -> List[TextContent]:
-    """Call a Ray tool."""
+    """Execute a Ray cluster management tool with the provided arguments.
+
+    This is the main handler that routes tool calls to the appropriate Ray manager
+    methods. It handles parameter validation, error handling, and response formatting
+    for all available Ray tools.
+
+    Args:
+        name: The name of the tool to execute (e.g., "start_ray", "submit_job")
+        arguments: Optional dictionary containing tool-specific parameters.
+            The structure depends on the tool being called and should match
+            the tool's input schema.
+
+    Returns:
+        List[TextContent]: List containing a single TextContent object with:
+
+            When RAY_MCP_ENHANCED_OUTPUT=true:
+            - LLM-enhanced response with structured format including:
+                - Tool Result Summary: Brief summary of what the tool accomplished
+                - Context: Additional context about what this means for the Ray cluster
+                - Suggested Next Steps: 2-3 relevant next actions with specific tool names
+                - Available Commands: Quick reference of commonly used Ray MCP tools
+                - Original Response: Complete JSON response for reference
+            - The enhanced output is formatted as a system prompt that instructs
+              the calling LLM to provide human-readable summaries and actionable
+              next steps based on the tool response
+
+            When RAY_MCP_ENHANCED_OUTPUT=false (default):
+            - Raw JSON response with tool execution results
+            - Standard error response if tool execution fails
+
+            Error responses include detailed error messages and context for debugging.
+
+    Tool Categories and Common Parameters:
+
+    Cluster Management:
+        - start_ray: num_cpus, num_gpus, worker_nodes, head_node_port, dashboard_port
+        - connect_ray: address (required)
+        - stop_ray: no parameters
+        - cluster_info: no parameters
+
+    Job Management:
+        - submit_job: entrypoint (required), runtime_env, job_id, metadata
+        - list_jobs: no parameters
+        - job_status: job_id (required)
+        - cancel_job: job_id (required)
+        - monitor_job: job_id (required)
+        - debug_job: job_id (required)
+
+    Actor Management:
+        - list_actors: filters (optional)
+        - kill_actor: actor_id (required), no_restart (optional)
+
+    Monitoring & Optimization:
+        - performance_metrics: no parameters
+        - health_check: no parameters
+        - optimize_config: no parameters
+
+    Workflow & Logging:
+        - schedule_job: entrypoint (required), schedule (required)
+        - get_logs: job_id, actor_id, node_id, num_lines (all optional)
+
+    Failure modes:
+        - Ray not available: Returns error message about missing Ray installation
+        - Unknown tool: Returns "Unknown tool" error with tool name
+        - Invalid parameters: Returns parameter validation errors
+        - Tool execution errors: Returns specific error messages from Ray operations
+        - Network/connection issues: Returns connection timeout or network errors
+        - Permission issues: Returns access denied errors
+        - Resource constraints: Returns insufficient resources errors
+
+    Environment Variables:
+        - RAY_MCP_ENHANCED_OUTPUT: When set to "true", enables LLM-enhanced responses
+          with summaries, context, and suggested next steps. When "false" or unset,
+          returns raw JSON responses for backward compatibility.
+    """
     if not RAY_AVAILABLE:
         return [
             TextContent(
@@ -384,6 +487,21 @@ def _wrap_with_system_prompt(tool_name: str, result: Dict[str, Any]) -> str:
 
     This approach uses the LLM's capabilities to generate suggestions and next steps
     based on the tool response, without requiring external API calls.
+
+    Args:
+        tool_name: The name of the tool that was executed
+        result: The result dictionary from the tool execution
+
+    Returns:
+        str: A formatted system prompt that instructs the LLM to enhance the output
+             with human-readable summaries, context, and suggested next steps
+
+    The enhanced output includes:
+        - Tool Result Summary: Brief summary of what the tool accomplished
+        - Context: Additional context about what this means for the Ray cluster
+        - Suggested Next Steps: 2-3 relevant next actions with specific tool names
+        - Available Commands: Quick reference of commonly used Ray MCP tools
+        - Original Response: The complete JSON response for reference
     """
 
     # Convert result to JSON string
@@ -418,7 +536,25 @@ Keep your response concise, helpful, and actionable. Focus on practical next ste
 
 
 async def main():
-    """Main entry point for the MCP server."""
+    """Main entry point for the MCP server.
+
+    Initializes and runs the Ray MCP server using stdio communication.
+    The server provides tools for Ray cluster management that can be called
+    by LLM agents through the MCP protocol.
+
+    The server:
+        - Validates Ray availability before starting
+        - Sets up stdio communication channels
+        - Registers tool handlers for Ray operations
+        - Handles graceful shutdown on interruption
+        - Cleans up Ray resources on exit
+
+    Failure modes:
+        - Ray not available: Exits with error code 1 and error message
+        - Communication setup failure: Logs error and exits
+        - Unexpected exceptions: Logs error and exits with error code 1
+        - Keyboard interrupt: Gracefully shuts down and exits
+    """
     if not RAY_AVAILABLE:
         logger.error("Ray is not available. Please install Ray.")
         sys.exit(1)
@@ -445,7 +581,25 @@ async def main():
 
 
 def run_server():
-    """Synchronous entry point for console script."""
+    """Synchronous entry point for console script.
+
+    Provides a synchronous wrapper around the async main() function for use
+    as a console script entry point. This allows the MCP server to be run
+    directly from the command line.
+
+    Usage:
+        python -m ray_mcp.main
+        # or as a console script if installed via pip
+
+    The function:
+        - Runs the async main() function in an event loop
+        - Handles any unhandled exceptions from the main function
+        - Ensures proper cleanup of resources
+
+    Failure modes:
+        - Event loop errors: Propagates exceptions from main()
+        - Resource cleanup issues: Logs warnings but doesn't prevent shutdown
+    """
     asyncio.run(main())
 
 
