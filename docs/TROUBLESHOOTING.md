@@ -162,7 +162,7 @@ ray-mcp --log-level DEBUG
 4. Check network connectivity for distributed setups
 
 ### High Memory Usage
-1. Reduce object store memory: `--object-store-memory=500000000`
+1. Reduce object store memory: `--object-store-memory=500 * 1024 * 1024`
 2. Use Ray object references efficiently
 3. Clean up unused objects: `ray.shutdown()`
 

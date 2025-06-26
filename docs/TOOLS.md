@@ -40,7 +40,7 @@ Start a new Ray cluster with head node and worker nodes. **Defaults to multi-nod
     {
       "num_cpus": 1,          // Number of CPUs for this worker
       "num_gpus": 0,          // Number of GPUs for this worker
-      "object_store_memory": 500000000,  // Object store memory for this worker
+      "object_store_memory": 500 * 1024 * 1024,  // Object store memory for this worker
       "node_name": "worker-1", // Optional name for this worker
       "resources": {           // Optional custom resources
         "custom_resource": 2

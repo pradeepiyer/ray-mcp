@@ -120,7 +120,7 @@ class TestMultiNodeCluster:
                                     "config": {
                                         "num_cpus": 2,
                                         "num_gpus": 0,
-                                        "object_store_memory": 500000000,
+                                        "object_store_memory": 500 * 1024 * 1024,
                                         "node_name": "default-worker-1",
                                     },
                                 },
@@ -132,7 +132,7 @@ class TestMultiNodeCluster:
                                     "config": {
                                         "num_cpus": 2,
                                         "num_gpus": 0,
-                                        "object_store_memory": 500000000,
+                                        "object_store_memory": 500 * 1024 * 1024,
                                         "node_name": "default-worker-2",
                                     },
                                 },

@@ -432,14 +432,14 @@ async def call_tool(
             result = {"status": "error", "message": f"Unknown tool: {name}"}
 
         # Check if enhanced output is enabled via environment variable
-        enhanced_output = (
+        use_enhanced_output = (
             os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
         )
 
-        if enhanced_output:
+        if use_enhanced_output:
             # Wrap the result with a system prompt for LLM enhancement
-            enhanced_output = _wrap_with_system_prompt(name, result)
-            return [TextContent(type="text", text=enhanced_output)]
+            enhanced_response = _wrap_with_system_prompt(name, result)
+            return [TextContent(type="text", text=enhanced_response)]
         else:
             # Return original JSON response for backward compatibility
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -452,13 +452,13 @@ async def call_tool(
         }
 
         # Check if enhanced output is enabled
-        enhanced_output = (
+        use_enhanced_output = (
             os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
         )
 
-        if enhanced_output:
-            enhanced_error = _wrap_with_system_prompt(name, error_result)
-            return [TextContent(type="text", text=enhanced_error)]
+        if use_enhanced_output:
+            enhanced_error_response = _wrap_with_system_prompt(name, error_result)
+            return [TextContent(type="text", text=enhanced_error_response)]
         else:
             return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
 

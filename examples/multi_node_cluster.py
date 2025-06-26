@@ -28,7 +28,7 @@ async def demonstrate_multi_node_cluster():
             {
                 "num_cpus": 2,
                 "num_gpus": 0,
-                "object_store_memory": 500000000,  # 500MB
+                "object_store_memory": 500 * 1024 * 1024,  # 500MB
                 "node_name": "worker-1",
             },
             {

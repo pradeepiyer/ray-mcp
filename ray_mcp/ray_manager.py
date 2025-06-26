@@ -331,13 +331,13 @@ class RayManager:
             {
                 "num_cpus": 1,  # Reduced from 2 to 1 to fit with default head node
                 "num_gpus": 0,
-                "object_store_memory": 500000000,  # 500MB
+                "object_store_memory": 500 * 1024 * 1024,  # 500MB
                 "node_name": "default-worker-1",
             },
             {
                 "num_cpus": 1,  # Reduced from 2 to 1 to fit with default head node
                 "num_gpus": 0,
-                "object_store_memory": 500000000,  # 500MB
+                "object_store_memory": 500 * 1024 * 1024,  # 500MB
                 "node_name": "default-worker-2",
             },
         ]
