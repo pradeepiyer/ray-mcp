@@ -144,7 +144,11 @@ class WorkerManager:
 
             # Start the process
             process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, text=True
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                text=True,
             )
 
             # Give it a moment to start
