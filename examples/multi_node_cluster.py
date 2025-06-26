@@ -52,28 +52,13 @@ async def demonstrate_multi_node_cluster():
 
         print(f"Cluster start result: {json.dumps(result, indent=2)}")
 
-        # Example 2: Get cluster status
-        print("\n2. Getting cluster status...")
-        status = await ray_manager.get_cluster_status()
-        print(f"Cluster status: {json.dumps(status, indent=2)}")
+        # Example 2: Get cluster info
+        print("\n2. Getting cluster info...")
+        cluster_info = await ray_manager.get_cluster_info()
+        print(f"Cluster info: {json.dumps(cluster_info, indent=2)}")
 
-        # Example 3: Get worker status
-        print("\n3. Getting worker node status...")
-        worker_status = await ray_manager.get_worker_status()
-        print(f"Worker status: {json.dumps(worker_status, indent=2)}")
-
-        # Example 4: Get cluster resources
-        print("\n4. Getting cluster resources...")
-        resources = await ray_manager.get_cluster_resources()
-        print(f"Cluster resources: {json.dumps(resources, indent=2)}")
-
-        # Example 5: Get cluster nodes
-        print("\n5. Getting cluster nodes...")
-        nodes = await ray_manager.get_cluster_nodes()
-        print(f"Cluster nodes: {json.dumps(nodes, indent=2)}")
-
-        # Example 6: Stop the cluster
-        print("\n6. Stopping the cluster...")
+        # Example 3: Stop the cluster
+        print("\n3. Stopping the cluster...")
         stop_result = await ray_manager.stop_cluster()
         print(f"Stop result: {json.dumps(stop_result, indent=2)}")
 

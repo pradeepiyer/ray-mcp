@@ -41,23 +41,20 @@ class TestMCPIntegration:
             "start_ray",
             "connect_ray",
             "stop_ray",
-            "cluster_status",
-            "cluster_resources",
-            "cluster_nodes",
-            "worker_status",
+            "cluster_info",
             "submit_job",
             "list_jobs",
             "job_status",
             "cancel_job",
             "monitor_job",
-            "debug_job",
             "list_actors",
             "kill_actor",
+            "get_logs",
             "performance_metrics",
             "health_check",
             "optimize_config",
             "schedule_job",
-            "get_logs",
+            "debug_job",
         }
 
         # All required tools must be present
@@ -102,13 +99,18 @@ class TestMCPIntegration:
                 "message": "Cluster started successfully",
             }
         )
-        mock_ray_manager.get_cluster_status = AsyncMock(
+        mock_ray_manager.get_cluster_info = AsyncMock(
             return_value={
-                "status": "running",
-                "cluster_resources": {"CPU": 8, "memory": 16000000000},
-                "available_resources": {"CPU": 4, "memory": 8000000000},
-                "nodes": 2,
-                "alive_nodes": 2,
+                "status": "success",
+                "cluster_overview": {
+                    "status": "running",
+                    "total_nodes": 2,
+                    "alive_nodes": 2,
+                },
+                "resources": {
+                    "cluster_resources": {"CPU": 8, "memory": 16000000000},
+                    "available_resources": {"CPU": 4, "memory": 8000000000},
+                },
             }
         )
         mock_ray_manager.stop_cluster = AsyncMock(
@@ -127,10 +129,11 @@ class TestMCPIntegration:
                 assert response_data["status"] == "started"
 
                 # Step 2: Check status
-                result = await call_tool("cluster_status")
+                result = await call_tool("cluster_info")
                 response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "running"
-                assert response_data["nodes"] == 2
+                assert response_data["status"] == "success"
+                assert response_data["cluster_overview"]["status"] == "running"
+                assert response_data["cluster_overview"]["total_nodes"] == 2
 
                 # Step 3: Stop cluster
                 result = await call_tool("stop_ray")
@@ -287,8 +290,11 @@ class TestMCPIntegration:
     async def test_concurrent_tool_calls(self):
         """Test handling concurrent tool calls."""
         mock_ray_manager = Mock()
-        mock_ray_manager.get_cluster_status = AsyncMock(
-            return_value={"status": "running"}
+        mock_ray_manager.get_cluster_info = AsyncMock(
+            return_value={
+                "status": "success",
+                "cluster_overview": {"status": "running"},
+            }
         )
         mock_ray_manager.list_jobs = AsyncMock(
             return_value={"status": "success", "jobs": []}
@@ -302,7 +308,7 @@ class TestMCPIntegration:
 
                 # Run multiple tool calls concurrently
                 tasks = [
-                    call_tool("cluster_status"),
+                    call_tool("cluster_info"),
                     call_tool("list_jobs"),
                     call_tool("list_actors"),
                 ]
@@ -313,7 +319,7 @@ class TestMCPIntegration:
                 assert len(results) == 3
                 for result in results:
                     response_data = json.loads(get_text_content(result).text)
-                    assert response_data["status"] in ["running", "success"]
+                    assert response_data["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_tool_call_with_complex_parameters(self):

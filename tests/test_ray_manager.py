@@ -141,60 +141,6 @@ class TestRayManager:
 
                 assert result["status"] == "not_running"
 
-    @pytest.mark.asyncio
-    async def test_get_cluster_status_not_running(self):
-        """Test get cluster status when not running."""
-        manager = RayManager()
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = False
-
-                result = await manager.get_cluster_status()
-
-                assert result["status"] == "not_running"
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_status_running(self):
-        """Test get cluster status when running."""
-        manager = RayManager()
-        manager._is_initialized = True
-        manager._cluster_address = "ray://127.0.0.1:10001"
-
-        mock_context = Mock()
-        mock_context.session_name = "test_session"
-        mock_context.node_id = Mock()
-        mock_context.node_id.hex.return_value = "test_node_id"
-        mock_context.get_job_id.return_value = "test_job_id"
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-                mock_ray.cluster_resources.return_value = {
-                    "CPU": 4,
-                    "memory": 8000000000,
-                }
-                mock_ray.available_resources.return_value = {
-                    "CPU": 2,
-                    "memory": 4000000000,
-                }
-                mock_ray.nodes.return_value = [
-                    {
-                        "NodeID": "node1",
-                        "Alive": True,
-                        "NodeName": "test_node",
-                        "Resources": {"CPU": 4},
-                    }
-                ]
-                mock_ray.get_runtime_context.return_value = mock_context
-
-                result = await manager.get_cluster_status()
-
-                assert result["status"] == "running"
-                assert "cluster_resources" in result
-                assert "available_resources" in result
-                assert "nodes" in result
-
     def test_ensure_initialized_not_initialized(self):
         """Test _ensure_initialized when not initialized."""
         manager = RayManager()
@@ -277,25 +223,6 @@ class TestRayManager:
         result = await manager.submit_job("python test.py")
         assert result["status"] == "error"
         assert "Ray is not initialized" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_resources_success(self, initialized_manager):
-        """Test successful cluster resources retrieval."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.cluster_resources.return_value = {
-                    "CPU": 12.0,
-                    "memory": 32000000000,
-                }
-                mock_ray.available_resources.return_value = {
-                    "CPU": 8.0,
-                    "memory": 16000000000,
-                }
-
-                result = await initialized_manager.get_cluster_resources()
-
-                assert result["status"] == "success"
-                assert "total_resources" in result or "cluster_resources" in result
 
     @pytest.mark.asyncio
     async def test_list_actors_success(self, initialized_manager):
@@ -509,28 +436,6 @@ class TestRayManager:
                 assert result["status"] == "error"
                 assert "Shutdown failed" in result["message"]
 
-    @pytest.mark.asyncio
-    async def test_get_cluster_status_ray_unavailable(self, manager):
-        """Test get cluster status when Ray is not available."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", False):
-            result = await manager.get_cluster_status()
-            assert result["status"] == "unavailable"
-            assert "Ray is not available" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_status_exception(self, manager):
-        """Test get cluster status with exception."""
-        manager._is_initialized = True
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-                mock_ray.cluster_resources.side_effect = Exception("Status error")
-
-                result = await manager.get_cluster_status()
-                assert result["status"] == "error"
-                assert "Status error" in result["message"]
-
     # ===== JOB MANAGEMENT ERROR CASES =====
 
     @pytest.mark.asyncio
@@ -628,42 +533,6 @@ class TestRayManager:
                     in result["message"]
                 )
 
-    # ===== RESOURCE AND NODE MANAGEMENT ERROR CASES =====
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_resources_not_initialized(self, manager):
-        """Test get cluster resources when not initialized."""
-        result = await manager.get_cluster_resources()
-        assert result["status"] == "error"
-        assert "Ray is not initialized" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_resources_exception(self, initialized_manager):
-        """Test get cluster resources with exception."""
-        with patch("ray_mcp.ray_manager.ray") as mock_ray:
-            mock_ray.cluster_resources.side_effect = Exception("Resource error")
-
-            result = await initialized_manager.get_cluster_resources()
-            assert result["status"] == "error"
-            assert "Resource error" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_nodes_not_initialized(self, manager):
-        """Test get cluster nodes when not initialized."""
-        result = await manager.get_cluster_nodes()
-        assert result["status"] == "error"
-        assert "Ray is not initialized" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_nodes_exception(self, initialized_manager):
-        """Test get cluster nodes with exception."""
-        with patch("ray_mcp.ray_manager.ray") as mock_ray:
-            mock_ray.nodes.side_effect = Exception("Nodes error")
-
-            result = await initialized_manager.get_cluster_nodes()
-            assert result["status"] == "error"
-            assert "Nodes error" in result["message"]
-
     # ===== ACTOR MANAGEMENT ERROR CASES =====
 
     @pytest.mark.asyncio
@@ -758,6 +627,144 @@ class TestRayManager:
             result = await initialized_manager.cluster_health_check()
             assert result["status"] == "error"
             assert "Health check error" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_cluster_info_not_running(self):
+        """Test get cluster info when not running."""
+        manager = RayManager()
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+
+                result = await manager.get_cluster_info()
+
+                assert result["status"] == "not_running"
+
+    @pytest.mark.asyncio
+    async def test_get_cluster_info_running(self):
+        """Test get cluster info when running."""
+        manager = RayManager()
+        manager._is_initialized = True
+        manager._cluster_address = "ray://127.0.0.1:10001"
+
+        # Set up worker manager with test data
+        manager._worker_manager.worker_configs = [
+            {"node_name": "worker-1", "num_cpus": 4},
+            {"node_name": "worker-2", "num_cpus": 8},
+        ]
+        # Create mock processes that are running
+        mock_process1 = Mock()
+        mock_process1.poll.return_value = None  # Running
+        mock_process1.pid = 12345
+        mock_process2 = Mock()
+        mock_process2.poll.return_value = None  # Running
+        mock_process2.pid = 12346
+        manager._worker_manager.worker_processes = [mock_process1, mock_process2]
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_ray.cluster_resources.return_value = {
+                    "CPU": 12.0,
+                    "memory": 32000000000,
+                }
+                mock_ray.available_resources.return_value = {
+                    "CPU": 8.0,
+                    "memory": 20000000000,
+                }
+                mock_ray.nodes.return_value = [
+                    {
+                        "NodeID": "node1",
+                        "Alive": True,
+                        "NodeName": "head-node",
+                        "NodeManagerAddress": "127.0.0.1:12345",
+                        "NodeManagerHostname": "head-node",
+                        "NodeManagerPort": 12345,
+                        "ObjectManagerPort": 12346,
+                        "ObjectStoreSocketName": "/tmp/ray/session_123/object_store",
+                        "RayletSocketName": "/tmp/ray/session_123/raylet",
+                        "Resources": {"CPU": 4.0, "memory": 16000000000},
+                        "UsedResources": {"CPU": 2.0, "memory": 8000000000},
+                    },
+                    {
+                        "NodeID": "node2",
+                        "Alive": True,
+                        "NodeName": "worker-1",
+                        "NodeManagerAddress": "127.0.0.1:12347",
+                        "NodeManagerHostname": "worker-1",
+                        "NodeManagerPort": 12347,
+                        "ObjectManagerPort": 12348,
+                        "ObjectStoreSocketName": "/tmp/ray/session_123/object_store_2",
+                        "RayletSocketName": "/tmp/ray/session_123/raylet_2",
+                        "Resources": {"CPU": 8.0, "memory": 16000000000},
+                        "UsedResources": {"CPU": 4.0, "memory": 8000000000},
+                    },
+                ]
+
+                result = await manager.get_cluster_info()
+
+                assert result["status"] == "success"
+                assert "cluster_overview" in result
+                assert "resources" in result
+                assert "nodes" in result
+                assert "worker_nodes" in result
+
+                # Check cluster overview
+                overview = result["cluster_overview"]
+                assert overview["status"] == "running"
+                assert overview["address"] == "ray://127.0.0.1:10001"
+                assert overview["total_nodes"] == 2
+                assert overview["alive_nodes"] == 2
+                assert overview["total_workers"] == 2
+                assert overview["running_workers"] == 2
+
+                # Check resources
+                resources = result["resources"]
+                assert "cluster_resources" in resources
+                assert "available_resources" in resources
+                assert "resource_usage" in resources
+                assert resources["cluster_resources"]["CPU"] == 12.0
+                assert resources["resource_usage"]["CPU"]["total"] == 12.0
+                assert resources["resource_usage"]["CPU"]["available"] == 8.0
+                assert resources["resource_usage"]["CPU"]["used"] == 4.0
+
+                # Check nodes
+                nodes = result["nodes"]
+                assert len(nodes) == 2
+                assert nodes[0]["node_id"] == "node1"
+                assert nodes[0]["alive"] is True
+                assert nodes[0]["node_name"] == "head-node"
+                assert nodes[0]["resources"]["CPU"] == 4.0
+
+                # Check worker nodes
+                worker_nodes = result["worker_nodes"]
+                assert len(worker_nodes) == 2
+                assert worker_nodes[0]["node_name"] == "worker-1"
+                assert worker_nodes[0]["status"] == "running"
+
+    @pytest.mark.asyncio
+    async def test_get_cluster_info_ray_unavailable(self, manager):
+        """Test get cluster info when Ray is unavailable."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", False):
+            result = await manager.get_cluster_info()
+
+            assert result["status"] == "unavailable"
+            assert "Ray is not available" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_cluster_info_with_exception(self, manager):
+        """Test get cluster info with exception."""
+        manager._is_initialized = True
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_ray.cluster_resources.side_effect = Exception("Status error")
+
+                result = await manager.get_cluster_info()
+                assert result["status"] == "error"
+                assert "Status error" in result["message"]
 
 
 if __name__ == "__main__":

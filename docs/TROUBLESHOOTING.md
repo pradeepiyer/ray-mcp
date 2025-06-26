@@ -194,10 +194,10 @@ ray-mcp --log-level DEBUG
 **Debug Steps**:
 ```bash
 # Check worker node status
-"Use worker_status tool to check worker node status"
+"Use cluster_info tool to check worker node status and cluster connectivity"
 
 # Check cluster status
-"Use cluster_status tool to verify cluster connectivity"
+"Use cluster_info tool to verify cluster connectivity"
 
 # Check Ray logs
 "Check Ray logs in /tmp/ray/session_*/logs/"
@@ -207,7 +207,7 @@ ray-mcp --log-level DEBUG
 **Problem**: Worker nodes stop unexpectedly or become unresponsive.
 
 **Solutions**:
-1. **Process Monitoring**: Use `worker_status` tool to monitor worker processes
+1. **Process Monitoring**: Use `cluster_info` tool to monitor worker processes
 2. **Resource Monitoring**: Check CPU/memory usage on worker nodes
 3. **Graceful Shutdown**: Use `stop_ray` to properly shutdown all worker nodes
 4. **Force Restart**: If needed, manually kill worker processes and restart

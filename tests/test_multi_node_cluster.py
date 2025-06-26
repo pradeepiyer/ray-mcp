@@ -82,10 +82,17 @@ class TestMultiNodeCluster:
                             # Check that the call was made with the correct worker configs
                             call_args = mock_start_workers.call_args
                             assert call_args[0][0] == worker_configs
+<<<<<<< codex/pass-gcs-address-to-start_worker_nodes
                             # Check that the address follows the expected format (IP:PORT without ray://)
                             address = call_args[0][1]
                             assert not address.startswith("ray://")
+=======
+                            # Check that the address follows the expected format (IP:PORT for GCS)
+                            address = call_args[0][1]
+>>>>>>> main
                             assert ":" in address
+                            # Should be GCS address format (IP:PORT), not ray:// format
+                            assert not address.startswith("ray://")
 
     @pytest.mark.asyncio
     async def test_start_cluster_without_worker_nodes(self):
@@ -171,84 +178,3 @@ class TestMultiNodeCluster:
                         assert "worker_nodes" in result
                         assert len(result["worker_nodes"]) == expected_worker_count
                         mock_stop_workers.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_get_worker_status(self):
-        """Test getting worker node status."""
-        mock_worker_status = [
-            {
-                "status": "running",
-                "node_name": "worker-1",
-                "process_id": 12345,
-                "message": "Worker node 'worker-1' is running",
-            }
-        ]
-        expected_total_workers = len(mock_worker_status)
-        expected_running_workers = len(
-            [w for w in mock_worker_status if w["status"] == "running"]
-        )
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray.is_initialized", return_value=True):
-                ray_manager = RayManager()
-                ray_manager._is_initialized = True
-                with patch.object(
-                    ray_manager._worker_manager,
-                    "get_worker_status",
-                    return_value=mock_worker_status,
-                ) as mock_get_status:
-                    result = await ray_manager.get_worker_status()
-                    assert result["status"] == "success"
-                    assert result["total_workers"] == expected_total_workers
-                    assert result["running_workers"] == expected_running_workers
-                    assert "worker_nodes" in result
-                    assert len(result["worker_nodes"]) == expected_total_workers
-                    mock_get_status.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cluster_status_with_workers(self):
-        """Test cluster status includes worker information."""
-        mock_worker_status = [
-            {
-                "status": "running",
-                "node_name": "worker-1",
-                "process_id": 12345,
-                "message": "Worker node 'worker-1' is running",
-            }
-        ]
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray.is_initialized", return_value=True):
-                with patch(
-                    "ray_mcp.ray_manager.ray.cluster_resources"
-                ) as mock_cluster_resources:
-                    with patch(
-                        "ray_mcp.ray_manager.ray.available_resources"
-                    ) as mock_available_resources:
-                        with patch("ray_mcp.ray_manager.ray.nodes") as mock_nodes:
-                            mock_cluster_resources.return_value = {
-                                "CPU": 8,
-                                "memory": 16000000000,
-                            }
-                            mock_available_resources.return_value = {
-                                "CPU": 4,
-                                "memory": 8000000000,
-                            }
-                            mock_nodes.return_value = [
-                                {"NodeID": "node1", "Alive": True},
-                                {"NodeID": "node2", "Alive": True},
-                            ]
-
-                            ray_manager = RayManager()
-                            ray_manager._is_initialized = True
-                            ray_manager._cluster_address = "ray://127.0.0.1:10001"
-                            with patch.object(
-                                ray_manager._worker_manager,
-                                "get_worker_status",
-                                return_value=mock_worker_status,
-                            ) as mock_get_status:
-                                result = await ray_manager.get_cluster_status()
-                                assert result["status"] == "running"
-                                assert "worker_nodes" in result
-                                assert len(result["worker_nodes"]) == 1
-                                assert result["worker_nodes"][0]["status"] == "running"

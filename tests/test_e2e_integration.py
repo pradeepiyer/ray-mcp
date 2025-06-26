@@ -71,10 +71,11 @@ class TestE2EIntegration:
 
         # Step 2: Verify cluster status
         print("Checking cluster status...")
-        status_result = await call_tool("cluster_status")
+        status_result = await call_tool("cluster_info")
         status_content = get_text_content(status_result)
         status_data = json.loads(status_content)
-        assert status_data["status"] == "running"
+        assert status_data["status"] == "success"
+        assert status_data["cluster_overview"]["status"] == "running"
         print(f"Cluster status: {status_data}")
 
         # Step 3: Submit the simple_job.py
@@ -151,7 +152,7 @@ class TestE2EIntegration:
 
         # Step 5: Verify cluster is stopped
         print("Verifying cluster is stopped...")
-        final_status_result = await call_tool("cluster_status")
+        final_status_result = await call_tool("cluster_info")
         final_status_content = get_text_content(final_status_result)
         final_status_data = json.loads(final_status_content)
         assert final_status_data["status"] == "not_running"
@@ -350,13 +351,20 @@ if __name__ == "__main__":
         assert start_data["status"] == "started"
         print(f"Ray cluster started for monitoring: {start_data}")
 
-        # Step 2: Get initial cluster resources
-        print("Getting cluster resources...")
-        resources_result = await call_tool("cluster_resources")
-        resources_content = get_text_content(resources_result)
-        resources_data = json.loads(resources_content)
+        # Step 2: Get initial cluster information
+        print("Getting cluster information...")
+        cluster_info_result = await call_tool("cluster_info")
+        cluster_info_content = get_text_content(cluster_info_result)
+        cluster_info_data = json.loads(cluster_info_content)
 
-        assert resources_data["status"] == "success"
+        assert cluster_info_data["status"] == "success"
+        assert "resources" in cluster_info_data
+        assert "nodes" in cluster_info_data
+        assert "cluster_overview" in cluster_info_data
+
+        resources_data = cluster_info_data["resources"]
+        nodes_data = cluster_info_data["nodes"]
+
         assert "cluster_resources" in resources_data
         assert "available_resources" in resources_data
         print(f"Cluster resources: {resources_data['cluster_resources']}")
@@ -366,17 +374,9 @@ if __name__ == "__main__":
         cluster_cpus = resources_data["cluster_resources"].get("CPU", 0)
         assert cluster_cpus >= 4, f"Expected at least 4 CPUs, got {cluster_cpus}"
 
-        # Step 3: Get cluster nodes information
-        print("Getting cluster nodes...")
-        nodes_result = await call_tool("cluster_nodes")
-        nodes_content = get_text_content(nodes_result)
-        nodes_data = json.loads(nodes_content)
-
-        assert nodes_data["status"] == "success"
-        assert "nodes" in nodes_data
-        nodes_list = nodes_data["nodes"]
-        assert len(nodes_list) >= 1, "Should have at least one node"
-        print(f"Found {len(nodes_list)} nodes")
+        # Verify nodes information
+        assert len(nodes_data) >= 1, "Should have at least one node"
+        print(f"Found {len(nodes_data)} nodes")
 
         # Step 4: Get performance metrics
         print("Getting performance metrics...")
@@ -699,10 +699,7 @@ print("Job completed!")
             "start_ray",
             "connect_ray",
             "stop_ray",
-            "cluster_status",
-            "cluster_resources",
-            "cluster_nodes",
-            "worker_status",
+            "cluster_info",
             "submit_job",
             "list_jobs",
             "job_status",
@@ -743,7 +740,7 @@ print("Job completed!")
         assert "Ray is not initialized" in content or "not_running" in content.lower()
 
         # Test cluster status when Ray is not running
-        status_result = await call_tool("cluster_status")
+        status_result = await call_tool("cluster_info")
         status_content = get_text_content(status_result)
         status_data = json.loads(status_content)
         assert status_data["status"] == "not_running"
@@ -813,33 +810,25 @@ print("Job completed!")
         assert ray.is_initialized()
         print(f"Multi-node Ray cluster started: {start_data}")
 
-        # Step 2: Verify multi-node cluster status
-        print("Verifying multi-node cluster status...")
-        status_result = await call_tool("cluster_status")
-        status_content = get_text_content(status_result)
-        status_data = json.loads(status_content)
-        assert status_data["status"] == "running"
-        print(f"Cluster status: {status_data}")
+        # Step 2: Check cluster information including worker nodes and resources
+        print("Checking cluster information...")
+        cluster_info_result = await call_tool("cluster_info")
+        cluster_info_content = get_text_content(cluster_info_result)
+        cluster_info_data = json.loads(cluster_info_content)
 
-        # Step 3: Check worker node status
-        print("Checking worker node status...")
-        worker_status_result = await call_tool("worker_status")
-        worker_status_content = get_text_content(worker_status_result)
-        worker_status_data = json.loads(worker_status_content)
-        assert worker_status_data["status"] == "success"
-        assert "worker_nodes" in worker_status_data
+        assert cluster_info_data["status"] == "success"
+        assert "worker_nodes" in cluster_info_data
+        assert "resources" in cluster_info_data
+
+        # Check worker nodes
+        worker_nodes = cluster_info_data["worker_nodes"]
         assert (
-            len(worker_status_data["worker_nodes"]) == 2
-        ), f"Expected 2 worker nodes, got {len(worker_status_data['worker_nodes'])}"
-        print(f"Worker nodes status: {worker_status_data}")
+            len(worker_nodes) == 2
+        ), f"Expected 2 worker nodes, got {len(worker_nodes)}"
+        print(f"Worker nodes status: {worker_nodes}")
 
-        # Step 4: Get cluster resources to verify multi-node setup
-        print("Getting cluster resources...")
-        resources_result = await call_tool("cluster_resources")
-        resources_content = get_text_content(resources_result)
-        resources_data = json.loads(resources_content)
-
-        assert resources_data["status"] == "success"
+        # Check resources
+        resources_data = cluster_info_data["resources"]
         assert "cluster_resources" in resources_data
         print(f"Cluster resources: {resources_data['cluster_resources']}")
 
@@ -960,13 +949,14 @@ print("Job completed!")
         assert start_data["status"] == "started"
         assert ray.is_initialized()
 
-        # Step 2: Get cluster resources before processing
-        print("Checking cluster resources...")
-        resources_result = await call_tool("cluster_resources")
-        resources_content = get_text_content(resources_result)
-        resources_data = json.loads(resources_content)
+        # Step 2: Get cluster information before processing
+        print("Checking cluster information...")
+        cluster_info_result = await call_tool("cluster_info")
+        cluster_info_content = get_text_content(cluster_info_result)
+        cluster_info_data = json.loads(cluster_info_content)
 
-        assert resources_data["status"] == "success"
+        assert cluster_info_data["status"] == "success"
+        resources_data = cluster_info_data["resources"]
         assert "cluster_resources" in resources_data
         print(f"Cluster resources: {resources_data['cluster_resources']}")
 
@@ -1124,34 +1114,34 @@ print("Job completed!")
 
         # Step 2: Verify multi-node cluster status
         print("Getting initial cluster status...")
-        status_result = await call_tool("cluster_status")
+        status_result = await call_tool("cluster_info")
         status_content = get_text_content(status_result)
         status_data = json.loads(status_content)
 
-        assert status_data["status"] == "running"
+        assert status_data["status"] == "success"
+        assert status_data["cluster_overview"]["status"] == "running"
         print(f"Initial cluster status: {status_data}")
 
-        # Step 3: Check worker node status
-        print("Checking worker node status...")
-        worker_status_result = await call_tool("worker_status")
-        worker_status_content = get_text_content(worker_status_result)
-        worker_status_data = json.loads(worker_status_content)
-        assert worker_status_data["status"] == "success"
-        assert "worker_nodes" in worker_status_data
+        # Step 3: Check cluster information including worker nodes and nodes
+        print("Checking cluster information...")
+        cluster_info_result = await call_tool("cluster_info")
+        cluster_info_content = get_text_content(cluster_info_result)
+        cluster_info_data = json.loads(cluster_info_content)
+
+        assert cluster_info_data["status"] == "success"
+        assert "worker_nodes" in cluster_info_data
+        assert "nodes" in cluster_info_data
+
+        # Check worker nodes
+        worker_nodes = cluster_info_data["worker_nodes"]
         assert (
-            len(worker_status_data["worker_nodes"]) == 3
-        ), f"Expected 3 worker nodes, got {len(worker_status_data['worker_nodes'])}"
-        print(f"Worker nodes status: {worker_status_data}")
+            len(worker_nodes) == 3
+        ), f"Expected 3 worker nodes, got {len(worker_nodes)}"
+        print(f"Worker nodes status: {worker_nodes}")
 
-        # Step 4: Get cluster nodes information
-        print("Getting cluster nodes information...")
-        nodes_result = await call_tool("cluster_nodes")
-        nodes_content = get_text_content(nodes_result)
-        nodes_data = json.loads(nodes_content)
-
-        assert nodes_data["status"] == "success"
-        assert "nodes" in nodes_data
-        print(f"Cluster nodes: {len(nodes_data['nodes'])} nodes")
+        # Check nodes
+        nodes_data = cluster_info_data["nodes"]
+        print(f"Cluster nodes: {len(nodes_data)} nodes")
 
         # Step 5: Submit the workflow orchestration job
         print("Submitting workflow orchestration job...")
@@ -1321,6 +1311,35 @@ print("Job completed!")
         assert not ray.is_initialized()
 
         print("✅ Multi-node workflow orchestration workflow test passed successfully!")
+
+    @pytest.mark.asyncio
+    @pytest.mark.e2e
+    @pytest.mark.slow
+    async def test_start_ray_with_default_workers(
+        self, ray_cluster_manager: RayManager
+    ):
+        """Test that start_ray with default config starts a head node and at least one worker node."""
+        # Start Ray cluster with default config
+        start_result = await call_tool("start_ray", {})
+        start_content = get_text_content(start_result)
+        start_data = json.loads(start_content)
+        assert start_data["status"] == "started"
+
+        # Check cluster info
+        info_result = await call_tool("cluster_info")
+        info_content = get_text_content(info_result)
+        info_data = json.loads(info_content)
+        assert info_data["status"] == "success"
+        overview = info_data["cluster_overview"]
+        assert overview["status"] == "running"
+        # With default config (1 CPU head node), expect at least 2 nodes (1 head + 1 worker)
+        # due to resource constraints preventing both default workers from starting
+        assert overview["total_nodes"] >= 2  # 1 head + at least 1 worker
+        assert overview["running_workers"] >= 1  # At least 1 worker should be running
+        assert len(info_data["worker_nodes"]) >= 1  # At least 1 worker in the list
+        # Check that all listed workers are running
+        for worker in info_data["worker_nodes"]:
+            assert worker["status"] == "running"
 
 
 @pytest.mark.asyncio

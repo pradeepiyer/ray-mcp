@@ -20,9 +20,7 @@ from ray_mcp.tools import (
     cluster_health_check,
     connect_ray_cluster,
     debug_job,
-    get_cluster_nodes,
-    get_cluster_resources,
-    get_cluster_status,
+    get_cluster_info,
     get_job_status,
     get_logs,
     get_performance_metrics,
@@ -203,58 +201,138 @@ class TestToolFunctions:
         mock_ray_manager.stop_cluster.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_cluster_status(self, mock_ray_manager):
-        """Test get_cluster_status function."""
-        expected_result = {
-            "status": "running",
-            "nodes": 3,
-            "alive_nodes": 3,
-            "cluster_resources": {"CPU": 12, "memory": 32000000000},
-        }
-        mock_ray_manager.get_cluster_status = AsyncMock(return_value=expected_result)
-
-        result = await get_cluster_status(mock_ray_manager)
-
-        result_data = json.loads(result)
-        assert result_data == expected_result
-
-        mock_ray_manager.get_cluster_status.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_resources(self, mock_ray_manager):
-        """Test get_cluster_resources function."""
+    async def test_get_cluster_info(self, mock_ray_manager):
+        """Test get_cluster_info function."""
         expected_result = {
             "status": "success",
-            "total_resources": {"CPU": 12, "memory": 32000000000},
-            "available_resources": {"CPU": 8, "memory": 16000000000},
-        }
-        mock_ray_manager.get_cluster_resources = AsyncMock(return_value=expected_result)
-
-        result = await get_cluster_resources(mock_ray_manager)
-
-        result_data = json.loads(result)
-        assert result_data == expected_result
-
-        mock_ray_manager.get_cluster_resources.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_get_cluster_nodes(self, mock_ray_manager):
-        """Test get_cluster_nodes function."""
-        expected_result = {
-            "status": "success",
+            "cluster_overview": {
+                "status": "running",
+                "address": "ray://127.0.0.1:10001",
+                "total_nodes": 3,
+                "alive_nodes": 3,
+                "total_workers": 2,
+                "running_workers": 2,
+            },
+            "resources": {
+                "cluster_resources": {"CPU": 12.0, "memory": 32000000000},
+                "available_resources": {"CPU": 8.0, "memory": 20000000000},
+                "resource_usage": {
+                    "CPU": {"total": 12.0, "available": 8.0, "used": 4.0},
+                    "memory": {
+                        "total": 32000000000,
+                        "available": 20000000000,
+                        "used": 12000000000,
+                    },
+                },
+            },
             "nodes": [
-                {"node_id": "node1", "alive": True, "resources": {"CPU": 4}},
-                {"node_id": "node2", "alive": True, "resources": {"CPU": 8}},
+                {
+                    "node_id": "node1",
+                    "alive": True,
+                    "node_name": "head-node",
+                    "resources": {"CPU": 4.0},
+                    "used_resources": {"CPU": 2.0},
+                }
+            ],
+            "worker_nodes": [
+                {"node_id": "worker1", "status": "running"},
+                {"node_id": "worker2", "status": "running"},
             ],
         }
-        mock_ray_manager.get_cluster_nodes = AsyncMock(return_value=expected_result)
+        mock_ray_manager.get_cluster_info = AsyncMock(return_value=expected_result)
 
-        result = await get_cluster_nodes(mock_ray_manager)
+        result = await get_cluster_info(mock_ray_manager)
 
         result_data = json.loads(result)
         assert result_data == expected_result
+        mock_ray_manager.get_cluster_info.assert_called_once()
 
-        mock_ray_manager.get_cluster_nodes.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_get_cluster_info_complex_data(self, mock_ray_manager):
+        """Test get_cluster_info with complex data structures."""
+        complex_result = {
+            "status": "success",
+            "cluster_overview": {
+                "status": "running",
+                "address": "ray://cluster.example.com:10001",
+                "total_nodes": 10,
+                "alive_nodes": 9,
+                "total_workers": 8,
+                "running_workers": 7,
+            },
+            "resources": {
+                "cluster_resources": {
+                    "CPU": 32.0,
+                    "memory": 128000000000,
+                    "GPU": 4.0,
+                    "custom_resource": 100.0,
+                },
+                "available_resources": {
+                    "CPU": 16.0,
+                    "memory": 64000000000,
+                    "GPU": 2.0,
+                    "custom_resource": 50.0,
+                },
+                "resource_usage": {
+                    "CPU": {"total": 32.0, "available": 16.0, "used": 16.0},
+                    "memory": {
+                        "total": 128000000000,
+                        "available": 64000000000,
+                        "used": 64000000000,
+                    },
+                    "GPU": {"total": 4.0, "available": 2.0, "used": 2.0},
+                    "custom_resource": {
+                        "total": 100.0,
+                        "available": 50.0,
+                        "used": 50.0,
+                    },
+                },
+            },
+            "nodes": [
+                {
+                    "node_id": "head_node_123",
+                    "alive": True,
+                    "node_name": "head-node",
+                    "node_manager_address": "192.168.1.100:12345",
+                    "node_manager_hostname": "head-node",
+                    "node_manager_port": 12345,
+                    "object_manager_port": 12346,
+                    "resources": {"CPU": 8.0, "memory": 32000000000},
+                    "used_resources": {"CPU": 4.0, "memory": 16000000000},
+                },
+                {
+                    "node_id": "worker_node_456",
+                    "alive": True,
+                    "node_name": "worker-1",
+                    "node_manager_address": "192.168.1.101:12345",
+                    "node_manager_hostname": "worker-1",
+                    "node_manager_port": 12345,
+                    "object_manager_port": 12346,
+                    "resources": {"CPU": 8.0, "memory": 32000000000, "GPU": 2.0},
+                    "used_resources": {"CPU": 6.0, "memory": 24000000000, "GPU": 1.0},
+                },
+            ],
+            "worker_nodes": [
+                {"node_id": "worker1", "status": "running", "pid": 1234},
+                {"node_id": "worker2", "status": "running", "pid": 1235},
+                {"node_id": "worker3", "status": "stopped", "pid": None},
+            ],
+        }
+        mock_ray_manager.get_cluster_info = AsyncMock(return_value=complex_result)
+
+        result = await get_cluster_info(mock_ray_manager)
+
+        result_data = json.loads(result)
+        assert result_data == complex_result
+        assert "cluster_overview" in result_data
+        assert "resources" in result_data
+        assert "nodes" in result_data
+        assert "worker_nodes" in result_data
+        assert result_data["cluster_overview"]["total_nodes"] == 10
+        assert result_data["cluster_overview"]["alive_nodes"] == 9
+        assert len(result_data["nodes"]) == 2
+        assert len(result_data["worker_nodes"]) == 3
+        mock_ray_manager.get_cluster_info.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_list_jobs(self, mock_ray_manager):
@@ -453,9 +531,9 @@ class TestToolFunctions:
                 "array": [1, 2, 3],
             },
         }
-        mock_ray_manager.get_cluster_status = AsyncMock(return_value=complex_result)
+        mock_ray_manager.get_cluster_info = AsyncMock(return_value=complex_result)
 
-        result = await get_cluster_status(mock_ray_manager)
+        result = await get_cluster_info(mock_ray_manager)
 
         # Verify the JSON is properly indented (indent=2)
         expected_json = json.dumps(complex_result, indent=2)

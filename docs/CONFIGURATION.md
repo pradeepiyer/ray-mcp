@@ -146,10 +146,10 @@ The Ray MCP Server now supports multi-node cluster configuration through the `st
 - **resources**: Custom resources dictionary (optional)
 
 ### Worker Status Monitoring
-Use the new `worker_status` tool to monitor worker nodes:
+Use the new `cluster_info` tool to monitor worker nodes:
 ```json
 {
-  "tool": "worker_status"
+  "tool": "cluster_info"
 }
 ```
 

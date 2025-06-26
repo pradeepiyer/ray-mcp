@@ -101,13 +101,11 @@ Successfully started a Ray cluster with 4 CPUs and 1GB of object store memory.
 Your Ray cluster is now running and ready to accept jobs. The cluster has 4 CPU cores available for distributed computing tasks.
 
 **Suggested Next Steps:**
-• Check cluster status with 'cluster_status' to verify all nodes are healthy
-• Submit jobs with 'submit_job' to start distributed computing tasks
-• Monitor resources with 'cluster_resources' to track usage
+• Check cluster status with 'cluster_info' to verify all nodes are healthy
+• Monitor resources with 'cluster_info' to track usage
 
 **Available Commands:**
-• `cluster_status` - Check cluster health
-• `cluster_resources` - View resource usage
+• `cluster_info` - Check cluster health and resources
 • `list_jobs` - See all running jobs
 • `performance_metrics` - Get detailed metrics
 ```
@@ -178,7 +176,7 @@ The `examples/` directory contains six comprehensive Ray applications demonstrat
 - Worker status monitoring
 - Cluster resource distribution across nodes
 
-**New Feature**: This example showcases the enhanced `start_ray` tool with `worker_nodes` parameter and the new `worker_status` tool.
+**New Feature**: This example showcases the enhanced `start_ray` tool with `worker_nodes` parameter and the new `cluster_info` tool for comprehensive cluster monitoring.
 
 ### 3. Actor Example (`examples/actor_example.py`)
 **Purpose**: Shows Ray actor usage patterns for stateful distributed computing.

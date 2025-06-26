@@ -300,8 +300,14 @@ class RayManager:
                 and isinstance(worker_nodes, list)
                 and self._gcs_address
             ):
+                # Use GCS address for worker nodes, not Ray Client address
+                worker_address = gcs_address if not address else address
                 worker_results = await self._worker_manager.start_worker_nodes(
+<<<<<<< codex/pass-gcs-address-to-start_worker_nodes
                     worker_nodes, self._gcs_address
+=======
+                    worker_nodes, worker_address
+>>>>>>> main
                 )
 
             return {
@@ -455,8 +461,8 @@ class RayManager:
                 "message": f"Failed to stop Ray cluster: {str(e)}",
             }
 
-    async def get_cluster_status(self) -> Dict[str, Any]:
-        """Get the current status of the Ray cluster."""
+    async def get_cluster_info(self) -> Dict[str, Any]:
+        """Get comprehensive cluster information including status, resources, nodes, and worker status."""
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {"status": "unavailable", "message": "Ray is not available"}
@@ -467,54 +473,88 @@ class RayManager:
                     "message": "Ray cluster is not running",
                 }
 
-            # Get cluster information
+            # Get all cluster information
             cluster_resources = ray.cluster_resources()
             available_resources = ray.available_resources()
             nodes = ray.nodes()
 
-            # Get worker node status
-            worker_status = self._worker_manager.get_worker_status()
+            # Get worker information from stored data
+            worker_status = []
+            for i, config in enumerate(self._worker_manager.worker_configs):
+                process = (
+                    self._worker_manager.worker_processes[i]
+                    if i < len(self._worker_manager.worker_processes)
+                    else None
+                )
+                status = "running" if process and process.poll() is None else "stopped"
+                worker_status.append(
+                    {
+                        "node_name": config.get("node_name", f"worker-{i+1}"),
+                        "status": status,
+                        "config": config,
+                        "process_id": process.pid if process else None,
+                    }
+                )
 
-            return {
-                "status": "running",
-                "cluster_resources": cluster_resources,
-                "available_resources": available_resources,
-                "nodes": len(nodes),
-                "alive_nodes": len([n for n in nodes if n["Alive"]]),
-                "address": self._cluster_address,
-                "worker_nodes": worker_status,
-                "total_worker_nodes": len(worker_status),
+            # Calculate resource usage
+            resource_usage = {
+                resource: {
+                    "total": cluster_resources.get(resource, 0),
+                    "available": available_resources.get(resource, 0),
+                    "used": cluster_resources.get(resource, 0)
+                    - available_resources.get(resource, 0),
+                }
+                for resource in cluster_resources.keys()
             }
 
-        except Exception as e:
-            logger.error(f"Failed to get cluster status: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to get cluster status: {str(e)}",
-            }
+            # Process node information
+            node_info = [
+                {
+                    "node_id": node["NodeID"],
+                    "alive": node["Alive"],
+                    "node_name": node.get("NodeName", ""),
+                    "node_manager_address": node.get("NodeManagerAddress", ""),
+                    "node_manager_hostname": node.get("NodeManagerHostname", ""),
+                    "node_manager_port": node.get("NodeManagerPort", 0),
+                    "object_manager_port": node.get("ObjectManagerPort", 0),
+                    "object_store_socket_name": node.get("ObjectStoreSocketName", ""),
+                    "raylet_socket_name": node.get("RayletSocketName", ""),
+                    "resources": node.get("Resources", {}),
+                    "used_resources": node.get("UsedResources", {}),
+                }
+                for node in nodes
+            ]
 
-    async def get_worker_status(self) -> Dict[str, Any]:
-        """Get detailed status of worker nodes."""
-        try:
-            if not self.is_initialized:
-                return {"status": "error", "message": "Ray cluster is not running"}
-
-            worker_status = self._worker_manager.get_worker_status()
+            # Calculate worker statistics
+            total_workers = len(worker_status)
+            running_workers = len(
+                [w for w in worker_status if w["status"] == "running"]
+            )
 
             return {
                 "status": "success",
+                "cluster_overview": {
+                    "status": "running",
+                    "address": self._cluster_address,
+                    "total_nodes": len(nodes),
+                    "alive_nodes": len([n for n in nodes if n["Alive"]]),
+                    "total_workers": total_workers,
+                    "running_workers": running_workers,
+                },
+                "resources": {
+                    "cluster_resources": cluster_resources,
+                    "available_resources": available_resources,
+                    "resource_usage": resource_usage,
+                },
+                "nodes": node_info,
                 "worker_nodes": worker_status,
-                "total_workers": len(worker_status),
-                "running_workers": len(
-                    [w for w in worker_status if w["status"] == "running"]
-                ),
             }
 
         except Exception as e:
-            logger.error(f"Failed to get worker status: {e}")
+            logger.error(f"Failed to get cluster info: {e}")
             return {
                 "status": "error",
-                "message": f"Failed to get worker status: {str(e)}",
+                "message": f"Failed to get cluster info: {str(e)}",
             }
 
     async def submit_job(
@@ -760,78 +800,6 @@ class RayManager:
         except Exception as e:
             logger.error(f"Failed to cancel job: {e}")
             return {"status": "error", "message": f"Failed to cancel job: {str(e)}"}
-
-    async def get_cluster_resources(self) -> Dict[str, Any]:
-        """Get cluster resource information."""
-        try:
-            self._ensure_initialized()
-
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            cluster_resources = ray.cluster_resources()
-            available_resources = ray.available_resources()
-
-            return {
-                "status": "success",
-                "cluster_resources": cluster_resources,
-                "available_resources": available_resources,
-                "resource_usage": {
-                    resource: {
-                        "total": cluster_resources.get(resource, 0),
-                        "available": available_resources.get(resource, 0),
-                        "used": cluster_resources.get(resource, 0)
-                        - available_resources.get(resource, 0),
-                    }
-                    for resource in cluster_resources.keys()
-                },
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to get cluster resources: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to get cluster resources: {str(e)}",
-            }
-
-    async def get_cluster_nodes(self) -> Dict[str, Any]:
-        """Get cluster node information."""
-        try:
-            self._ensure_initialized()
-
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            nodes = ray.nodes()
-
-            return {
-                "status": "success",
-                "nodes": [
-                    {
-                        "node_id": node["NodeID"],
-                        "alive": node["Alive"],
-                        "node_name": node.get("NodeName", ""),
-                        "node_manager_address": node.get("NodeManagerAddress", ""),
-                        "node_manager_hostname": node.get("NodeManagerHostname", ""),
-                        "node_manager_port": node.get("NodeManagerPort", 0),
-                        "object_manager_port": node.get("ObjectManagerPort", 0),
-                        "object_store_socket_name": node.get(
-                            "ObjectStoreSocketName", ""
-                        ),
-                        "raylet_socket_name": node.get("RayletSocketName", ""),
-                        "resources": node.get("Resources", {}),
-                        "used_resources": node.get("UsedResources", {}),
-                    }
-                    for node in nodes
-                ],
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to get cluster nodes: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to get cluster nodes: {str(e)}",
-            }
 
     async def list_actors(
         self, filters: Optional[Dict[str, Any]] = None
