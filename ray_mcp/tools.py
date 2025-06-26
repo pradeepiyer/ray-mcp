@@ -51,21 +51,9 @@ async def stop_ray_cluster(ray_manager: RayManager) -> str:
     return json.dumps(result, indent=2)
 
 
-async def get_cluster_status(ray_manager: RayManager) -> str:
-    """Get the current status of the Ray cluster."""
-    result = await ray_manager.get_cluster_status()
-    return json.dumps(result, indent=2)
-
-
-async def get_cluster_resources(ray_manager: RayManager) -> str:
-    """Get cluster resource information."""
-    result = await ray_manager.get_cluster_resources()
-    return json.dumps(result, indent=2)
-
-
-async def get_cluster_nodes(ray_manager: RayManager) -> str:
-    """Get cluster node information."""
-    result = await ray_manager.get_cluster_nodes()
+async def get_cluster_info(ray_manager: RayManager) -> str:
+    """Get comprehensive cluster information including status, resources, nodes, and worker status."""
+    result = await ray_manager.get_cluster_info()
     return json.dumps(result, indent=2)
 
 

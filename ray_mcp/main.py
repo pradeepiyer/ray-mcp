@@ -155,23 +155,8 @@ async def list_tools() -> List[Tool]:
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="cluster_status",
-            description="Get Ray cluster status",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="cluster_resources",
-            description="Get cluster resource information",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="cluster_nodes",
-            description="Get cluster node information",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="worker_status",
-            description="Get detailed status of worker nodes",
+            name="cluster_info",
+            description="Get comprehensive cluster information including status, resources, nodes, and worker status",
             inputSchema={"type": "object", "properties": {}},
         ),
         # Job management
@@ -319,14 +304,8 @@ async def call_tool(
             result = await ray_manager.connect_cluster(**args)
         elif name == "stop_ray":
             result = await ray_manager.stop_cluster()
-        elif name == "cluster_status":
-            result = await ray_manager.get_cluster_status()
-        elif name == "cluster_resources":
-            result = await ray_manager.get_cluster_resources()
-        elif name == "cluster_nodes":
-            result = await ray_manager.get_cluster_nodes()
-        elif name == "worker_status":
-            result = await ray_manager.get_worker_status()
+        elif name == "cluster_info":
+            result = await ray_manager.get_cluster_info()
 
         # Job management
         elif name == "submit_job":

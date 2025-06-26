@@ -256,16 +256,4 @@ The Ray MCP Server now supports creating clusters with multiple worker nodes:
 
 - **New Module**: `ray_mcp/worker_manager.py` - Comprehensive worker node lifecycle management
 - **Enhanced Tool**: `start_ray` now accepts `worker_nodes` parameter for multi-node setup
-- **New Tool**: `worker_status` for detailed worker node status reporting
-- **Enhanced Integration**: `RayManager` now integrates with `WorkerManager` for seamless multi-node operations
-
-### Key Components
-- **WorkerManager Class**: Handles worker node startup, monitoring, and shutdown
-- **Multi-Node Configuration**: Support for custom worker node configurations
-- **Process Management**: Robust subprocess management for worker nodes
-- **Status Reporting**: Comprehensive worker node status information
-
-### Testing
-- **New Test File**: `tests/test_multi_node_cluster.py` - Comprehensive multi-node testing
-- **Enhanced E2E Tests**: Updated end-to-end tests to use multi-node clusters
-- **WorkerManager Coverage**: Dedicated tests for the new WorkerManager functionality 
+- **New Tool**: `cluster_info` for comprehensive cluster information including status, resources, nodes, and worker status 

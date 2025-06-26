@@ -131,37 +131,6 @@ class TestRayManagerMethods:
                 assert result["status"] == "not_running"
 
     @pytest.mark.asyncio
-    async def test_get_cluster_status_detailed(self, ray_manager):
-        """Test getting detailed cluster status."""
-        ray_manager._is_initialized = True
-
-        mock_nodes = [
-            {"NodeID": "node1", "Alive": True},
-            {"NodeID": "node2", "Alive": True},
-            {"NodeID": "node3", "Alive": False},
-        ]
-        expected_total_nodes = len(mock_nodes)
-        expected_alive_nodes = len([n for n in mock_nodes if n["Alive"]])
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-                mock_ray.cluster_resources.return_value = {
-                    "CPU": 8,
-                    "memory": 16000000000,
-                }
-                mock_ray.available_resources.return_value = {
-                    "CPU": 4,
-                    "memory": 8000000000,
-                }
-                mock_ray.nodes.return_value = mock_nodes
-
-                result = await ray_manager.get_cluster_status()
-
-                assert result["status"] == "running"
-                assert result["nodes"] == expected_total_nodes
-                assert result["alive_nodes"] == expected_alive_nodes
-                assert result["cluster_resources"]["CPU"] == 8
 
     # ===== JOB MANAGEMENT TESTS =====
 
@@ -442,7 +411,7 @@ class TestRayManagerMethods:
                 mock_ray.is_initialized.return_value = True
                 mock_ray.cluster_resources.side_effect = Exception("Ray error")
 
-                result = await ray_manager.get_cluster_resources()
+                result = await ray_manager.get_cluster_info()
 
                 assert result["status"] == "error"
                 assert "Ray error" in result["message"]

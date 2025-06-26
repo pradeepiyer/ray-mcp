@@ -30,7 +30,7 @@ class TestMain:
             "start_ray",
             "connect_ray",
             "stop_ray",
-            "cluster_status",
+            "cluster_info",
             "submit_job",
             "list_jobs",
             "job_status",
@@ -114,16 +114,14 @@ class TestMain:
         """Test call_tool with None arguments."""
         with patch("ray_mcp.main.RAY_AVAILABLE", True):
             with patch("ray_mcp.main.ray_manager") as mock_manager:
-                mock_manager.get_cluster_status = AsyncMock(
+                mock_manager.get_cluster_info = AsyncMock(
                     return_value={"status": "running"}
                 )
 
-                result = cast(
-                    List[TextContent], await call_tool("cluster_status", None)
-                )
+                result = cast(List[TextContent], await call_tool("cluster_info", None))
 
                 assert len(result) == 1
-                mock_manager.get_cluster_status.assert_called_once()
+                mock_manager.get_cluster_info.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_call_tool_job_management(self):
@@ -331,17 +329,10 @@ class TestMain:
                     return_value={"status": "success"}
                 )
 
-                # Test cluster_resources
-                result = cast(
-                    List[TextContent], await call_tool("cluster_resources", {})
-                )
+                # Test cluster_info (consolidated tool)
+                result = cast(List[TextContent], await call_tool("cluster_info", {}))
                 assert len(result) == 1
-                mock_manager.get_cluster_resources.assert_called_once()
-
-                # Test cluster_nodes
-                result = cast(List[TextContent], await call_tool("cluster_nodes", {}))
-                assert len(result) == 1
-                mock_manager.get_cluster_nodes.assert_called_once()
+                mock_manager.get_cluster_info.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_call_tool_all_job_management_tools(self):
@@ -499,14 +490,14 @@ class TestMain:
         """Test call_tool with various argument scenarios."""
         with patch("ray_mcp.main.RAY_AVAILABLE", True):
             with patch("ray_mcp.main.ray_manager") as mock_manager:
-                mock_manager.get_cluster_status = AsyncMock(
+                mock_manager.get_cluster_info = AsyncMock(
                     return_value={"status": "running"}
                 )
 
                 # Test with empty dict
-                result = cast(List[TextContent], await call_tool("cluster_status", {}))
+                result = cast(List[TextContent], await call_tool("cluster_info", {}))
                 assert len(result) == 1
-                mock_manager.get_cluster_status.assert_called_once()
+                mock_manager.get_cluster_info.assert_called_once()
 
     def test_main_function_import(self):
         """Test that main function can be imported."""

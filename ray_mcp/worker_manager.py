@@ -215,28 +215,3 @@ class WorkerManager:
         self.worker_configs.clear()
 
         return results
-
-    def get_worker_status(self) -> List[Dict[str, Any]]:
-        """Get status of all worker processes."""
-        status_list = []
-
-        for i, process in enumerate(self.worker_processes):
-            node_name = self.worker_configs[i].get("node_name", f"worker-{i+1}")
-
-            if process.poll() is None:
-                status = "running"
-                message = f"Worker node '{node_name}' is running"
-            else:
-                status = "stopped"
-                message = f"Worker node '{node_name}' has stopped"
-
-            status_list.append(
-                {
-                    "status": status,
-                    "node_name": node_name,
-                    "process_id": process.pid,
-                    "message": message,
-                }
-            )
-
-        return status_list

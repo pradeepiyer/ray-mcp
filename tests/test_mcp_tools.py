@@ -119,6 +119,9 @@ class TestMCPToolCalls:
                 "message": "Successfully connected to Ray cluster",
             }
         )
+        manager.get_cluster_info = AsyncMock(
+            return_value={"status": "success", "info": "Cluster info"}
+        )
         return manager
 
     # ===== BASIC CLUSTER MANAGEMENT TESTS =====
@@ -152,42 +155,6 @@ class TestMCPToolCalls:
                 assert response_data["status"] == "stopped"
 
                 mock_ray_manager.stop_cluster.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cluster_status_tool(self, mock_ray_manager):
-        """Test cluster_status tool call."""
-        with patch("ray_mcp.main.ray_manager", mock_ray_manager):
-            with patch("ray_mcp.main.RAY_AVAILABLE", True):
-                result = await call_tool("cluster_status")
-
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "running"
-
-                mock_ray_manager.get_cluster_status.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cluster_resources_tool(self, mock_ray_manager):
-        """Test cluster_resources tool call."""
-        with patch("ray_mcp.main.ray_manager", mock_ray_manager):
-            with patch("ray_mcp.main.RAY_AVAILABLE", True):
-                result = await call_tool("cluster_resources")
-
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "success"
-
-                mock_ray_manager.get_cluster_resources.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cluster_nodes_tool(self, mock_ray_manager):
-        """Test cluster_nodes tool call."""
-        with patch("ray_mcp.main.ray_manager", mock_ray_manager):
-            with patch("ray_mcp.main.RAY_AVAILABLE", True):
-                result = await call_tool("cluster_nodes")
-
-                response_data = json.loads(get_text_content(result).text)
-                assert response_data["status"] == "success"
-
-                mock_ray_manager.get_cluster_nodes.assert_called_once()
 
     # ===== JOB MANAGEMENT TESTS =====
 
@@ -469,6 +436,18 @@ class TestMCPToolCalls:
                 mock_ray_manager.connect_cluster.assert_called_once_with(
                     address="ray://remote-cluster:10001"
                 )
+
+    @pytest.mark.asyncio
+    async def test_cluster_info_tool(self, mock_ray_manager):
+        """Test cluster_info tool call (consolidated tool)."""
+        with patch("ray_mcp.main.ray_manager", mock_ray_manager):
+            with patch("ray_mcp.main.RAY_AVAILABLE", True):
+                result = await call_tool("cluster_info")
+
+                response_data = json.loads(get_text_content(result).text)
+                assert response_data["status"] == "success"
+
+                mock_ray_manager.get_cluster_info.assert_called_once()
 
 
 if __name__ == "__main__":

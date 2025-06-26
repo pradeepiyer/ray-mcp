@@ -6,10 +6,7 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 - `start_ray` - Start a new Ray cluster with head node and optional worker nodes
 - `connect_ray` - Connect to an existing Ray cluster
 - `stop_ray` - Stop the current Ray cluster
-- `cluster_status` - Get comprehensive cluster status
-- `cluster_resources` - Get resource usage information
-- `cluster_nodes` - List all cluster nodes
-- `worker_status` - Get detailed status of worker nodes (powered by the new `WorkerManager` class)
+- `cluster_info` - Get comprehensive cluster information including status, resources, nodes, and worker status
 
 ## Job Operations
 - `submit_job` - Submit a new job to the cluster
@@ -105,18 +102,54 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
 - `ray://head-node-ip:10001`
 - `ray://cluster.example.com:10001`
 
-### worker_status
+### cluster_info
 ```json
 {
   // No parameters required
 }
 ```
 
-**Returns detailed information about worker nodes including:**
-- Status of each worker node (running/stopped)
-- Process IDs
-- Node names
-- Configuration details
+**Returns comprehensive cluster information including:**
+- **cluster_overview**: Overall cluster status, address, node counts, worker counts
+- **resources**: Cluster resources, available resources, and resource usage breakdown
+- **nodes**: Detailed information about each node in the cluster
+- **worker_nodes**: Status and details of worker nodes managed by WorkerManager
+
+**Example response structure:**
+```json
+{
+  "status": "success",
+  "cluster_overview": {
+    "status": "running",
+    "address": "ray://127.0.0.1:10001",
+    "total_nodes": 3,
+    "alive_nodes": 3,
+    "total_workers": 2,
+    "running_workers": 2
+  },
+  "resources": {
+    "cluster_resources": {"CPU": 12.0, "memory": 32000000000},
+    "available_resources": {"CPU": 8.0, "memory": 20000000000},
+    "resource_usage": {
+      "CPU": {"total": 12.0, "available": 8.0, "used": 4.0},
+      "memory": {"total": 32000000000, "available": 20000000000, "used": 12000000000}
+    }
+  },
+  "nodes": [
+    {
+      "node_id": "node1",
+      "alive": true,
+      "node_name": "head-node",
+      "resources": {"CPU": 4.0},
+      "used_resources": {"CPU": 2.0}
+    }
+  ],
+  "worker_nodes": [
+    {"node_id": "worker1", "status": "running"},
+    {"node_id": "worker2", "status": "running"}
+  ]
+}
+```
 
 ### submit_job
 ```json
@@ -137,7 +170,7 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
 ## Tool Categories by Ray Dependency
 
 **✅ Works without Ray initialization:**
-- `cluster_status` - Shows "not_running" when Ray is not initialized
+- `cluster_info` - Shows "not_running" when Ray is not initialized
 
 **❌ Requires Ray initialization:**
 - All job management tools (`submit_job`, `list_jobs`, etc.)
@@ -172,5 +205,5 @@ Each worker node can be configured with:
 The `WorkerManager` is integrated into the `RayManager` class and automatically handles:
 - Worker node startup when using `start_ray` with `worker_nodes` parameter
 - Worker node shutdown when using `stop_ray`
-- Worker status reporting via the `worker_status` tool
-- Enhanced cluster status with worker node information 
+- Worker status reporting via the `cluster_info` tool
+- Enhanced cluster status with worker node information
