@@ -74,7 +74,6 @@ class TestToolFunctions:
 
         # Verify correct call to ray_manager
         mock_ray_manager.start_cluster.assert_called_once_with(
-            head_node=True,
             address=None,
             num_cpus=None,
             num_gpus=None,
@@ -93,7 +92,6 @@ class TestToolFunctions:
 
         result = await start_ray_cluster(
             mock_ray_manager,
-            head_node=False,
             address="ray://remote:10001",
             num_cpus=8,
             num_gpus=2,
@@ -105,7 +103,6 @@ class TestToolFunctions:
         assert result_data == expected_result
 
         mock_ray_manager.start_cluster.assert_called_once_with(
-            head_node=False,
             address="ray://remote:10001",
             num_cpus=8,
             num_gpus=2,

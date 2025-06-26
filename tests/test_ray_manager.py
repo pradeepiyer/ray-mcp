@@ -425,7 +425,6 @@ class TestRayManager:
                         mock_popen.return_value = mock_process
 
                         result = await manager.start_cluster(
-                            head_node=True,
                             num_cpus=8,
                             num_gpus=2,
                             object_store_memory=1000000000,

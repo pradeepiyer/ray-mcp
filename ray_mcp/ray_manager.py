@@ -118,7 +118,6 @@ class RayManager:
 
     async def start_cluster(
         self,
-        head_node: bool = True,
         address: Optional[str] = None,
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,

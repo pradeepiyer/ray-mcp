@@ -15,7 +15,6 @@ from .ray_manager import RayManager
 
 async def start_ray_cluster(
     ray_manager: RayManager,
-    head_node: bool = True,
     address: Optional[str] = None,
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
@@ -33,7 +32,6 @@ async def start_ray_cluster(
 
     Args:
         ray_manager: The RayManager instance to use for cluster operations
-        head_node: Whether to start a head node (default: True)
         address: Address of existing cluster to connect to (e.g., 'ray://127.0.0.1:10001')
         num_cpus: Number of CPUs to allocate to the head node
         num_gpus: Number of GPUs to allocate to the head node
@@ -63,7 +61,6 @@ async def start_ray_cluster(
         - Resource allocation failures: Returns specific resource configuration errors
     """
     result = await ray_manager.start_cluster(
-        head_node=head_node,
         address=address,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
