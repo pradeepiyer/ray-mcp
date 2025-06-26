@@ -69,10 +69,13 @@ class TestWorkerManager:
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert "--resources" in cmd
-        # Check that both resources are included
-        cmd_str = " ".join(cmd)
-        assert "custom_resource=2" in cmd_str
-        assert "another_resource=1" in cmd_str
+        # Check that resources are passed as a single JSON string
+        resources_index = cmd.index("--resources")
+        resources_value = cmd[resources_index + 1]
+
+        # Parse the JSON string and verify contents
+        resources_dict = json.loads(resources_value)
+        assert resources_dict == {"custom_resource": 2, "another_resource": 1}
 
     def test_build_worker_command_with_node_name(self, worker_manager):
         """Test building worker command with node name."""

@@ -209,8 +209,8 @@ class WorkerManager:
 
         # Add custom resources if specified
         if "resources" in config and isinstance(config["resources"], dict):
-            for resource, value in config["resources"].items():
-                cmd.extend(["--resources", f"{resource}={value}"])
+            resources_json = json.dumps(config["resources"])
+            cmd.extend(["--resources", resources_json])
 
         # Add node name if specified
         if "node_name" in config:
