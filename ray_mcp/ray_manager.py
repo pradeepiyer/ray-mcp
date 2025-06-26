@@ -284,8 +284,8 @@ class RayManager:
                     )
                     job_client_status = "unavailable"
 
-            # Set default worker nodes if none specified
-            if worker_nodes is None:
+            # Set default worker nodes if none specified and not connecting to existing cluster
+            if worker_nodes is None and address is None:
                 worker_nodes = self._get_default_worker_config()
             # If worker_nodes is an empty list, keep it empty (no workers)
             # If worker_nodes is a non-empty list, use the provided workers
@@ -390,6 +390,7 @@ class RayManager:
                     logger.warning(
                         "Dashboard URL not available for job client initialization"
                     )
+
                     job_client_status = "unavailable"
 
             return {

@@ -703,6 +703,82 @@ class TestRayManagerMethods:
                     in result["message"]
                 )
 
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_address_no_workers(
+        self, ray_manager, mock_ray_context
+    ):
+        """Test that connecting to existing cluster with address does not start default workers."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    # Update mock context to return the expected address
+                    mock_ray_context.address_info = {
+                        "address": "ray://remote:10001",
+                        "dashboard_url": "http://remote:8265",
+                        "node_id": "test_node_id",
+                        "session_name": "test_session",
+                    }
+                    mock_ray.init.return_value = mock_ray_context
+                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                        "node_123"
+                    )
+
+                    # Connect to existing cluster without specifying worker_nodes
+                    result = await ray_manager.start_cluster(
+                        address="ray://remote:10001"
+                    )
+
+                    assert result["status"] == "started"
+                    assert result["address"] == "ray://remote:10001"
+                    # Verify no worker nodes were started (worker_nodes should be empty list)
+                    assert result["worker_nodes"] == []
+                    assert result["total_nodes"] == 1  # Only head node, no workers
+
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_address_and_explicit_workers(
+        self, ray_manager, mock_ray_context
+    ):
+        """Test that connecting to existing cluster with address and explicit worker_nodes works correctly."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    # Update mock context to return the expected address
+                    mock_ray_context.address_info = {
+                        "address": "ray://remote:10001",
+                        "dashboard_url": "http://remote:8265",
+                        "node_id": "test_node_id",
+                        "session_name": "test_session",
+                    }
+                    mock_ray.init.return_value = mock_ray_context
+                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                        "node_123"
+                    )
+
+                    # Patch the _worker_manager attribute directly
+                    mock_worker_instance = AsyncMock()
+                    mock_worker_instance.start_worker_nodes.return_value = [
+                        {"status": "started", "node_name": "custom-worker-1"}
+                    ]
+                    ray_manager._worker_manager = mock_worker_instance
+
+                    # Connect to existing cluster with explicit worker configuration
+                    custom_workers = [{"num_cpus": 2, "node_name": "custom-worker-1"}]
+                    result = await ray_manager.start_cluster(
+                        address="ray://remote:10001", worker_nodes=custom_workers
+                    )
+
+                    assert result["status"] == "started"
+                    assert result["address"] == "ray://remote:10001"
+                    # Verify custom workers were started
+                    assert len(result["worker_nodes"]) == 1
+                    assert result["worker_nodes"][0]["node_name"] == "custom-worker-1"
+                    assert result["total_nodes"] == 2  # Head node + 1 worker
+
+                    # Verify worker manager was called with the custom configuration
+                    mock_worker_instance.start_worker_nodes.assert_called_once_with(
+                        custom_workers, "ray://remote:10001"
+                    )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
