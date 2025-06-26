@@ -149,14 +149,17 @@ class RayManager:
             def parse_dashboard_url(stdout: str) -> Optional[str]:
                 import re
 
-                pattern = r"View the Ray dashboard at (http://[^\s]+)"
+                # Updated pattern to handle URLs with or without quotes
+                # Match: View the Ray dashboard at http://... or View the Ray dashboard at 'http://...' or View the Ray dashboard at "http://..."
+                pattern = r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?"
                 match = re.search(pattern, stdout)
                 return match.group(1) if match else None
 
             def parse_gcs_address(stdout: str) -> Optional[str]:
                 import re
 
-                pattern = r"--address='([\d\.]+:\d+)'"
+                # Updated pattern to handle addresses with single quotes, double quotes, or no quotes
+                pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
                 match = re.search(pattern, stdout)
                 return match.group(1) if match else None
 
