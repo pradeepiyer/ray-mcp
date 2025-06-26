@@ -97,6 +97,8 @@ For advanced configurations, you can specify custom worker nodes:
   }
 }
 ```
+The `head_node_port` is reused for both the GCS server and the Ray Client
+server. The `dashboard_port` controls the dashboard HTTP service.
 
 ### Basic Usage
 

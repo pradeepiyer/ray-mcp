@@ -53,8 +53,8 @@ Start a new Ray cluster with head node and worker nodes. **Defaults to multi-nod
       }
     }
   ],
-  "head_node_port": 10001,    // Port for head node (default: 10001)
-  "dashboard_port": 8265,     // Port for Ray dashboard (default: 8265)
+  "head_node_port": 10001,    // Port for head node (GCS & Ray Client)
+  "dashboard_port": 8265,     // Port for Ray dashboard
   "head_node_host": "127.0.0.1"  // Host address for head node (default: 127.0.0.1)
 }
 ```

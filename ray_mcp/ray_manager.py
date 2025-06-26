@@ -176,14 +176,15 @@ class RayManager:
                 import os
                 import subprocess
 
-                # Find a free port for the Ray Client server
-                ray_client_port = find_free_port(20000)
+                # Respect head_node_port argument when selecting ports
+                # Use the provided port if available, otherwise search for a free one
+                ray_client_port = find_free_port(head_node_port)
 
-                # Find a free port for the GCS server (start from ray_client_port + 1)
-                gcs_port = find_free_port(ray_client_port + 1)
+                # Use the same port for the GCS server
+                gcs_port = ray_client_port
 
-                # Find a free dashboard port
-                dashboard_port = find_free_port(8265)
+                # Find a free dashboard port starting from the provided dashboard_port
+                dashboard_port = find_free_port(dashboard_port)
 
                 # Build ray start command for head node
                 head_cmd = [
