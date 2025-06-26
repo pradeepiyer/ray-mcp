@@ -1,5 +1,36 @@
 # Troubleshooting
 
+## MCP Server Tool Routing Issues
+
+### All Tool Calls Route to Same Function
+**Problem**: All tool calls (e.g., `start_ray`, `submit_job`, `get_logs`) return the same response, typically from `get_logs`.
+
+**Root Cause**: MCP server routing issues where multiple `@server.call_tool()` decorators conflict or only the last registered function is used.
+
+**Solution**: The Ray MCP Server now uses a **dispatcher pattern** to ensure reliable tool routing:
+- Single `@server.call_tool()` function (`dispatch_tool_call`) handles all tool requests
+- Tool name and arguments are passed to the dispatcher
+- Dispatcher routes to appropriate handler via `tool_registry.execute_tool()`
+
+**Verification**: 
+```bash
+# Check that tools are properly registered
+"Use cluster_info tool to verify tool routing is working"
+
+# Test different tools
+"Use start_ray tool with num_cpus=1"
+"Use submit_job tool with entrypoint='python examples/simple_job.py'"
+```
+
+### Tool Registration Failures
+**Problem**: Tools not appearing in client tool lists or failing to register.
+
+**Solutions**:
+1. **Check Tool Registry**: Verify tools are registered in `ray_mcp/tool_registry.py`
+2. **Restart Server**: Restart the MCP server after configuration changes
+3. **Check Logs**: Look for registration errors in server logs
+4. **Verify Dispatcher**: Ensure `dispatch_tool_call` function is properly decorated
+
 ## Common Issues
 
 ### 1. Ray not starting

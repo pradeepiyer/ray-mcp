@@ -5,9 +5,9 @@
 ```
 ray_mcp/
 ├── __init__.py          # Package initialization
-├── main.py              # MCP server entry point and handlers
+├── main.py              # MCP server entry point with dispatcher pattern
 ├── ray_manager.py       # Core Ray cluster management logic
-├── tools.py             # Individual tool function implementations
+├── tool_registry.py     # Centralized tool registry: schemas, metadata, handlers
 └── types.py             # Type definitions
 
 examples/
@@ -19,6 +19,7 @@ tests/
 ├── test_ray_manager.py         # Ray manager unit tests
 ├── test_ray_manager_methods.py # Detailed method tests
 ├── test_integration.py         # Integration tests
+├── test_full_parameter_flow.py # Tool function parameter validation tests
 └── README.md                   # Test documentation
 
 docs/config/
@@ -29,11 +30,34 @@ docs/config/
 
 ### Key Components
 
-- **MCP Server**: Main server handling MCP protocol communication
+- **MCP Server**: Main server handling MCP protocol communication with dispatcher pattern
 - **RayManager**: Core class managing Ray cluster operations
-- **Tool Functions**: Individual async functions for each MCP tool
+- **Tool Registry**: Centralized registry (`tool_registry.py`) for all tool schemas, metadata, and handlers
+- **Dispatcher Function**: Single `@server.call_tool()` function that routes all tool calls to the appropriate handlers
 - **Error Handling**: Comprehensive error handling and status reporting
 - **Enhanced Output**: System prompt wrapper for LLM-generated suggestions and next steps
+
+## How to Add a New Tool (2024+)
+
+> **Tool registration is now DRY and centralized with reliable routing!**
+
+1. **Add to the registry:**
+   - Open `ray_mcp/tool_registry.py`.
+   - Add a new entry in the `_register_all_tools` method with:
+     - `name`, `description`, `schema`, and a handler (async method).
+   - The handler should call the appropriate method on `RayManager` or implement custom logic.
+
+2. **No additional MCP registration needed:**
+   - The dispatcher function automatically handles routing for all tools registered in the registry.
+   - No need to add individual `@server.call_tool()` functions.
+
+3. **No more manual schema duplication!**
+   - All schemas, descriptions, and handlers are now in one place (`tool_registry.py`).
+   - The old `tools.py` and individual tool functions are deprecated and removed.
+
+4. **Test your tool:**
+   - Add or update tests in `tests/` as needed.
+   - Run `make test` to verify.
 
 ## Setup for Development
 
@@ -102,16 +126,16 @@ make test-smart
 
 ```bash
 # Fast tests (excludes e2e) - typical development workflow
-pytest tests/ -m "not e2e and not slow" --tb=short -v
+uv run pytest tests/ -m "not e2e and not slow" --tb=short -v
 
 # Only end-to-end tests
-pytest tests/ -m "e2e" --tb=short -v
+uv run pytest tests/ -m "e2e" --tb=short -v
 
 # Only smoke tests
-pytest tests/ -m "smoke" --tb=short -v
+uv run pytest tests/ -m "smoke" --tb=short -v
 
 # All tests
-pytest tests/ --tb=short -v
+uv run pytest tests/ --tb=short -v
 ```
 
 ### When to Run Different Test Suites
@@ -189,7 +213,7 @@ ruff check ray_mcp/
 
 3. **Test failures**: Run specific test files
    ```bash
-   pytest tests/test_specific_module.py -v
+   uv run pytest tests/test_specific_module.py -v
    ```
 
 ### Debugging Tools
@@ -223,10 +247,10 @@ export RAY_MCP_ENHANCED_OUTPUT=false
 
 ```bash
 # Test with enhanced output enabled
-RAY_MCP_ENHANCED_OUTPUT=true uv run python -m pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
+RAY_MCP_ENHANCED_OUTPUT=true uv run pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
 
 # Test with standard output (default)
-uv run python -m pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
+uv run pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
 ```
 
 ### Implementation Details
@@ -256,4 +280,4 @@ The Ray MCP Server now supports creating clusters with multiple worker nodes:
 
 - **New Module**: `ray_mcp/worker_manager.py` - Comprehensive worker node lifecycle management
 - **Enhanced Tool**: `start_ray` now accepts `worker_nodes` parameter for multi-node setup
-- **New Tool**: `cluster_info` for comprehensive cluster information including status, resources, nodes, and worker status 
+- **New Tool**: `cluster_info` for comprehensive cluster information including status, resources, nodes, and worker status

@@ -9,7 +9,7 @@ echo "🧹 Pre-test Ray cleanup..."
 
 # Run the tests
 echo "🧪 Starting e2e tests..."
-python -m pytest tests/ \
+uv run pytest tests/ \
     -m "e2e" \
     --tb=short \
     -v \

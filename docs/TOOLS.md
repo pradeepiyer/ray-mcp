@@ -1,5 +1,16 @@
 # Available Tools
 
+> **🛠️ Tool Registration and Extension (2024+)**
+>
+> The Ray MCP Server now uses a **centralized tool registry** (`ray_mcp/tool_registry.py`) to define all tool schemas, metadata, and handlers in one place. A single dispatcher function handles all MCP tool calls and routes them to the appropriate handlers via the registry.
+>
+> **To add or update a tool:**
+> 1. Add or update the tool entry in `ToolRegistry` (schema, description, handler).
+> 2. The dispatcher function automatically handles routing - no additional MCP registration needed.
+> 3. No need to update multiple places or duplicate schemas—everything is now DRY and discoverable!
+>
+> **Old `tools.py` and individual tool functions are deprecated and removed.**
+
 The Ray MCP Server provides a comprehensive set of tools for Ray cluster management, covering cluster operations, job management, actor management, monitoring, and scheduling:
 
 ## Cluster Operations

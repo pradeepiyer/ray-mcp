@@ -10,6 +10,30 @@ A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distr
 - **Monitoring**: Performance metrics, health checks, and optimization
 - **Debugging**: Log retrieval and job debugging tools
 
+## MCP Server Architecture
+
+The Ray MCP Server uses a **dispatcher pattern** to handle tool routing and ensure reliable MCP protocol compliance:
+
+### Tool Registration and Routing
+- **Centralized Tool Registry**: All tool schemas, metadata, and handlers are defined in `ray_mcp/tool_registry.py`
+- **Single Dispatcher Function**: A single `@server.call_tool()`-decorated function (`dispatch_tool_call`) handles all tool requests
+- **Tool Name Routing**: The dispatcher receives the tool name and arguments, then delegates to the appropriate handler via `tool_registry.execute_tool()`
+
+### Architecture Benefits
+- **Reliable Routing**: Eliminates MCP server routing issues where all tool calls might be directed to a single function
+- **Centralized Logic**: All tool logic is centralized in the `ToolRegistry` class
+- **Type Safety**: Maintains proper parameter validation and type checking
+- **Extensibility**: Easy to add new tools by updating only the registry
+
+### Key Components
+```
+ray_mcp/
+├── main.py              # MCP server with dispatcher pattern
+├── tool_registry.py     # Centralized tool registry and handlers
+├── ray_manager.py       # Core Ray cluster management logic
+└── types.py             # Type definitions
+```
+
 ## Quick Start
 
 ### Installation
@@ -103,7 +127,7 @@ For advanced configurations, you can specify custom worker nodes:
 ```python
 # Check cluster status
 {
-  "tool": "cluster_status"
+  "tool": "cluster_info"
 }
 
 # Submit a job
@@ -165,10 +189,7 @@ The server provides a comprehensive set of tools for Ray management, covering cl
 - `start_ray` - Start a new Ray cluster with head node and optional worker nodes
 - `connect_ray` - Connect to an existing Ray cluster
 - `stop_ray` - Stop the current Ray cluster
-- `cluster_status` - Get comprehensive cluster status
-- `cluster_resources` - Get resource usage information
-- `cluster_nodes` - List all cluster nodes
-- `worker_status` - Get detailed status of worker nodes
+- `cluster_info` - Get comprehensive cluster information including status, resources, nodes, and worker status
 
 ### Job Operations
 - `submit_job` - Submit a new job to the cluster
@@ -215,7 +236,20 @@ uv run pytest
 uv run pytest tests/test_mcp_tools.py
 uv run pytest tests/test_multi_node_cluster.py
 uv run pytest tests/test_e2e_integration.py
+
+# Run new parameter validation tests
+uv run pytest tests/test_full_parameter_flow.py
 ```
+
+### Test Categories
+
+The test suite includes comprehensive coverage:
+
+- **Unit Tests**: Fast, isolated tests for individual components
+- **Integration Tests**: Medium-speed tests with Ray interaction
+- **End-to-End Tests**: Comprehensive tests with full Ray workflows
+- **Parameter Validation Tests**: Tests for tool function parameter handling and filtering
+- **MCP Tool Tests**: Tests for MCP protocol compliance and tool routing
 
 ### Code Quality
 
@@ -232,6 +266,9 @@ uv run pyright ray_mcp/
 # Run code formatting
 uv run black ray_mcp/
 uv run isort ray_mcp/
+
+# Check for locals() usage in tool functions (static analysis)
+make lint-tool-functions
 ```
 
 ## License

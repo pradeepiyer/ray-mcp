@@ -9,7 +9,7 @@ echo "🧹 Pre-test Ray cleanup..."
 
 # Run the tests
 echo "🧪 Starting full test suite..."
-python -m pytest tests/ \
+uv run pytest tests/ \
     --tb=short \
     -v \
     --cov=ray_mcp \

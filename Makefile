@@ -1,6 +1,6 @@
 # Ray MCP Server - Test Automation (UV Native)
 
-.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check
+.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions
 
 # Default development test (fast)
 test: test-fast
@@ -13,7 +13,7 @@ test-fast:
 # Smoke tests - minimal verification
 test-smoke:
 	@echo "💨 Running smoke tests..."
-	@python -m pytest tests/ -m "smoke" --tb=short -v --maxfail=1
+	@uv run pytest tests/ -m "smoke" --tb=short -v --maxfail=1
 
 # End-to-end tests only - for major changes
 test-e2e:
@@ -29,6 +29,12 @@ test-full:
 test-smart:
 	@scripts/smart-test.sh
 
+# Tool function specific tests
+test-tool-functions:
+	@echo "🔧 Running tool function tests..."
+	@uv run pytest tests/test_tool_functions.py -v
+	@uv run pytest tests/test_full_parameter_flow.py -v
+
 # Linting - matches CI workflow
 lint:
 	@echo "🔍 Running linting checks..."
@@ -36,6 +42,15 @@ lint:
 	@uv run isort --check-only ray_mcp/ examples/ tests/
 	@uv run pyright ray_mcp/ examples/ tests/
 	@echo "✅ All linting checks passed!"
+
+# Tool function specific linting
+lint-tool-functions:
+	@echo "🔧 Running tool function linting..."
+	@python scripts/lint_tool_functions.py
+
+# Enhanced linting - includes tool function checks
+lint-enhanced: lint lint-tool-functions
+	@echo "✅ All enhanced linting checks passed!"
 
 # Format code - apply formatting fixes
 format:
@@ -101,9 +116,12 @@ help:
 	@echo "  make test-e2e   - Run e2e tests only (for major changes)"
 	@echo "  make test-full  - Run complete test suite (includes e2e)"
 	@echo "  make test-smart - Smart test runner (detects changes)"
+	@echo "  make test-tool-functions - Run tool function specific tests"
 	@echo ""
 	@echo "Linting and formatting:"
 	@echo "  make lint       - Run linting checks (black, isort, pyright)"
+	@echo "  make lint-tool-functions - Run tool function specific linting"
+	@echo "  make lint-enhanced - Run all linting including tool function checks"
 	@echo "  make format     - Format code with black and isort"
 	@echo ""
 	@echo "Test markers:"

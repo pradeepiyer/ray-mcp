@@ -45,7 +45,7 @@ class RayManager:
     """Manages Ray cluster operations."""
 
     def __init__(self) -> None:
-        self._is_initialized = False
+        self.__is_initialized = False
         self._cluster_address: Optional[str] = None
         self._gcs_address: Optional[str] = None  # Store GCS address for worker nodes
         self._job_client: Optional[Any] = (
@@ -58,11 +58,21 @@ class RayManager:
     def is_initialized(self) -> bool:
         """Check if Ray is initialized."""
         return (
-            self._is_initialized
+            self.__is_initialized
             and RAY_AVAILABLE
             and ray is not None
             and ray.is_initialized()
         )
+
+    @property
+    def _is_initialized(self) -> bool:
+        """Get the _is_initialized flag."""
+        return self.__is_initialized
+
+    @_is_initialized.setter
+    def _is_initialized(self, value: bool) -> None:
+        """Set the _is_initialized flag."""
+        self.__is_initialized = value
 
     def _ensure_initialized(self) -> None:
         """Ensure Ray is initialized."""
@@ -281,6 +291,7 @@ class RayManager:
                     logger.warning(
                         "Dashboard URL not available for job client initialization"
                     )
+
                     job_client_status = "unavailable"
 
             # Set default worker nodes if none specified and not connecting to existing cluster
@@ -449,7 +460,7 @@ class RayManager:
                 finally:
                     self._head_node_process = None
 
-            self._is_initialized = False
+            self.__is_initialized = False
             self._cluster_address = None
             self._gcs_address = None
             self._job_client = None

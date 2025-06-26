@@ -9,7 +9,7 @@ echo "🧹 Pre-test Ray cleanup..."
 
 # Run the tests
 echo "🧪 Starting fast test suite..."
-python -m pytest tests/ \
+uv run pytest tests/ \
     -m "fast" \
     --tb=short \
     -v \
