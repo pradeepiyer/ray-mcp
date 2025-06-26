@@ -267,26 +267,19 @@ class RayManager:
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
             if JobSubmissionClient is not None and self._cluster_address:
-                # Skip job client initialization when using Ray Client to avoid conflicts
-                if self._cluster_address.startswith("ray://"):
-                    logger.info(
-                        "Skipping job client initialization for Ray Client connection"
-                    )
-                    job_client_status = "unavailable"
-                else:
-                    # Use the GCS address for job client, not the Ray Client address
-                    if address:
-                        # For existing clusters, use the provided address
-                        job_client_address = address
-                    else:
-                        # For new clusters, use the GCS address (not the Ray Client address)
-                        job_client_address = f"ray://{gcs_address}"
-
+                # Use the dashboard URL (HTTP address) for job client
+                job_client_address = ray_context.dashboard_url
+                if job_client_address:
                     self._job_client = self._initialize_job_client_with_retry(
                         job_client_address
                     )
                     if self._job_client is None:
                         job_client_status = "unavailable"
+                else:
+                    logger.warning(
+                        "Dashboard URL not available for job client initialization"
+                    )
+                    job_client_status = "unavailable"
 
             # Set default worker nodes if none specified
             if worker_nodes is None:
@@ -382,10 +375,18 @@ class RayManager:
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
             if JobSubmissionClient is not None and self._cluster_address:
-                self._job_client = self._initialize_job_client_with_retry(
-                    self._cluster_address
-                )
-                if self._job_client is None:
+                # Use the dashboard URL (HTTP address) for job client
+                job_client_address = ray_context.dashboard_url
+                if job_client_address:
+                    self._job_client = self._initialize_job_client_with_retry(
+                        job_client_address
+                    )
+                    if self._job_client is None:
+                        job_client_status = "unavailable"
+                else:
+                    logger.warning(
+                        "Dashboard URL not available for job client initialization"
+                    )
                     job_client_status = "unavailable"
 
             return {

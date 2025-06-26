@@ -56,12 +56,12 @@ class TestRayManager:
                     "test_node_id"
                 )
 
-                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                with patch("ray_mcp.ray_manager.JobSubmissionClient") as mock_client:
                     with patch("subprocess.Popen") as mock_popen:
                         # Mock the subprocess to simulate successful ray start
                         mock_process = Mock()
                         mock_process.communicate.return_value = (
-                            "Ray runtime started\n--address='127.0.0.1:10001'",
+                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
                             "",
                         )
                         mock_process.poll.return_value = 0
@@ -73,6 +73,10 @@ class TestRayManager:
                         assert result["address"].startswith("ray://")
                         assert ":" in result["address"]
                         assert manager._is_initialized
+                        # Assert JobSubmissionClient was called with HTTP address
+                        if mock_client.call_args:
+                            job_client_arg = mock_client.call_args[0][0]
+                            assert job_client_arg.startswith("http://")
 
     @pytest.mark.asyncio
     async def test_start_cluster_already_running(self):
@@ -187,6 +191,12 @@ class TestRayManager:
                     assert manager._is_initialized
                     assert manager._cluster_address.startswith("ray://")
                     assert ":" in manager._cluster_address
+                    # Assert JobSubmissionClient was called with HTTP address if called, otherwise check job_client_status
+                    if mock_client.call_args:
+                        job_client_arg = mock_client.call_args[0][0]
+                        assert job_client_arg.startswith("http://")
+                    else:
+                        assert result["job_client_status"] == "unavailable"
 
     @pytest.mark.asyncio
     async def test_connect_cluster_ray_unavailable(self, manager):
