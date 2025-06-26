@@ -1,12 +1,11 @@
 """Ray cluster management functionality."""
 
 import asyncio
-import json
 import logging
 import os
 import socket
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional
 
 # Import Ray modules with error handling
 try:
@@ -19,24 +18,7 @@ except ImportError:
     ray = None  # type: ignore
     JobSubmissionClient = None  # type: ignore
 
-from .types import (
-    ActorConfig,
-    ActorId,
-    ActorInfo,
-    ActorState,
-    ClusterHealth,
-    ErrorResponse,
-    HealthStatus,
-    JobId,
-    JobInfo,
-    JobStatus,
-    JobSubmissionConfig,
-    NodeId,
-    NodeInfo,
-    PerformanceMetrics,
-    Response,
-    SuccessResponse,
-)
+
 from .worker_manager import WorkerManager
 
 logger = logging.getLogger(__name__)
@@ -173,17 +155,14 @@ class RayManager:
                 self._cluster_address = ray_context.address_info["address"]
                 dashboard_url = ray_context.dashboard_url
             else:
-                import os
                 import subprocess
 
-                # Find a free port for the Ray Client server
-                ray_client_port = find_free_port(20000)
-
-                # Find a free port for the GCS server (start from ray_client_port + 1)
-                gcs_port = find_free_port(ray_client_port + 1)
-
-                # Find a free dashboard port
-                dashboard_port = find_free_port(8265)
+                # Determine ports to use for the new cluster.  If specific ports
+                # were requested, try to use them; otherwise fall back to finding
+                # free ports starting from sensible defaults.
+                gcs_port = find_free_port(head_node_port)
+                ray_client_port = find_free_port(gcs_port + 1)
+                dashboard_port = find_free_port(dashboard_port)
 
                 # Build ray start command for head node
                 head_cmd = [
@@ -1079,7 +1058,6 @@ class RayManager:
 
             # Get cluster state
             nodes = ray.nodes()
-            cluster_resources = ray.cluster_resources()
             available_resources = ray.available_resources()
 
             # Perform health checks

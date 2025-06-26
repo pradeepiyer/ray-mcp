@@ -6,12 +6,12 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 # Import MCP types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Content, EmbeddedResource, ImageContent, TextContent, Tool
+from mcp.types import TextContent, Tool
 
 # Import Ray modules with proper error handling
 try:
@@ -25,24 +25,6 @@ except ImportError:
     job_submission = None
 
 from .ray_manager import RayManager
-from .types import (
-    ActorConfig,
-    ActorId,
-    ActorInfo,
-    ActorState,
-    ClusterHealth,
-    ErrorResponse,
-    HealthStatus,
-    JobId,
-    JobInfo,
-    JobStatus,
-    JobSubmissionConfig,
-    NodeId,
-    NodeInfo,
-    PerformanceMetrics,
-    Response,
-    SuccessResponse,
-)
 
 # Initialize server and ray manager
 server = Server("ray-mcp")
