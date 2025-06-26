@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-smart:
+  test-full:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -30,8 +30,8 @@ jobs:
     - name: Install dependencies
       run: uv sync --all-extras --dev
     
-    - name: Run smart test suite
-      run: scripts/test-smart.sh
+    - name: Run full test suite
+      run: uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=xml --cov-report=term-missing
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
