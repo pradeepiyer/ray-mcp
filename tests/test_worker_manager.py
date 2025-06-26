@@ -27,7 +27,7 @@ class TestWorkerManager:
     def test_build_worker_command_basic(self, worker_manager):
         """Test building basic worker command."""
         config = {"num_cpus": 4}
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert cmd[0] == "ray"
@@ -42,7 +42,7 @@ class TestWorkerManager:
     def test_build_worker_command_with_gpu(self, worker_manager):
         """Test building worker command with GPU configuration."""
         config = {"num_cpus": 4, "num_gpus": 2}
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert "--num-cpus" in cmd
@@ -53,7 +53,7 @@ class TestWorkerManager:
     def test_build_worker_command_with_memory(self, worker_manager):
         """Test building worker command with memory configuration."""
         config = {"num_cpus": 4, "object_store_memory": 1000000000}  # 1GB
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert "--object-store-memory" in cmd
@@ -65,7 +65,7 @@ class TestWorkerManager:
             "num_cpus": 4,
             "resources": {"custom_resource": 2, "another_resource": 1},
         }
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert "--resources" in cmd
@@ -77,7 +77,7 @@ class TestWorkerManager:
     def test_build_worker_command_with_node_name(self, worker_manager):
         """Test building worker command with node name."""
         config = {"num_cpus": 4, "node_name": "test-worker"}
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
         cmd = worker_manager._build_worker_command(config, head_node_address)
 
         assert "--node-name" in cmd
@@ -90,7 +90,7 @@ class TestWorkerManager:
             {"num_cpus": 2, "node_name": "worker-1"},
             {"num_cpus": 4, "node_name": "worker-2"},
         ]
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
 
         with patch("subprocess.Popen") as mock_popen:
             # Mock successful process creation
@@ -119,7 +119,7 @@ class TestWorkerManager:
     async def test_start_worker_nodes_failure(self, worker_manager):
         """Test starting worker nodes with failure."""
         worker_configs = [{"num_cpus": 2, "node_name": "worker-1"}]
-        head_node_address = "ray://127.0.0.1:10001"
+        head_node_address = "127.0.0.1:10001"  # GCS address without ray://
 
         with patch("subprocess.Popen") as mock_popen:
             # Mock process creation failure

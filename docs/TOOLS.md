@@ -41,7 +41,7 @@ Start a new Ray cluster with head node and worker nodes. **Defaults to multi-nod
   "object_store_memory": 1000000000,  // Object store memory in bytes for head node
   "worker_nodes": [           // Array of worker node configurations (optional)
     {
-      "num_cpus": 2,          // Number of CPUs for this worker
+      "num_cpus": 1,          // Number of CPUs for this worker
       "num_gpus": 0,          // Number of GPUs for this worker
       "object_store_memory": 500000000,  // Object store memory for this worker
       "node_name": "worker-1", // Optional name for this worker
@@ -59,8 +59,10 @@ Start a new Ray cluster with head node and worker nodes. **Defaults to multi-nod
 **Default Multi-Node Configuration:**
 When no `worker_nodes` parameter is specified, the cluster will start with:
 - Head node: 1 CPU, 0 GPUs, 1GB object store memory
-- Worker node 1: 2 CPUs, 0 GPUs, 500MB object store memory
-- Worker node 2: 2 CPUs, 0 GPUs, 500MB object store memory
+- Worker node 1: 1 CPU, 0 GPUs, 500MB object store memory
+- Worker node 2: 1 CPU, 0 GPUs, 500MB object store memory
+
+**Note:** Default workers are configured with 1 CPU each to ensure they can start successfully with the default head node configuration (1 CPU). This prevents resource conflicts and ensures reliable cluster startup.
 
 **Custom Worker Configuration Example:**
 ```json
@@ -68,12 +70,12 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
   "num_cpus": 1,
   "worker_nodes": [
     {
-      "num_cpus": 2,
+      "num_cpus": 1,
       "num_gpus": 0,
       "node_name": "cpu-worker"
     },
     {
-      "num_cpus": 2,
+      "num_cpus": 1,
       "num_gpus": 1,
       "node_name": "gpu-worker"
     }

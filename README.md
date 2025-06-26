@@ -62,8 +62,10 @@ The server now defaults to starting multi-node clusters with 2 worker nodes:
 
 This creates:
 - Head node: 1 CPU, 0 GPUs, 1GB object store memory
-- Worker node 1: 2 CPUs, 0 GPUs, 500MB object store memory  
-- Worker node 2: 2 CPUs, 0 GPUs, 500MB object store memory
+- Worker node 1: 1 CPU, 0 GPUs, 500MB object store memory  
+- Worker node 2: 1 CPU, 0 GPUs, 500MB object store memory
+
+**Note:** Default workers are configured with 1 CPU each to ensure they can start successfully with the default head node configuration (1 CPU). This prevents resource conflicts and ensures reliable cluster startup.
 
 #### Custom Multi-Node Setup
 

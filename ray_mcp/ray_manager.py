@@ -48,6 +48,7 @@ class RayManager:
     def __init__(self) -> None:
         self._is_initialized = False
         self._cluster_address: Optional[str] = None
+        self._gcs_address: Optional[str] = None  # Store GCS address for worker nodes
         self._job_client: Optional[Any] = (
             None  # Use Any to avoid type issues with conditional imports
         )
@@ -242,6 +243,8 @@ class RayManager:
                         "status": "error",
                         "message": f"Could not parse GCS address from head node output. stdout: {stdout}, stderr: {stderr}",
                     }
+                # Store GCS address for worker nodes
+                self._gcs_address = gcs_address
                 # Use the Ray Client server port and the head node IP for ray://
                 head_ip = gcs_address.split(":")[0]
                 ray_address = f"ray://{head_ip}:{ray_client_port}"
@@ -290,6 +293,8 @@ class RayManager:
             # Set default worker nodes if none specified
             if worker_nodes is None:
                 worker_nodes = self._get_default_worker_config()
+            # If worker_nodes is an empty list, keep it empty (no workers)
+            # If worker_nodes is a non-empty list, use the provided workers
 
             # Start worker nodes if specified
             worker_results = []
@@ -298,10 +303,12 @@ class RayManager:
                 and isinstance(worker_nodes, list)
                 and self._cluster_address
             ):
-                # Use GCS address for worker nodes, not Ray Client address
-                worker_address = gcs_address if not address else address
+                # Use stored GCS address for worker nodes
+                worker_address = self._gcs_address if self._gcs_address else address
+                if worker_address is None:
+                    raise RuntimeError("GCS address for worker nodes is not available.")
                 worker_results = await self._worker_manager.start_worker_nodes(
-                    worker_nodes, worker_address
+                    worker_nodes, worker_address  # type: ignore[arg-type]
                 )
 
             return {
@@ -329,13 +336,13 @@ class RayManager:
         """Get default worker node configuration for multi-node cluster."""
         return [
             {
-                "num_cpus": 2,
+                "num_cpus": 1,  # Reduced from 2 to 1 to fit with default head node
                 "num_gpus": 0,
                 "object_store_memory": 500000000,  # 500MB
                 "node_name": "default-worker-1",
             },
             {
-                "num_cpus": 2,
+                "num_cpus": 1,  # Reduced from 2 to 1 to fit with default head node
                 "num_gpus": 0,
                 "object_store_memory": 500000000,  # 500MB
                 "node_name": "default-worker-2",
@@ -365,6 +372,14 @@ class RayManager:
 
             self._is_initialized = True
             self._cluster_address = ray_context.address_info["address"]
+
+            # Extract GCS address from the provided address for worker nodes
+            if address.startswith("ray://"):
+                # Extract IP:PORT from ray://IP:PORT format
+                self._gcs_address = address[6:]  # Remove "ray://" prefix
+            else:
+                # Assume it's already in IP:PORT format
+                self._gcs_address = address
 
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
@@ -434,6 +449,7 @@ class RayManager:
 
             self._is_initialized = False
             self._cluster_address = None
+            self._gcs_address = None
             self._job_client = None
 
             return {

@@ -198,6 +198,44 @@ class TestRayManager:
             assert "Ray is not available" in result["message"]
 
     @pytest.mark.asyncio
+    async def test_connect_cluster_gcs_address_extraction(self):
+        """Test that GCS address is properly extracted when connecting to existing cluster."""
+        manager = RayManager()
+
+        # Mock ray.init and related functions
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://127.0.0.1:10001",
+        }
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node_id"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    # Test with ray:// address
+                    result = await manager.connect_cluster("ray://127.0.0.1:10001")
+
+                    assert result["status"] == "connected"
+                    assert manager._is_initialized
+                    # ray:// prefix removed
+                    assert manager._gcs_address == "127.0.0.1:10001"
+
+                    # Test with direct IP:PORT address
+                    manager2 = RayManager()
+                    result2 = await manager2.connect_cluster("127.0.0.1:10003")
+
+                    assert result2["status"] == "connected"
+                    assert manager2._is_initialized
+                    # direct address stored as-is
+                    assert manager2._gcs_address == "127.0.0.1:10003"
+
+    @pytest.mark.asyncio
     async def test_submit_job_success(self, initialized_manager):
         """Test successful job submission."""
         mock_job_client = initialized_manager._job_client
@@ -468,9 +506,18 @@ class TestRayManager:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
+                # Patch the actual ray.job_submission.JobSubmissionClient used in the fallback
+                with patch("ray.job_submission.JobSubmissionClient") as mock_job_submission:
+                    mock_job_submission.side_effect = Exception(
+                        "Could not find any running Ray instance"
+                    )
 
-                result = await initialized_manager.list_jobs()
-                assert result["status"] == "success"
+                    result = await initialized_manager.list_jobs()
+                    assert result["status"] == "error"
+                    assert (
+                        "Job listing not available in Ray Client mode"
+                        in result["message"]
+                    )
 
     @pytest.mark.asyncio
     async def test_get_job_status_not_initialized(self, manager):
@@ -749,6 +796,73 @@ class TestRayManager:
                 result = await manager.get_cluster_info()
                 assert result["status"] == "error"
                 assert "Status error" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_gcs_address_storage_and_usage(self):
+        """Test that GCS address is properly stored and used for worker nodes."""
+        manager = RayManager()
+
+        # Mock ray.init and related functions
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://127.0.0.1:10001",
+        }
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node_id"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10002'",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
+
+                        # Test with worker nodes to verify GCS address usage
+                        worker_configs = [{"num_cpus": 2, "node_name": "test-worker"}]
+
+                        with patch.object(
+                            manager._worker_manager,
+                            "start_worker_nodes",
+                            new_callable=AsyncMock,
+                        ) as mock_start_workers:
+                            mock_start_workers.return_value = [
+                                {
+                                    "status": "started",
+                                    "node_name": "test-worker",
+                                    "message": "Worker node 'test-worker' started successfully",
+                                    "process_id": 12345,
+                                    "config": worker_configs[0],
+                                }
+                            ]
+
+                            result = await manager.start_cluster(
+                                worker_nodes=worker_configs
+                            )
+
+                            # Verify the cluster started successfully
+                            assert result["status"] == "started"
+                            assert manager._is_initialized
+
+                            # Verify GCS address was stored
+                            assert manager._gcs_address == "127.0.0.1:10002"
+
+                            # Verify worker manager was called with GCS address
+                            mock_start_workers.assert_called_once()
+                            call_args = mock_start_workers.call_args
+                            assert call_args[0][0] == worker_configs
+                            # GCS address without ray://
+                            assert call_args[0][1] == "127.0.0.1:10002"
 
 
 if __name__ == "__main__":
