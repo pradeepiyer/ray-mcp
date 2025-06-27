@@ -136,7 +136,12 @@ class RayManager:
         head_node_host: str = "127.0.0.1",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Start a Ray cluster with head node and optional worker nodes."""
+        """Start a Ray cluster with head node and optional worker nodes.
+
+        If ``address`` is provided, parameters intended for starting a new
+        cluster (``num_cpus``, ``num_gpus`` and ``object_store_memory``) are
+        ignored.
+        """
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {
@@ -174,6 +179,23 @@ class RayManager:
 
             if address:
                 # Connect to existing cluster
+                ignored_args = {}
+                if num_cpus is not None:
+                    ignored_args["num_cpus"] = num_cpus
+                if num_gpus is not None:
+                    ignored_args["num_gpus"] = num_gpus
+                if object_store_memory is not None:
+                    ignored_args["object_store_memory"] = object_store_memory
+
+                for arg in ["num_cpus", "num_gpus", "object_store_memory"]:
+                    kwargs.pop(arg, None)
+
+                if ignored_args:
+                    logger.warning(
+                        "Ignoring cluster start parameters %s when connecting to existing cluster",
+                        list(ignored_args.keys()),
+                    )
+
                 init_kwargs: Dict[str, Any] = {
                     "address": address,
                     "ignore_reinit_error": True,
@@ -354,7 +376,11 @@ class RayManager:
         ]
 
     async def connect_cluster(self, address: str, **kwargs: Any) -> Dict[str, Any]:
-        """Connect to an existing Ray cluster."""
+        """Connect to an existing Ray cluster.
+
+        Any parameters meant for starting a new cluster (``num_cpus``,
+        ``num_gpus`` and ``object_store_memory``) are ignored.
+        """
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {
@@ -363,6 +389,17 @@ class RayManager:
                 }
 
             # Prepare connection arguments
+            ignored_args = {}
+            for arg in ["num_cpus", "num_gpus", "object_store_memory"]:
+                if arg in kwargs:
+                    ignored_args[arg] = kwargs.pop(arg)
+
+            if ignored_args:
+                logger.warning(
+                    "Ignoring cluster start parameters %s when connecting to existing cluster",
+                    list(ignored_args.keys()),
+                )
+
             init_kwargs: Dict[str, Any] = {
                 "address": address,
                 "ignore_reinit_error": True,

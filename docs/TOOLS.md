@@ -112,6 +112,9 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
 - `ray://head-node-ip:10001`
 - `ray://cluster.example.com:10001`
 
+**Note:** When an address is provided, any cluster startup parameters such as
+`num_cpus`, `num_gpus`, or `object_store_memory` are ignored.
+
 ### cluster_info
 ```json
 {
