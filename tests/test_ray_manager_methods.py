@@ -546,13 +546,10 @@ class TestRayManagerMethods:
                 assert result["status"] == "success"
                 assert "logs" in result
 
-                # Test with actor_id (returns partial status)
-                result = await ray_manager.get_logs(actor_id="actor_123", num_lines=25)
-                assert result["status"] == "partial"
-
-                # Test with node_id (returns partial status)
-                result = await ray_manager.get_logs(node_id="node_123", num_lines=100)
-                assert result["status"] == "partial"
+                # Test with no job_id (should return error)
+                result = await ray_manager.get_logs(num_lines=100)
+                assert result["status"] == "error"
+                assert "job_id parameter is required" in result["message"]
 
     @pytest.mark.asyncio
     async def test_start_cluster_default_cpu_setting(

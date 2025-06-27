@@ -213,6 +213,31 @@ When connecting to an existing cluster, the following cluster-starting parameter
 }
 ```
 
+### get_logs
+```json
+{
+  "job_id": "job_123",     // Required: Job ID to get logs for
+  "num_lines": 100         // Optional: Number of log lines to retrieve (default: 100)
+}
+```
+
+**Returns job logs with the following structure:**
+```json
+{
+  "status": "success",
+  "log_type": "job",
+  "job_id": "job_123",
+  "logs": "Job log line 1\nJob log line 2\nJob log line 3..."
+}
+```
+
+**Notes:**
+- Only job logs are currently supported (actor and node logs are not implemented)
+- The `job_id` parameter is required
+- Logs are returned as the last N lines where N is the `num_lines` parameter
+- If no `num_lines` is specified, defaults to 100 lines
+- Works with both Ray Job Submission API and Ray Client mode
+
 ## Tool Categories by Ray Dependency
 
 **✅ Works without Ray initialization:**

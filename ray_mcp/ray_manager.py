@@ -975,8 +975,6 @@ class RayManager:
     async def get_logs(
         self,
         job_id: Optional[str] = None,
-        actor_id: Optional[str] = None,
-        node_id: Optional[str] = None,
         num_lines: int = 100,
     ) -> Dict[str, Any]:
         """Get logs from Ray cluster."""
@@ -1022,12 +1020,11 @@ class RayManager:
                             "suggestion": "Check Ray dashboard for comprehensive log viewing",
                         }
             else:
-                # For actor/node logs, we'd need to implement log collection
-                # This is a simplified version
+                # No job_id provided
                 return {
-                    "status": "partial",
-                    "message": "Actor and node log retrieval not fully implemented. Use Ray dashboard for detailed logs.",
-                    "suggestion": "Check Ray dashboard for comprehensive log viewing",
+                    "status": "error",
+                    "message": "job_id parameter is required for log retrieval",
+                    "suggestion": "Provide a job_id to retrieve logs for a specific job",
                 }
 
         except Exception as e:

@@ -272,21 +272,13 @@ class ToolRegistry:
         # Logs & debugging
         self._register_tool(
             name="get_logs",
-            description="Get logs from jobs, actors, or nodes",
+            description="Get logs from a specific job",
             schema={
                 "type": "object",
                 "properties": {
                     "job_id": {
                         "type": "string",
-                        "description": "Job ID to get logs for",
-                    },
-                    "actor_id": {
-                        "type": "string",
-                        "description": "Actor ID to get logs for",
-                    },
-                    "node_id": {
-                        "type": "string",
-                        "description": "Node ID to get logs for",
+                        "description": "Job ID to get logs for (required)",
                     },
                     "num_lines": {
                         "type": "integer",
@@ -294,6 +286,7 @@ class ToolRegistry:
                         "description": "Number of log lines to retrieve",
                     },
                 },
+                "required": ["job_id"],
             },
             handler=self._get_logs_handler,
         )

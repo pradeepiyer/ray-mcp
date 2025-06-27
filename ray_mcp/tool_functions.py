@@ -159,18 +159,14 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
     # Logs & debugging tools
     @server.call_tool()
     async def get_logs(
-        job_id: Optional[str] = None,
-        actor_id: Optional[str] = None,
-        node_id: Optional[str] = None,
+        job_id: str,
         num_lines: int = 100,
     ) -> List[TextContent]:
-        """Get logs from jobs, actors, or nodes."""
+        """Get logs from a specific job."""
         result = await tool_registry.execute_tool(
             "get_logs",
             {
                 "job_id": job_id,
-                "actor_id": actor_id,
-                "node_id": node_id,
                 "num_lines": num_lines,
             },
         )
