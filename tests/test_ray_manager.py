@@ -79,6 +79,41 @@ class TestRayManager:
                             assert job_client_arg.startswith("http://")
 
     @pytest.mark.asyncio
+    async def test_start_cluster_custom_ports(self):
+        """Test that custom ports are used when provided."""
+        manager = RayManager()
+
+        mock_context = Mock()
+        mock_context.address_info = {"address": "ray://127.0.0.1:12346"}
+        mock_context.dashboard_url = "http://127.0.0.1:8888"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = "test_node_id"
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient") as mock_client:
+                    with patch("subprocess.Popen") as mock_popen:
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:12345'\nView the Ray dashboard at http://127.0.0.1:8888",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
+
+                        result = await manager.start_cluster(worker_nodes=[], head_node_port=12345, dashboard_port=8888)
+
+                        assert result["status"] == "started"
+                        assert result["dashboard_url"] == "http://127.0.0.1:8888"
+                        call_args = mock_popen.call_args[0][0]
+                        port_idx = call_args.index("--port") + 1
+                        dash_idx = call_args.index("--dashboard-port") + 1
+                        assert call_args[port_idx] == "12345"
+                        assert call_args[dash_idx] == "8888"
+
+    @pytest.mark.asyncio
     async def test_start_cluster_already_running(self):
         """Test cluster start when already running."""
         manager = RayManager()
