@@ -79,9 +79,6 @@ class TestMCPIntegration:
             "debug_job",
             "list_actors",
             "kill_actor",
-            "performance_metrics",
-            "health_check",
-            "optimize_config",
             "get_logs",
         ]
 
@@ -259,22 +256,14 @@ class TestMCPIntegration:
         list_jobs_mock = AsyncMock(return_value={"status": "success", "jobs": []})
         list_jobs_mock.__signature__ = inspect.signature(RayManager.list_jobs)
 
-        get_performance_metrics_mock = AsyncMock(
-            return_value={"status": "success", "metrics": {}}
-        )
-        get_performance_metrics_mock.__signature__ = inspect.signature(
-            RayManager.get_performance_metrics
-        )
-
         mock_ray_manager.start_cluster = start_cluster_mock
         mock_ray_manager.list_jobs = list_jobs_mock
-        mock_ray_manager.get_performance_metrics = get_performance_metrics_mock
 
         with patch("ray_mcp.main.ray_manager", mock_ray_manager):
             with patch("ray_mcp.main.RAY_AVAILABLE", True):
 
                 # Test multiple tools
-                tools_to_test = ["start_ray", "list_jobs", "performance_metrics"]
+                tools_to_test = ["start_ray", "list_jobs", "cluster_info"]
 
                 for tool_name in tools_to_test:
                     result = await call_tool(tool_name)
@@ -394,7 +383,9 @@ class TestMCPIntegration:
                 "estimated_time_remaining": "5 minutes",
             }
         )
-        monitor_job_mock.__signature__ = inspect.signature(RayManager.monitor_job_progress)
+        monitor_job_mock.__signature__ = inspect.signature(
+            RayManager.monitor_job_progress
+        )
 
         with patch.object(RayManager, "monitor_job_progress", monitor_job_mock):
             result = await registry.execute_tool("monitor_job", {"job_id": "job_123"})
@@ -468,80 +459,30 @@ class TestMCPIntegration:
 
             assert isinstance(result, dict)
             assert result["status"] == "killed"
-            kill_actor_mock.assert_called_once_with("actor_123", True)
+            kill_actor_mock.assert_called_once_with(
+                actor_id="actor_123", no_restart=True
+            )
 
     @pytest.mark.asyncio
-    async def test_performance_metrics_tool(self):
-        """Test performance_metrics tool."""
-        registry = ToolRegistry(RayManager())
-
-        # Mock RayManager method
-        performance_metrics_mock = AsyncMock(
-            return_value={
-                "status": "success",
-                "metrics": {
-                    "cpu_usage": "45%",
-                    "memory_usage": "60%",
-                    "gpu_usage": "30%",
-                },
-            }
-        )
-        performance_metrics_mock.__signature__ = inspect.signature(
-            RayManager.get_performance_metrics
-        )
-
-        with patch.object(RayManager, "get_performance_metrics", performance_metrics_mock):
-            result = await registry.execute_tool("performance_metrics", {})
-
-            assert isinstance(result, dict)
-            assert "metrics" in result
-            performance_metrics_mock.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_optimize_config_tool(self):
-        """Test optimize_config tool."""
-        registry = ToolRegistry(RayManager())
-
-        # Mock RayManager method
-        optimize_config_mock = AsyncMock(
-            return_value={
-                "status": "success",
-                "recommendations": ["Increase CPU allocation", "Add more workers"],
-            }
-        )
-        optimize_config_mock.__signature__ = inspect.signature(
-            RayManager.optimize_cluster_config
-        )
-
-        with patch.object(RayManager, "optimize_cluster_config", optimize_config_mock):
-            result = await registry.execute_tool("optimize_config", {})
-
-            assert isinstance(result, dict)
-            assert "recommendations" in result
-            optimize_config_mock.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_get_logs_tool_with_parameters(self):
-        """Test get_logs tool with various parameters."""
+    async def test_get_logs_tool(self):
+        """Test get_logs tool."""
         registry = ToolRegistry(RayManager())
 
         # Mock RayManager method
         get_logs_mock = AsyncMock(
             return_value={
                 "status": "success",
-                "logs": "Sample log output...",
-                "job_id": "job_123",
+                "logs": ["log line 1", "log line 2"],
             }
         )
         get_logs_mock.__signature__ = inspect.signature(RayManager.get_logs)
 
         with patch.object(RayManager, "get_logs", get_logs_mock):
-            args = {"job_id": "test_job_123", "num_lines": 50}
-            result = await registry.execute_tool("get_logs", args)
+            result = await registry.execute_tool("get_logs", {"job_id": "test_job"})
 
             assert isinstance(result, dict)
             assert "logs" in result
-            get_logs_mock.assert_called_once_with(**args)
+            get_logs_mock.assert_called_once_with(job_id="test_job", num_lines=100)
 
     @pytest.mark.asyncio
     async def test_ray_unavailable_error(self):

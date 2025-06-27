@@ -132,7 +132,7 @@ class ToolRegistry:
 
         self._register_tool(
             name="cluster_info",
-            description="Get comprehensive cluster information including status, resources, nodes, and worker status",
+            description="Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations",
             schema={"type": "object", "properties": {}},
             handler=self._cluster_info_handler,
         )
@@ -249,24 +249,10 @@ class ToolRegistry:
 
         # Enhanced monitoring
         self._register_tool(
-            name="performance_metrics",
-            description="Get performance metrics for the Ray cluster",
+            name="cluster_info",
+            description="Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations",
             schema={"type": "object", "properties": {}},
-            handler=self._performance_metrics_handler,
-        )
-
-        self._register_tool(
-            name="health_check",
-            description="Perform a comprehensive health check of the Ray cluster",
-            schema={"type": "object", "properties": {}},
-            handler=self._health_check_handler,
-        )
-
-        self._register_tool(
-            name="optimize_config",
-            description="Analyze and suggest optimizations for the Ray cluster configuration",
-            schema={"type": "object", "properties": {}},
-            handler=self._optimize_config_handler,
+            handler=self._cluster_info_handler,
         )
 
         # Logs & debugging
@@ -375,27 +361,19 @@ class ToolRegistry:
 
     async def _kill_actor_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for kill_actor tool."""
-        return await self.ray_manager.kill_actor(
-            kwargs["actor_id"], kwargs.get("no_restart", False)
-        )
-
-    async def _performance_metrics_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for performance_metrics tool."""
-        return await self.ray_manager.get_performance_metrics()
-
-    async def _health_check_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for health_check tool."""
-        return await self.ray_manager.cluster_health_check()
-
-    async def _optimize_config_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for optimize_config tool."""
-        return await self.ray_manager.optimize_cluster_config()
+        sig = inspect.signature(RayManager.kill_actor)
+        # Apply default values from the method signature
+        bound_args = sig.bind_partial(**kwargs)
+        bound_args.apply_defaults()
+        return await self.ray_manager.kill_actor(**bound_args.arguments)
 
     async def _get_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_logs tool."""
         sig = inspect.signature(RayManager.get_logs)
-        filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
-        return await self.ray_manager.get_logs(**filtered)
+        # Apply default values from the method signature
+        bound_args = sig.bind_partial(**kwargs)
+        bound_args.apply_defaults()
+        return await self.ray_manager.get_logs(**bound_args.arguments)
 
     def _wrap_with_system_prompt(self, tool_name: str, result: Dict[str, Any]) -> str:
         """Wrap tool output with a system prompt for LLM enhancement."""

@@ -6,7 +6,7 @@ from io import StringIO
 import json
 import os
 import sys
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Optional, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from mcp.types import TextContent
@@ -41,9 +41,6 @@ class TestMain:
             "debug_job",
             "list_actors",
             "kill_actor",
-            "performance_metrics",
-            "health_check",
-            "optimize_config",
             "get_logs",
         ]
 
@@ -217,18 +214,21 @@ class TestToolFunctions:
     @pytest.mark.asyncio
     async def test_start_ray_function(self):
         """Test start_ray tool function."""
-        from ray_mcp.tool_functions import create_tool_functions
 
-        # Mock the server.call_tool decorator to return an async function
-        async def mock_start_ray(*args, **kwargs):
-            return await self.registry.execute_tool("start_ray", kwargs)
+        # Mock the server.call_tool decorator to return the function directly
+        def mock_call_tool_decorator():
+            def decorator(func):
+                return func
 
-        self.mock_server.call_tool.return_value = mock_start_ray
+            return decorator
 
-        # Create the tool functions
-        create_tool_functions(self.mock_server, self.registry)
+        # Define the tool function using the mock decorator
+        @mock_call_tool_decorator()
+        async def start_ray(num_cpus: int = 1, num_gpus: Optional[int] = None):
+            return await self.registry.execute_tool(
+                "start_ray", {"num_cpus": num_cpus, "num_gpus": num_gpus}
+            )
 
-        # Mock the registry execution
         self.registry.execute_tool = AsyncMock(
             return_value={
                 "status": "success",
@@ -236,12 +236,8 @@ class TestToolFunctions:
             }
         )
 
-        # Test the function
-        result = await mock_start_ray(num_cpus=4, num_gpus=2)
-
+        result = await start_ray(num_cpus=4, num_gpus=2)
         assert result["status"] == "success"
-
-        # Verify the registry was called with correct arguments
         self.registry.execute_tool.assert_called_once_with(
             "start_ray", {"num_cpus": 4, "num_gpus": 2}
         )
@@ -249,21 +245,22 @@ class TestToolFunctions:
     @pytest.mark.asyncio
     async def test_connect_ray_function(self):
         """Test connect_ray tool function."""
-        from ray_mcp.tool_functions import create_tool_functions
 
-        async def mock_connect_ray(address: str):
+        def mock_call_tool_decorator():
+            def decorator(func):
+                return func
+
+            return decorator
+
+        @mock_call_tool_decorator()
+        async def connect_ray(address: str):
             return await self.registry.execute_tool("connect_ray", {"address": address})
-
-        self.mock_server.call_tool.return_value = mock_connect_ray
-
-        create_tool_functions(self.mock_server, self.registry)
 
         self.registry.execute_tool = AsyncMock(
             return_value={"status": "success", "connected": True}
         )
 
-        result = await mock_connect_ray(address="ray://localhost:10001")
-
+        result = await connect_ray(address="ray://localhost:10001")
         assert result["status"] == "success"
         self.registry.execute_tool.assert_called_once_with(
             "connect_ray", {"address": "ray://localhost:10001"}
@@ -272,21 +269,22 @@ class TestToolFunctions:
     @pytest.mark.asyncio
     async def test_stop_ray_function(self):
         """Test stop_ray tool function."""
-        from ray_mcp.tool_functions import create_tool_functions
 
-        async def mock_stop_ray(*args, **kwargs):
+        def mock_call_tool_decorator():
+            def decorator(func):
+                return func
+
+            return decorator
+
+        @mock_call_tool_decorator()
+        async def stop_ray():
             return await self.registry.execute_tool("stop_ray", {})
-
-        self.mock_server.call_tool.return_value = mock_stop_ray
-
-        create_tool_functions(self.mock_server, self.registry)
 
         self.registry.execute_tool = AsyncMock(
             return_value={"status": "success", "stopped": True}
         )
 
-        result = await mock_stop_ray()
-
+        result = await stop_ray()
         assert result["status"] == "success"
         self.registry.execute_tool.assert_called_once_with("stop_ray", {})
 

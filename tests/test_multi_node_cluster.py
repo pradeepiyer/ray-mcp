@@ -118,11 +118,41 @@ class TestMultiNodeCluster:
                             "test_node"
                         )
                         ray_manager = RayManager()
+
+                        # Use AsyncMock for start_worker_nodes to return an awaitable result
+                        mock_start_workers = AsyncMock()
+                        mock_start_workers.return_value = [
+                            {
+                                "status": "started",
+                                "node_name": "default-worker-1",
+                                "message": "Worker node 'default-worker-1' started successfully",
+                                "process_id": 1001,
+                                "config": {
+                                    "num_cpus": 2,
+                                    "num_gpus": 0,
+                                    "object_store_memory": 500 * 1024 * 1024,
+                                    "node_name": "default-worker-1",
+                                },
+                            },
+                            {
+                                "status": "started",
+                                "node_name": "default-worker-2",
+                                "message": "Worker node 'default-worker-2' started successfully",
+                                "process_id": 1002,
+                                "config": {
+                                    "num_cpus": 2,
+                                    "num_gpus": 0,
+                                    "object_store_memory": 500 * 1024 * 1024,
+                                    "node_name": "default-worker-2",
+                                },
+                            },
+                        ]
+
                         with patch.object(
                             ray_manager._worker_manager,
                             "start_worker_nodes",
-                            new_callable=AsyncMock,
-                        ) as mock_start_workers:
+                            mock_start_workers,
+                        ):
                             with patch("subprocess.Popen") as mock_popen:
                                 # Mock the subprocess to simulate successful ray start
                                 mock_process = Mock()
@@ -133,32 +163,6 @@ class TestMultiNodeCluster:
                                 mock_process.poll.return_value = 0
                                 mock_popen.return_value = mock_process
 
-                                mock_start_workers.return_value = [
-                                    {
-                                        "status": "started",
-                                        "node_name": "default-worker-1",
-                                        "message": "Worker node 'default-worker-1' started successfully",
-                                        "process_id": 1001,
-                                        "config": {
-                                            "num_cpus": 2,
-                                            "num_gpus": 0,
-                                            "object_store_memory": 500 * 1024 * 1024,
-                                            "node_name": "default-worker-1",
-                                        },
-                                    },
-                                    {
-                                        "status": "started",
-                                        "node_name": "default-worker-2",
-                                        "message": "Worker node 'default-worker-2' started successfully",
-                                        "process_id": 1002,
-                                        "config": {
-                                            "num_cpus": 2,
-                                            "num_gpus": 0,
-                                            "object_store_memory": 500 * 1024 * 1024,
-                                            "node_name": "default-worker-2",
-                                        },
-                                    },
-                                ]
                                 result = await ray_manager.start_cluster(num_cpus=4)
                                 assert result["status"] == "started"
                                 assert (

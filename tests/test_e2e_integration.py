@@ -494,9 +494,6 @@ print("Job completed!")
             "debug_job",
             "list_actors",
             "kill_actor",
-            "performance_metrics",
-            "health_check",
-            "optimize_config",
             "get_logs",
         }
         # All required tools must be present

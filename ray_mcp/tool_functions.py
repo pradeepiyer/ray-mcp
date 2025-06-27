@@ -139,36 +139,10 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
 
     # Enhanced monitoring tools
     @server.call_tool()
-    async def performance_metrics() -> List[TextContent]:
-        """Get performance metrics for the Ray cluster."""
-        result = await tool_registry.execute_tool("performance_metrics", {})
-        return _format_response(result)
-
-    @server.call_tool()
-    async def health_check() -> List[TextContent]:
-        """Perform a comprehensive health check of the Ray cluster."""
-        result = await tool_registry.execute_tool("health_check", {})
-        return _format_response(result)
-
-    @server.call_tool()
-    async def optimize_config() -> List[TextContent]:
-        """Analyze and suggest optimizations for the Ray cluster configuration."""
-        result = await tool_registry.execute_tool("optimize_config", {})
-        return _format_response(result)
-
-    # Logs & debugging tools
-    @server.call_tool()
-    async def get_logs(
-        job_id: str,
-        num_lines: int = 100,
-    ) -> List[TextContent]:
+    async def get_logs(job_id: str, num_lines: int = 100) -> List[TextContent]:
         """Get logs from a specific job."""
         result = await tool_registry.execute_tool(
-            "get_logs",
-            {
-                "job_id": job_id,
-                "num_lines": num_lines,
-            },
+            "get_logs", {"job_id": job_id, "num_lines": num_lines}
         )
         return _format_response(result)
 

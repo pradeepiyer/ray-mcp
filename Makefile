@@ -1,6 +1,6 @@
 # Ray MCP Server - Test Automation (UV Native)
 
-.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions
+.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions count-lines test-e2e-clean test-e2e-clean-x test-e2e-file test-e2e-clean-verbose
 
 # Default development test (fast)
 test: test-fast
@@ -17,8 +17,14 @@ test-smoke:
 
 # End-to-end tests only - for major changes
 test-e2e:
-	@echo "🔄 Running e2e tests (this may take several minutes)..."
-	@./scripts/test-e2e.sh
+	@echo "🧪 Running e2e tests with automatic cleanup..."
+	@echo "🧹 Running initial cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "🚀 Starting e2e tests with automatic cleanup..."
+	@python -m pytest tests/ -m e2e -v --tb=short
+	@echo "🧹 Running final cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "✅ E2E tests completed with cleanup"
 
 # Full test suite - all tests including e2e
 test-full:
@@ -107,37 +113,72 @@ clean:
 	@find . -name "*.pyc" -delete
 	@find . -name "__pycache__" -type d -exec rm -rf {} +
 
+# Count lines of code (excluding common non-code files)
+count-lines:
+	@echo "📏 Counting lines of code in the repo..."
+	@find . -type f \( -name '*.py' -o -name '*.sh' \) \
+	  -not -path './.venv/*' -not -path './.git/*' -not -path './htmlcov/*' \
+	  -not -path './.mypy_cache/*' -not -path './.pytest_cache/*' \
+	  -not -path './*.egg-info/*' -not -path './__pycache__/*' \
+	  -not -path './uv.lock' -not -path './.coverage*' \
+	  -not -path './.gitignore' \
+	  -exec cat {} + | wc -l
+
+# Run e2e tests with automatic cleanup between tests (using pytest plugin)
+test-e2e-clean:
+	@echo "🧪 Running e2e tests with automatic cleanup..."
+	@echo "🧹 Running initial cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "🚀 Starting e2e tests with automatic cleanup..."
+	@python -m pytest tests/ -m e2e -v --tb=short
+	@echo "🧹 Running final cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "✅ E2E tests completed with cleanup"
+
+# Run e2e tests with detailed output and cleanup
+test-e2e-verbose:
+	@echo "🧪 Running e2e tests with detailed output and cleanup..."
+	@echo "🧹 Running initial cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "🚀 Starting e2e tests with automatic cleanup..."
+	@python -m pytest tests/ -m e2e -v -s --tb=long
+	@echo "🧹 Running final cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "✅ E2E tests completed with cleanup"
+
+# Run specific e2e test file with cleanup
+test-e2e-file:
+	@echo "🧪 Running specific e2e test file with automatic cleanup..."
+	@echo "🧹 Running initial cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "🚀 Starting e2e tests from test_e2e_integration.py..."
+	@python -m pytest tests/test_e2e_integration.py -v --tb=short
+	@echo "🧹 Running final cleanup..."
+	@./scripts/ray_cleanup.sh
+	@echo "✅ E2E tests completed with cleanup"
+
 # Help
 help:
-	@echo "Available test commands:"
-	@echo "  make test       - Run fast test suite (default, uses 'fast' marker)"
-	@echo "  make test-fast  - Run fast test suite (uses 'fast' marker, excludes e2e)"
-	@echo "  make test-smoke - Run smoke tests (minimal verification)"
-	@echo "  make test-e2e   - Run e2e tests only (for major changes)"
-	@echo "  make test-full  - Run complete test suite (includes e2e)"
-	@echo "  make test-smart - Smart test runner (detects changes)"
-	@echo "  make test-tool-functions - Run tool function specific tests"
+	@echo "Ray MCP Server - Available Commands:"
 	@echo ""
-	@echo "Linting and formatting:"
-	@echo "  make lint       - Run linting checks (black, isort, pyright)"
-	@echo "  make lint-tool-functions - Run tool function specific linting"
-	@echo "  make lint-enhanced - Run all linting including tool function checks"
-	@echo "  make format     - Format code with black and isort"
+	@echo "📦 Installation:"
+	@echo "  install          Install dependencies"
+	@echo "  dev-install      Install development dependencies"
+	@echo "  sync             Sync dependencies"
+	@echo "  uv-lock          Update lock file"
+	@echo "  uv-check         Check dependency consistency"
 	@echo ""
-	@echo "Test markers:"
-	@echo "  fast           - Fast unit and integration tests"
-	@echo "  e2e            - End-to-end tests"
-	@echo "  smoke          - Minimal smoke tests"
-	@echo "  slow           - Slow running tests"
+	@echo "🧪 Testing:"
+	@echo "  test             Run all tests"
+	@echo "  test-fast        Run fast tests only"
+	@echo "  test-smoke       Run smoke tests"
+	@echo "  test-e2e         Run e2e tests with automatic cleanup"
+	@echo "  test-e2e-verbose Run e2e tests with detailed output and cleanup"
+	@echo "  test-full        Run full test suite"
+	@echo "  test-smart       Run smart test selection"
 	@echo ""
-	@echo "UV dependency management:"
-	@echo "  make sync       - Install all dependencies (dev + prod)"
-	@echo "  make install    - Install package only"
-	@echo "  make dev-install- Full development setup (recommended)"
-	@echo "  make uv-lock    - Update lock file"
-	@echo "  make uv-check   - Check dependencies"
-	@echo "  make venv       - Create virtual environment"
-	@echo ""
-	@echo "Other commands:"
-	@echo "  make clean      - Clean up build artifacts"
-	@echo "  make help       - Show this help message" 
+	@echo "🔧 Development:"
+	@echo "  lint-tool-functions  Lint tool function signatures"
+	@echo "  test-tool-functions  Test tool function signatures"
+	@echo "  count-lines      Count lines of code"
+	@echo "  clean            Clean build artifacts" 

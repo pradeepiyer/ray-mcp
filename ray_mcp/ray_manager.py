@@ -20,21 +20,13 @@ except ImportError:
     JobSubmissionClient = None  # type: ignore
 
 from .types import (
-    ActorConfig,
-    ActorId,
-    ActorInfo,
-    ActorState,
-    ClusterHealth,
     ErrorResponse,
-    HealthStatus,
+    HealthReport,
     JobId,
     JobInfo,
     JobStatus,
     NodeId,
     NodeInfo,
-    PerformanceMetrics,
-    Response,
-    SuccessResponse,
 )
 from .worker_manager import WorkerManager
 
@@ -547,7 +539,7 @@ class RayManager:
             }
 
     async def get_cluster_info(self) -> Dict[str, Any]:
-        """Get comprehensive cluster information including status, resources, nodes, and worker status."""
+        """Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations."""
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {"status": "unavailable", "message": "Ray is not available"}
@@ -592,6 +584,20 @@ class RayManager:
                 for resource in cluster_resources.keys()
             }
 
+            # Calculate resource utilization for performance metrics
+            resource_details = {}
+            for resource, total in cluster_resources.items():
+                available = available_resources.get(resource, 0)
+                used = total - available
+                utilization = (used / total * 100) if total > 0 else 0
+
+                resource_details[resource] = {
+                    "total": total,
+                    "available": available,
+                    "used": used,
+                    "utilization_percent": round(utilization, 2),
+                }
+
             # Process node information
             node_info = [
                 {
@@ -616,8 +622,82 @@ class RayManager:
                 [w for w in worker_status if w["status"] == "running"]
             )
 
+            # Perform health checks
+            health_checks = {
+                "all_nodes_alive": all(node.get("Alive", False) for node in nodes),
+                "has_available_cpu": available_resources.get("CPU", 0) > 0,
+                "has_available_memory": available_resources.get("memory", 0) > 0,
+                "cluster_responsive": True,  # If we got here, cluster is responsive
+            }
+
+            # Calculate health score
+            health_score = sum(health_checks.values()) / len(health_checks) * 100
+
+            # Determine overall status
+            if health_score >= 90:
+                overall_status = "excellent"
+            elif health_score >= 70:
+                overall_status = "good"
+            elif health_score >= 50:
+                overall_status = "fair"
+            else:
+                overall_status = "poor"
+
+            # Generate health recommendations
+            health_recommendations = self._generate_health_recommendations(
+                health_checks
+            )
+
+            # Analyze resource utilization for optimization
+            cpu_total = cluster_resources.get("CPU", 0)
+            cpu_available = available_resources.get("CPU", 0)
+            cpu_utilization = (
+                ((cpu_total - cpu_available) / cpu_total * 100) if cpu_total > 0 else 0
+            )
+
+            memory_total = cluster_resources.get("memory", 0)
+            memory_available = available_resources.get("memory", 0)
+            memory_utilization = (
+                ((memory_total - memory_available) / memory_total * 100)
+                if memory_total > 0
+                else 0
+            )
+
+            # Generate optimization suggestions
+            optimization_suggestions = []
+
+            if cpu_utilization > 80:
+                optimization_suggestions.append(
+                    "High CPU utilization detected. Consider adding more CPU resources or optimizing workloads."
+                )
+            elif cpu_utilization < 20:
+                optimization_suggestions.append(
+                    "Low CPU utilization detected. Consider reducing cluster size to save costs."
+                )
+
+            if memory_utilization > 80:
+                optimization_suggestions.append(
+                    "High memory utilization detected. Consider adding more memory or optimizing memory usage."
+                )
+            elif memory_utilization < 20:
+                optimization_suggestions.append(
+                    "Low memory utilization detected. Consider reducing memory allocation."
+                )
+
+            alive_nodes = len([n for n in nodes if n.get("Alive", False)])
+            if alive_nodes < len(nodes):
+                optimization_suggestions.append(
+                    f"Some nodes are not alive ({alive_nodes}/{len(nodes)}). Check node health."
+                )
+
+            if not optimization_suggestions:
+                optimization_suggestions.append(
+                    "Cluster configuration appears optimal."
+                )
+
             return {
                 "status": "success",
+                "timestamp": time.time(),
                 "cluster_overview": {
                     "status": "running",
                     "address": self._cluster_address,
@@ -633,6 +713,44 @@ class RayManager:
                 },
                 "nodes": node_info,
                 "worker_nodes": worker_status,
+                "performance_metrics": {
+                    "cluster_overview": {
+                        "total_nodes": len(nodes),
+                        "alive_nodes": len([n for n in nodes if n.get("Alive", False)]),
+                        "total_cpus": cluster_resources.get("CPU", 0),
+                        "available_cpus": available_resources.get("CPU", 0),
+                        "total_memory": cluster_resources.get("memory", 0),
+                        "available_memory": available_resources.get("memory", 0),
+                    },
+                    "resource_details": resource_details,
+                    "node_details": [
+                        {
+                            "node_id": node["NodeID"],
+                            "alive": node["Alive"],
+                            "resources": node.get("Resources", {}),
+                            "used_resources": node.get("UsedResources", {}),
+                            "node_name": node.get("NodeName", ""),
+                        }
+                        for node in nodes
+                        if node.get("Alive", False)
+                    ],
+                },
+                "health_check": {
+                    "overall_status": overall_status,
+                    "health_score": round(health_score, 2),
+                    "checks": health_checks,
+                    "recommendations": health_recommendations,
+                    "node_count": len(nodes),
+                    "active_jobs": 0,  # Would need job client to get this
+                    "active_actors": 0,  # Would need to count actors
+                },
+                "optimization_analysis": {
+                    "cpu_utilization": round(cpu_utilization, 2),
+                    "memory_utilization": round(memory_utilization, 2),
+                    "node_count": len(nodes),
+                    "alive_nodes": alive_nodes,
+                },
+                "optimization_suggestions": optimization_suggestions,
             }
 
         except Exception as e:
@@ -1033,69 +1151,6 @@ class RayManager:
 
     # ===== ENHANCED MONITORING =====
 
-    async def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get detailed performance metrics for the cluster."""
-        try:
-            self._ensure_initialized()
-
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            # Get cluster information
-            cluster_resources = ray.cluster_resources()
-            available_resources = ray.available_resources()
-            nodes = ray.nodes()
-
-            # Calculate resource utilization
-            resource_details = {}
-            for resource, total in cluster_resources.items():
-                available = available_resources.get(resource, 0)
-                used = total - available
-                utilization = (used / total * 100) if total > 0 else 0
-
-                resource_details[resource] = {
-                    "total": total,
-                    "available": available,
-                    "used": used,
-                    "utilization_percent": round(utilization, 2),
-                }
-
-            # Node details
-            node_details = []
-            for node in nodes:
-                if node.get("Alive", False):
-                    node_details.append(
-                        {
-                            "node_id": node["NodeID"],
-                            "alive": node["Alive"],
-                            "resources": node.get("Resources", {}),
-                            "used_resources": node.get("UsedResources", {}),
-                            "node_name": node.get("NodeName", ""),
-                        }
-                    )
-
-            return {
-                "status": "success",
-                "timestamp": time.time(),
-                "cluster_overview": {
-                    "total_nodes": len(nodes),
-                    "alive_nodes": len([n for n in nodes if n.get("Alive", False)]),
-                    "total_cpus": cluster_resources.get("CPU", 0),
-                    "available_cpus": available_resources.get("CPU", 0),
-                    "total_memory": cluster_resources.get("memory", 0),
-                    "available_memory": available_resources.get("memory", 0),
-                },
-                "resource_details": resource_details,
-                "node_details": node_details,
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to get performance metrics: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to get performance metrics: {str(e)}",
-            }
-
     async def monitor_job_progress(self, job_id: str) -> Dict[str, Any]:
         """Get real-time progress monitoring for a job."""
         try:
@@ -1128,62 +1183,6 @@ class RayManager:
             return {
                 "status": "error",
                 "message": f"Failed to monitor job progress: {str(e)}",
-            }
-
-    async def cluster_health_check(self) -> Dict[str, Any]:
-        """Perform comprehensive cluster health monitoring."""
-        try:
-            self._ensure_initialized()
-
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            # Get cluster state
-            nodes = ray.nodes()
-            cluster_resources = ray.cluster_resources()
-            available_resources = ray.available_resources()
-
-            # Perform health checks
-            health_checks = {
-                "all_nodes_alive": all(node.get("Alive", False) for node in nodes),
-                "has_available_cpu": available_resources.get("CPU", 0) > 0,
-                "has_available_memory": available_resources.get("memory", 0) > 0,
-                "cluster_responsive": True,  # If we got here, cluster is responsive
-            }
-
-            # Calculate health score
-            health_score = sum(health_checks.values()) / len(health_checks) * 100
-
-            # Determine overall status
-            if health_score >= 90:
-                overall_status = "excellent"
-            elif health_score >= 70:
-                overall_status = "good"
-            elif health_score >= 50:
-                overall_status = "fair"
-            else:
-                overall_status = "poor"
-
-            # Generate recommendations
-            recommendations = self._generate_health_recommendations(health_checks)
-
-            return {
-                "status": "success",
-                "overall_status": overall_status,
-                "health_score": round(health_score, 2),
-                "checks": health_checks,
-                "timestamp": time.time(),
-                "recommendations": recommendations,
-                "node_count": len(nodes),
-                "active_jobs": 0,  # Would need job client to get this
-                "active_actors": 0,  # Would need to count actors
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to perform health check: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to perform health check: {str(e)}",
             }
 
     def _generate_health_recommendations(
@@ -1296,80 +1295,3 @@ class RayManager:
             )
 
         return suggestions
-
-    async def optimize_cluster_config(self) -> Dict[str, Any]:
-        """Analyze cluster usage and suggest optimizations."""
-        try:
-            self._ensure_initialized()
-
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            # Get current cluster state
-            nodes = ray.nodes()
-            cluster_resources = ray.cluster_resources()
-            available_resources = ray.available_resources()
-
-            # Analyze resource utilization
-            cpu_total = cluster_resources.get("CPU", 0)
-            cpu_available = available_resources.get("CPU", 0)
-            cpu_utilization = (
-                ((cpu_total - cpu_available) / cpu_total * 100) if cpu_total > 0 else 0
-            )
-
-            memory_total = cluster_resources.get("memory", 0)
-            memory_available = available_resources.get("memory", 0)
-            memory_utilization = (
-                ((memory_total - memory_available) / memory_total * 100)
-                if memory_total > 0
-                else 0
-            )
-
-            # Generate optimization suggestions
-            suggestions = []
-
-            if cpu_utilization > 80:
-                suggestions.append(
-                    "High CPU utilization detected. Consider adding more CPU resources or optimizing workloads."
-                )
-            elif cpu_utilization < 20:
-                suggestions.append(
-                    "Low CPU utilization detected. Consider reducing cluster size to save costs."
-                )
-
-            if memory_utilization > 80:
-                suggestions.append(
-                    "High memory utilization detected. Consider adding more memory or optimizing memory usage."
-                )
-            elif memory_utilization < 20:
-                suggestions.append(
-                    "Low memory utilization detected. Consider reducing memory allocation."
-                )
-
-            alive_nodes = len([n for n in nodes if n.get("Alive", False)])
-            if alive_nodes < len(nodes):
-                suggestions.append(
-                    f"Some nodes are not alive ({alive_nodes}/{len(nodes)}). Check node health."
-                )
-
-            if not suggestions:
-                suggestions.append("Cluster configuration appears optimal.")
-
-            return {
-                "status": "success",
-                "analysis": {
-                    "cpu_utilization": round(cpu_utilization, 2),
-                    "memory_utilization": round(memory_utilization, 2),
-                    "node_count": len(nodes),
-                    "alive_nodes": alive_nodes,
-                },
-                "suggestions": suggestions,
-                "timestamp": time.time(),
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to optimize cluster config: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to optimize cluster config: {str(e)}",
-            }

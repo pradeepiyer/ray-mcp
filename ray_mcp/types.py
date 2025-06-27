@@ -1,7 +1,7 @@
 """Type definitions for the Ray MCP server."""
 
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Protocol, TypedDict, Union
+from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
 
 # ===== BASIC TYPE ALIASES =====
 
@@ -90,90 +90,14 @@ class ActorInfo(TypedDict):
     state: ActorState
 
 
-class ClusterResources(TypedDict):
-    """Cluster resource information."""
-
-    total: ResourceValue
-    available: ResourceValue
-    used: ResourceValue
-
-
-class PerformanceMetrics(TypedDict):
-    """Cluster performance metrics."""
-
-    timestamp: float
-    cluster_overview: Dict[str, Union[int, float]]
-    resource_details: Dict[str, ClusterResources]
-    node_details: List[NodeInfo]
-
-
-class HealthCheck(TypedDict):
-    """Cluster health check result."""
-
-    all_nodes_alive: bool
-    has_available_cpu: bool
-    has_available_memory: bool
-    cluster_responsive: bool
-
-
 class HealthReport(TypedDict):
     """Complete health report."""
 
     overall_status: HealthStatus
     health_score: float
-    checks: HealthCheck
+    checks: Dict[str, bool]
     timestamp: float
     recommendations: List[str]
-
-
-# ===== BACKUP TYPES =====
-
-
-class ClusterState(TypedDict):
-    """Complete cluster state for backup."""
-
-    timestamp: float
-    cluster_resources: ResourceDict
-    nodes: List[NodeInfo]
-    jobs: List[JobInfo]
-    actors: List[ActorInfo]
-    performance_metrics: PerformanceMetrics
-
-
-# ===== CONFIGURATION TYPES =====
-
-
-class JobConfig(TypedDict):
-    """Job configuration."""
-
-    entrypoint: str
-    runtime_env: Optional[Dict[str, Any]]
-    job_id: Optional[str]
-    metadata: Optional[Dict[str, str]]
-
-
-class ActorConfig(TypedDict):
-    """Configuration for actor creation."""
-
-    name: Optional[str]
-    namespace: Optional[str]
-    num_cpus: Optional[Union[int, float]]
-    num_gpus: Optional[Union[int, float]]
-    memory: Optional[int]
-    resources: Optional[Dict[str, float]]
-
-
-class ClusterHealth(TypedDict):
-    """Complete cluster health information."""
-
-    overall_status: HealthStatus
-    health_score: float
-    checks: HealthCheck
-    timestamp: float
-    recommendations: List[str]
-    node_count: int
-    active_jobs: int
-    active_actors: int
 
 
 # ===== RESPONSE TYPES =====
@@ -210,59 +134,3 @@ class JobSubmissionResponse(TypedDict):
     status: Literal["submitted"]
     job_id: JobId
     message: str
-
-
-class BackupResponse(TypedDict):
-    """Response from cluster backup."""
-
-    status: Literal["backup_created"]
-    backup_path: str
-    timestamp: float
-    message: str
-
-
-# Union type for all possible responses
-Response = Union[
-    SuccessResponse,
-    ErrorResponse,
-    ClusterStartResponse,
-    JobSubmissionResponse,
-    BackupResponse,
-]
-
-# ===== UNION RESPONSE TYPES =====
-
-RayManagerResponse = Union[
-    SuccessResponse,
-    ErrorResponse,
-    ClusterStartResponse,
-    JobSubmissionResponse,
-    BackupResponse,
-    JsonDict,  # For complex responses that don't fit standard patterns
-]
-
-# ===== PROTOCOL TYPES =====
-
-
-class JobClient(Protocol):
-    """Protocol for Ray job submission client."""
-
-    def submit_job(
-        self,
-        entrypoint: str,
-        runtime_env: Optional[JsonDict] = None,
-        job_id: Optional[JobId] = None,
-        metadata: Optional[Dict[str, str]] = None,
-    ) -> JobId: ...
-
-    def get_job_info(self, job_id: JobId) -> JobInfo: ...
-    def get_job_logs(self, job_id: JobId) -> str: ...
-    def stop_job(self, job_id: JobId) -> bool: ...
-    def list_jobs(self) -> List[JobInfo]: ...
-
-
-# ===== KWARGS TYPES =====
-
-# Specific kwargs types for different operations
-ClusterKwargs = Dict[str, Union[str, int, bool, ResourceDict]]
-JobKwargs = Dict[str, Union[str, int, JsonDict, Dict[str, str]]]
