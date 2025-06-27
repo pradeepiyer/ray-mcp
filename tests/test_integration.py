@@ -331,37 +331,415 @@ class TestMCPIntegration:
 
     @pytest.mark.asyncio
     async def test_tool_call_with_complex_parameters(self):
-        start_cluster_mock = AsyncMock(return_value={"status": "started"})
+        """Test tool calls with complex nested parameters."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager methods
+        start_cluster_mock = AsyncMock(return_value={"status": "success"})
         start_cluster_mock.__signature__ = inspect.signature(RayManager.start_cluster)
 
-        submit_job_mock = AsyncMock(
-            return_value={"status": "submitted", "job_id": "complex_job"}
-        )
+        submit_job_mock = AsyncMock(return_value={"status": "submitted"})
         submit_job_mock.__signature__ = inspect.signature(RayManager.submit_job)
 
-        with (
-            patch.object(ray_manager, "start_cluster", start_cluster_mock),
-            patch.object(ray_manager, "submit_job", submit_job_mock),
-        ):
-            with patch("ray_mcp.main.RAY_AVAILABLE", True):
-                complex_args = {
-                    "entrypoint": "python complex_job.py",
-                    "runtime_env": {
-                        "pip": ["requests==2.28.0", "click==8.0.0"],
-                        "env_vars": {"CUDA_VISIBLE_DEVICES": "0,1"},
-                        "working_dir": "/workspace",
+        with patch.object(RayManager, "start_cluster", start_cluster_mock):
+            with patch.object(RayManager, "submit_job", submit_job_mock):
+
+                # Test complex runtime environment
+                complex_runtime_env = {
+                    "pip": ["torch==2.0.0", "transformers", "datasets"],
+                    "conda": {"channels": ["conda-forge"], "dependencies": ["numpy"]},
+                    "env_vars": {
+                        "CUDA_VISIBLE_DEVICES": "0,1",
+                        "PYTHONPATH": "/custom/path",
+                        "OMP_NUM_THREADS": "4",
                     },
-                    "metadata": {
-                        "owner": "data_team",
-                        "project": "nlp_training",
-                        "priority": "high",
-                        "tags": ["gpu", "distributed"],
-                    },
+                    "working_dir": "/tmp/custom_working_dir",
                 }
-                result = await call_tool("submit_job", complex_args)
-                response_data = json.loads(get_text_content(result))
-                assert response_data["status"] == "submitted"
-                submit_job_mock.assert_called_once_with(**complex_args)
+
+                result = await registry.execute_tool(
+                    "submit_job",
+                    {
+                        "entrypoint": "python train.py --epochs 100 --batch_size 32",
+                        "runtime_env": complex_runtime_env,
+                        "job_id": "complex_job_123",
+                        "metadata": {
+                            "owner": "ml_team",
+                            "project": "transformer_training",
+                            "priority": "high",
+                        },
+                    },
+                )
+
+                assert result["status"] == "submitted"
+
+                # Verify complex parameters were passed correctly
+                submit_job_mock.assert_called_once()
+                call_args = submit_job_mock.call_args[1]
+                assert call_args["runtime_env"] == complex_runtime_env
+                assert call_args["job_id"] == "complex_job_123"
+
+    # ===== UNIQUE TESTS FROM test_mcp_tools.py =====
+
+    @pytest.mark.asyncio
+    async def test_monitor_job_tool(self):
+        """Test monitor_job tool."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        monitor_job_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "job_id": "job_123",
+                "progress": "75%",
+                "estimated_time_remaining": "5 minutes",
+            }
+        )
+        monitor_job_mock.__signature__ = inspect.signature(RayManager.monitor_job_progress)
+
+        with patch.object(RayManager, "monitor_job_progress", monitor_job_mock):
+            result = await registry.execute_tool("monitor_job", {"job_id": "job_123"})
+
+            assert isinstance(result, dict)
+            assert "progress" in result
+            monitor_job_mock.assert_called_once_with("job_123")
+
+    @pytest.mark.asyncio
+    async def test_debug_job_tool(self):
+        """Test debug_job tool."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        debug_job_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "job_id": "job_123",
+                "debug_info": "Job is running normally",
+            }
+        )
+        debug_job_mock.__signature__ = inspect.signature(RayManager.debug_job)
+
+        with patch.object(RayManager, "debug_job", debug_job_mock):
+            result = await registry.execute_tool("debug_job", {"job_id": "job_123"})
+
+            assert isinstance(result, dict)
+            assert "debug_info" in result
+            debug_job_mock.assert_called_once_with("job_123")
+
+    @pytest.mark.asyncio
+    async def test_list_actors_tool_with_filters(self):
+        """Test list_actors tool with filters."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        list_actors_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "actors": [
+                    {"actor_id": "actor_1", "state": "ALIVE"},
+                    {"actor_id": "actor_2", "state": "DEAD"},
+                ],
+            }
+        )
+        list_actors_mock.__signature__ = inspect.signature(RayManager.list_actors)
+
+        with patch.object(RayManager, "list_actors", list_actors_mock):
+            filters = {"namespace": "test"}
+            result = await registry.execute_tool("list_actors", {"filters": filters})
+
+            assert isinstance(result, dict)
+            assert len(result["actors"]) == 2
+            list_actors_mock.assert_called_once_with(filters)
+
+    @pytest.mark.asyncio
+    async def test_kill_actor_tool(self):
+        """Test kill_actor tool."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        kill_actor_mock = AsyncMock(
+            return_value={"status": "killed", "actor_id": "actor_123"}
+        )
+        kill_actor_mock.__signature__ = inspect.signature(RayManager.kill_actor)
+
+        with patch.object(RayManager, "kill_actor", kill_actor_mock):
+            result = await registry.execute_tool(
+                "kill_actor", {"actor_id": "actor_123", "no_restart": True}
+            )
+
+            assert isinstance(result, dict)
+            assert result["status"] == "killed"
+            kill_actor_mock.assert_called_once_with("actor_123", True)
+
+    @pytest.mark.asyncio
+    async def test_performance_metrics_tool(self):
+        """Test performance_metrics tool."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        performance_metrics_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "metrics": {
+                    "cpu_usage": "45%",
+                    "memory_usage": "60%",
+                    "gpu_usage": "30%",
+                },
+            }
+        )
+        performance_metrics_mock.__signature__ = inspect.signature(
+            RayManager.get_performance_metrics
+        )
+
+        with patch.object(RayManager, "get_performance_metrics", performance_metrics_mock):
+            result = await registry.execute_tool("performance_metrics", {})
+
+            assert isinstance(result, dict)
+            assert "metrics" in result
+            performance_metrics_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_optimize_config_tool(self):
+        """Test optimize_config tool."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        optimize_config_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "recommendations": ["Increase CPU allocation", "Add more workers"],
+            }
+        )
+        optimize_config_mock.__signature__ = inspect.signature(
+            RayManager.optimize_cluster_config
+        )
+
+        with patch.object(RayManager, "optimize_cluster_config", optimize_config_mock):
+            result = await registry.execute_tool("optimize_config", {})
+
+            assert isinstance(result, dict)
+            assert "recommendations" in result
+            optimize_config_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_logs_tool_with_parameters(self):
+        """Test get_logs tool with various parameters."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        get_logs_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "logs": "Sample log output...",
+                "job_id": "job_123",
+            }
+        )
+        get_logs_mock.__signature__ = inspect.signature(RayManager.get_logs)
+
+        with patch.object(RayManager, "get_logs", get_logs_mock):
+            args = {"job_id": "test_job_123", "num_lines": 50}
+            result = await registry.execute_tool("get_logs", args)
+
+            assert isinstance(result, dict)
+            assert "logs" in result
+            get_logs_mock.assert_called_once_with(**args)
+
+    @pytest.mark.asyncio
+    async def test_ray_unavailable_error(self):
+        """Test tool calls when Ray is not available."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method to raise an exception
+        start_cluster_mock = AsyncMock(side_effect=Exception("Ray is not available"))
+        start_cluster_mock.__signature__ = inspect.signature(RayManager.start_cluster)
+
+        with patch.object(RayManager, "start_cluster", start_cluster_mock):
+            result = await registry.execute_tool(
+                "start_ray", {"num_cpus": 4, "num_gpus": 1}
+            )
+
+            assert isinstance(result, dict)
+            assert result["status"] == "error"
+            assert "Ray is not available" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_error(self):
+        """Test calling unknown tool."""
+        registry = ToolRegistry(RayManager())
+
+        result = await registry.execute_tool("unknown_tool", {})
+
+        assert isinstance(result, dict)
+        assert result["status"] == "error"
+        assert "Unknown tool" in result["message"]
+
+    # ===== PARAMETER FLOW TESTS FROM test_tool_functions.py AND test_full_parameter_flow.py =====
+
+    @pytest.mark.asyncio
+    async def test_parameter_isolation_get_logs(self):
+        """Test that get_logs function only passes expected parameters."""
+        registry = ToolRegistry(RayManager())
+        called_params = {}
+
+        async def fake_get_logs(**kwargs):
+            called_params.update(kwargs)
+            return {
+                "status": "success",
+                "logs": "Sample log output...",
+                "job_id": "job_123",
+            }
+
+        mock = AsyncMock(side_effect=fake_get_logs)
+        mock.__signature__ = inspect.signature(RayManager.get_logs)
+
+        with patch.object(RayManager, "get_logs", mock):
+            with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+                with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                    mock_ray.is_initialized.return_value = True
+                    registry.ray_manager._is_initialized = True
+
+                    result = await registry.execute_tool(
+                        "get_logs", {"job_id": "test_job_123", "num_lines": 50}
+                    )
+
+                    # Verify only expected parameters are passed to RayManager
+                    expected_params = {"job_id", "num_lines"}
+                    actual_params = set(called_params.keys())
+                    unexpected_params = actual_params - expected_params
+
+                    assert (
+                        not unexpected_params
+                    ), f"Unexpected parameters passed to RayManager: {unexpected_params}"
+                    assert called_params["job_id"] == "test_job_123"
+                    assert called_params["num_lines"] == 50
+
+    @pytest.mark.asyncio
+    async def test_parameter_isolation_start_ray(self):
+        """Test that start_ray function only passes expected parameters."""
+        registry = ToolRegistry(RayManager())
+        called_params = {}
+
+        async def fake_start_cluster(**kwargs):
+            called_params.update(kwargs)
+            return {
+                "status": "started",
+                "address": "ray://127.0.0.1:10001",
+            }
+
+        mock = AsyncMock(side_effect=fake_start_cluster)
+        mock.__signature__ = inspect.signature(RayManager.start_cluster)
+
+        with patch.object(RayManager, "start_cluster", mock):
+            result = await registry.execute_tool(
+                "start_ray", {"num_cpus": 4, "num_gpus": 1, "head_node_port": 10001}
+            )
+            expected_params = {"num_cpus", "num_gpus", "head_node_port"}
+            actual_params = set(called_params.keys())
+            unexpected_params = actual_params - expected_params
+            assert (
+                not unexpected_params
+            ), f"Unexpected parameters passed to RayManager: {unexpected_params}"
+            assert called_params["num_cpus"] == 4
+            assert called_params["num_gpus"] == 1
+            assert called_params["head_node_port"] == 10001
+
+    @pytest.mark.asyncio
+    async def test_parameter_isolation_submit_job(self):
+        """Test that submit_job function only passes expected parameters."""
+        registry = ToolRegistry(RayManager())
+        called_params = {}
+
+        async def fake_submit_job(**kwargs):
+            called_params.update(kwargs)
+            return {
+                "status": "submitted",
+                "job_id": "job_123",
+            }
+
+        mock = AsyncMock(side_effect=fake_submit_job)
+        mock.__signature__ = inspect.signature(RayManager.submit_job)
+
+        with patch.object(RayManager, "submit_job", mock):
+            with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+                with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                    mock_ray.is_initialized.return_value = True
+                    registry.ray_manager._is_initialized = True
+                    result = await registry.execute_tool(
+                        "submit_job",
+                        {
+                            "entrypoint": "python test.py",
+                            "runtime_env": {"pip": ["requests"]},
+                            "job_id": "custom_job_id",
+                        },
+                    )
+                    expected_params = {"entrypoint", "runtime_env", "job_id"}
+                    actual_params = set(called_params.keys())
+                    unexpected_params = actual_params - expected_params
+                    assert (
+                        not unexpected_params
+                    ), f"Unexpected parameters passed to RayManager: {unexpected_params}"
+                    assert called_params["entrypoint"] == "python test.py"
+                    assert called_params["runtime_env"] == {"pip": ["requests"]}
+                    assert called_params["job_id"] == "custom_job_id"
+
+    @pytest.mark.asyncio
+    async def test_parameter_flow_with_extra_parameters(self):
+        """Test that extra parameters are not passed through the stack."""
+        registry = ToolRegistry(RayManager())
+        called_params = {}
+
+        async def fake_get_logs(**kwargs):
+            called_params.update(kwargs)
+            return {
+                "status": "success",
+                "logs": "Sample log output...",
+            }
+
+        mock = AsyncMock(side_effect=fake_get_logs)
+        mock.__signature__ = inspect.signature(RayManager.get_logs)
+
+        with patch.object(RayManager, "get_logs", mock):
+            with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+                with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                    mock_ray.is_initialized.return_value = True
+                    registry.ray_manager._is_initialized = True
+                    result = await registry.execute_tool(
+                        "get_logs",
+                        {
+                            "job_id": "test_job_123",
+                            "num_lines": 50,
+                            "extra_param": "should_not_be_passed",
+                            "tool_registry": "should_not_be_passed",
+                        },
+                    )
+                    forbidden_params = {"extra_param", "tool_registry"}
+                    actual_params = set(called_params.keys())
+                    passed_forbidden_params = actual_params & forbidden_params
+                    assert (
+                        not passed_forbidden_params
+                    ), f"Forbidden parameters passed to RayManager: {passed_forbidden_params}"
+
+    @pytest.mark.asyncio
+    async def test_parameter_flow_error_handling(self):
+        """Test parameter flow error handling through the stack."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock the RayManager method to raise an exception
+        mock = AsyncMock(side_effect=Exception("Test error"))
+        mock.__signature__ = inspect.signature(RayManager.get_logs)
+
+        with patch.object(RayManager, "get_logs", mock):
+            with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+                with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                    mock_ray.is_initialized.return_value = True
+                    registry.ray_manager._is_initialized = True
+
+                    result = await registry.execute_tool(
+                        "get_logs", {"job_id": "test_job_123"}
+                    )
+
+                    # Verify error is properly handled and returned
+                    assert result["status"] == "error"
+                    assert "Test error" in result["message"]
 
 
 @pytest.mark.integration

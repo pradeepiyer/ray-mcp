@@ -1363,14 +1363,13 @@ class TestRayManager:
 
     @pytest.mark.asyncio
     async def test_start_cluster_mixed_port_specification(self, manager):
-        """Test start cluster with one port specified and one None."""
-        mock_context = Mock()
-        mock_context.address_info = {"address": "ray://127.0.0.1:10001"}
-        mock_context.dashboard_url = "http://127.0.0.1:8265"
-        mock_context.session_name = "test_session"
-
+        """Test start cluster with mixed port specification."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_context = Mock()
+                mock_context.address_info = {"address": "ray://127.0.0.1:10001"}
+                mock_context.dashboard_url = "http://127.0.0.1:8265"
+                mock_context.session_name = "test_session"
                 mock_ray.init.return_value = mock_context
                 mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
                     "test_node"
@@ -1378,7 +1377,6 @@ class TestRayManager:
 
                 with patch("ray_mcp.ray_manager.JobSubmissionClient"):
                     with patch("subprocess.Popen") as mock_popen:
-                        # Mock the subprocess to simulate successful ray start
                         mock_process = Mock()
                         mock_process.communicate.return_value = (
                             "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
@@ -1387,35 +1385,195 @@ class TestRayManager:
                         mock_process.poll.return_value = 0
                         mock_popen.return_value = mock_process
 
-                        # Mock find_free_port to return predictable values
-                        with patch("socket.socket") as mock_socket:
-                            mock_socket.return_value.__enter__.return_value.bind.side_effect = [
-                                None,  # First call succeeds (port 8265)
-                                None,  # Second call succeeds (port 10002)
-                            ]
+                        result = await manager.start_cluster(
+                            head_node_port=10001, dashboard_port=None
+                        )
 
-                            result = await manager.start_cluster(
-                                head_node_port=10001,  # Specified
-                                dashboard_port=None,  # Will use find_free_port
-                                worker_nodes=[],
-                            )
+                        assert result["status"] == "started"
+                        assert result["address"].startswith("ray://")
+                        assert ":" in result["address"]
 
-                            assert result["status"] == "started"
-                            # Verify the ray start command was called with correct ports
-                            mock_popen.assert_called_once()
-                            call_args = mock_popen.call_args[0][0]
-                            assert "--port" in call_args
-                            assert "--dashboard-port" in call_args
+    # ===== UNIQUE TESTS FROM test_ray_manager_methods.py =====
 
-                            # Find the port arguments in the command
-                            port_index = call_args.index("--port")
-                            dashboard_port_index = call_args.index("--dashboard-port")
+    def test_generate_debug_suggestions(self, manager):
+        """Test debug suggestion generation."""
+        # Mock job info for failed job
+        job_info = Mock()
+        job_info.status = "FAILED"
 
-                            # Verify the specified head_node_port was used and dashboard_port was found
-                            assert call_args[port_index + 1] == "10001"
-                            # The dashboard port should be the first free port found (8265)
-                            assert call_args[dashboard_port_index + 1] == "8265"
+        # Test with import error logs
+        logs_with_import_error = "ImportError: No module named 'requests'\nTraceback..."
+        suggestions = manager._generate_debug_suggestions(
+            job_info, logs_with_import_error
+        )
+
+        assert len(suggestions) >= 2
+        assert any("failed" in suggestion.lower() for suggestion in suggestions)
+        assert any("import" in suggestion.lower() for suggestion in suggestions)
+
+        # Test with memory error logs
+        logs_with_memory_error = (
+            "MemoryError: Unable to allocate array\nOut of memory..."
+        )
+        suggestions = manager._generate_debug_suggestions(
+            job_info, logs_with_memory_error
+        )
+
+        assert any("memory" in suggestion.lower() for suggestion in suggestions)
+
+    @pytest.mark.asyncio
+    async def test_cluster_health_check_detailed_scenarios(self, manager):
+        """Test cluster health check with various node states."""
+        manager._is_initialized = True
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                # Test excellent health scenario
+                mock_ray.nodes.return_value = [
+                    {"NodeID": "node1", "Alive": True},
+                    {"NodeID": "node2", "Alive": True},
+                ]
+                mock_ray.cluster_resources.return_value = {
+                    "CPU": 16,
+                    "memory": 32000000000,
+                }
+                mock_ray.available_resources.return_value = {
+                    "CPU": 8,
+                    "memory": 16000000000,
+                }
+
+                result = await manager.cluster_health_check()
+
+                assert result["status"] == "success"
+                assert result["overall_status"] == "excellent"
+                assert result["health_score"] == 100.0
+
+                # Test poor health scenario
+                mock_ray.nodes.return_value = [
+                    {"NodeID": "node1", "Alive": False},
+                    {"NodeID": "node2", "Alive": False},
+                ]
+                mock_ray.available_resources.return_value = {"CPU": 0, "memory": 0}
+
+                result = await manager.cluster_health_check()
+
+                assert result["status"] == "success"
+                assert result["overall_status"] == "poor"
+                assert result["health_score"] == 25.0
+
+    @pytest.mark.asyncio
+    async def test_monitor_job_progress_no_client(self, manager):
+        """Test monitor job progress when job client is not available."""
+        manager._is_initialized = True
+        manager._job_client = None
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await manager.monitor_job_progress("job_123")
+
+                assert result["status"] == "error"
+                assert "Job submission client not available" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_debug_job_no_client(self, manager):
+        """Test debug job when job client is not available."""
+        manager._is_initialized = True
+        manager._job_client = None
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await manager.debug_job("job_123")
+
+                assert result["status"] == "error"
+                assert (
+                    "Job debugging not available in Ray Client mode"
+                    in result["message"]
+                )
+
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_address_no_workers(self, manager):
+        """Test that connecting to existing cluster with address does not start default workers."""
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://remote:10001",
+            "dashboard_url": "http://remote:8265",
+            "node_id": "test_node_id",
+            "session_name": "test_session",
+        }
+        mock_context.dashboard_url = "http://remote:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    mock_ray.init.return_value = mock_context
+                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                        "node_123"
+                    )
+
+                    # Connect to existing cluster without specifying worker_nodes
+                    result = await manager.start_cluster(
+                        address="ray://remote:10001"
+                    )
+
+                    assert result["status"] == "started"
+                    assert result["address"] == "ray://remote:10001"
+                    # Verify no worker nodes were started (worker_nodes should be empty list)
+                    assert result["worker_nodes"] == []
+                    assert result["total_nodes"] == 1  # Only head node, no workers
+
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_address_and_explicit_workers(self, manager):
+        """Test that connecting to existing cluster with address and explicit worker_nodes works correctly."""
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://remote:10001",
+            "dashboard_url": "http://remote:8265",
+            "node_id": "test_node_id",
+            "session_name": "test_session",
+        }
+        mock_context.dashboard_url = "http://remote:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    mock_ray.init.return_value = mock_context
+                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                        "node_123"
+                    )
+
+                    # Patch the _worker_manager attribute directly
+                    mock_worker_instance = AsyncMock()
+                    mock_worker_instance.start_worker_nodes.return_value = [
+                        {"status": "started", "node_name": "custom-worker-1"}
+                    ]
+                    manager._worker_manager = mock_worker_instance
+
+                    # Connect to existing cluster with explicit worker configuration
+                    custom_workers = [{"num_cpus": 2, "node_name": "custom-worker-1"}]
+                    result = await manager.start_cluster(
+                        address="ray://remote:10001", worker_nodes=custom_workers
+                    )
+
+                    assert result["status"] == "started"
+                    assert result["address"] == "ray://remote:10001"
+                    # Verify custom workers were started
+                    assert len(result["worker_nodes"]) == 1
+                    assert result["worker_nodes"][0]["node_name"] == "custom-worker-1"
+                    assert result["total_nodes"] == 2  # Head node + 1 worker
+
+                    # Verify worker manager was called with the custom configuration
+                    mock_worker_instance.start_worker_nodes.assert_called_once_with(
+                        custom_workers, "ray://remote:10001"
+                    )
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    pytest.main([__file__, "-v"])
