@@ -31,8 +31,8 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         num_gpus: Optional[int] = None,
         object_store_memory: Optional[int] = None,
         worker_nodes: Optional[List[Dict[str, Any]]] = None,
-        head_node_port: int = 10001,
-        dashboard_port: int = 8265,
+        head_node_port: Optional[int] = None,
+        dashboard_port: Optional[int] = None,
         head_node_host: str = "127.0.0.1",
         address: Optional[str] = None,
     ) -> List[TextContent]:

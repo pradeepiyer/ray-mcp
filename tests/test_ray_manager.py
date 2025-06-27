@@ -1267,6 +1267,155 @@ class TestRayManager:
                     assert call_args["custom_param"] == "should_pass"
                     assert call_args["another_param"] == 123
 
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_specified_ports(self, manager):
+        """Test start cluster with specified head_node_port and dashboard_port."""
+        mock_context = Mock()
+        mock_context.address_info = {"address": "ray://127.0.0.1:10001"}
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
+
+                        result = await manager.start_cluster(
+                            head_node_port=10001,
+                            dashboard_port=8265,
+                            worker_nodes=[],
+                        )
+
+                        assert result["status"] == "started"
+                        # Verify the ray start command was called with the specified ports
+                        mock_popen.assert_called_once()
+                        call_args = mock_popen.call_args[0][0]
+                        assert "--port" in call_args
+                        assert "--dashboard-port" in call_args
+
+                        # Find the port arguments in the command
+                        port_index = call_args.index("--port")
+                        dashboard_port_index = call_args.index("--dashboard-port")
+
+                        # Verify the specified ports were used
+                        assert call_args[port_index + 1] == "10001"
+                        assert call_args[dashboard_port_index + 1] == "8265"
+
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_none_ports_uses_free_ports(self, manager):
+        """Test start cluster with None ports uses find_free_port."""
+        mock_context = Mock()
+        mock_context.address_info = {"address": "ray://127.0.0.1:10001"}
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
+
+                        # Mock find_free_port to return predictable values
+                        with patch("socket.socket") as mock_socket:
+                            mock_socket.return_value.__enter__.return_value.bind.side_effect = [
+                                None,  # First call succeeds (port 10001)
+                                None,  # Second call succeeds (port 8265)
+                                None,  # Third call succeeds (port 10002)
+                            ]
+
+                            result = await manager.start_cluster(
+                                head_node_port=None,
+                                dashboard_port=None,
+                                worker_nodes=[],
+                            )
+
+                            assert result["status"] == "started"
+                            # Verify the ray start command was called with free ports
+                            mock_popen.assert_called_once()
+                            call_args = mock_popen.call_args[0][0]
+                            assert "--port" in call_args
+                            assert "--dashboard-port" in call_args
+
+    @pytest.mark.asyncio
+    async def test_start_cluster_mixed_port_specification(self, manager):
+        """Test start cluster with one port specified and one None."""
+        mock_context = Mock()
+        mock_context.address_info = {"address": "ray://127.0.0.1:10001"}
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
+
+                        # Mock find_free_port to return predictable values
+                        with patch("socket.socket") as mock_socket:
+                            mock_socket.return_value.__enter__.return_value.bind.side_effect = [
+                                None,  # First call succeeds (port 8265)
+                                None,  # Second call succeeds (port 10002)
+                            ]
+
+                            result = await manager.start_cluster(
+                                head_node_port=10001,  # Specified
+                                dashboard_port=None,  # Will use find_free_port
+                                worker_nodes=[],
+                            )
+
+                            assert result["status"] == "started"
+                            # Verify the ray start command was called with correct ports
+                            mock_popen.assert_called_once()
+                            call_args = mock_popen.call_args[0][0]
+                            assert "--port" in call_args
+                            assert "--dashboard-port" in call_args
+
+                            # Find the port arguments in the command
+                            port_index = call_args.index("--port")
+                            dashboard_port_index = call_args.index("--dashboard-port")
+
+                            # Verify the specified head_node_port was used and dashboard_port was found
+                            assert call_args[port_index + 1] == "10001"
+                            # The dashboard port should be the first free port found (8265)
+                            assert call_args[dashboard_port_index + 1] == "8265"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

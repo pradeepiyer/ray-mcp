@@ -56,37 +56,49 @@ class TestMultiNodeCluster:
                             "start_worker_nodes",
                             new_callable=AsyncMock,
                         ) as mock_start_workers:
-                            mock_start_workers.return_value = [
-                                {
-                                    "status": "started",
-                                    "node_name": f"worker-{i}",
-                                    "message": f"Worker node 'worker-{i}' started successfully",
-                                    "process_id": 1000 + i,
-                                    "config": config,
-                                }
-                                for i, config in enumerate(worker_configs)
-                            ]
-                            result = await ray_manager.start_cluster(
-                                num_cpus=4,
-                                worker_nodes=worker_configs,
-                                head_node_port=10001,
-                                dashboard_port=8265,
-                            )
-                            # Verify result
-                            assert result["status"] == "started"
-                            assert result["total_nodes"] == expected_total_nodes
-                            assert "worker_nodes" in result
-                            assert len(result["worker_nodes"]) == expected_worker_count
-                            # Verify worker manager was called
-                            mock_start_workers.assert_called_once()
-                            # Check that the call was made with the correct worker configs
-                            call_args = mock_start_workers.call_args
-                            assert call_args[0][0] == worker_configs
-                            # Check that the address follows the expected format (IP:PORT for GCS)
-                            address = call_args[0][1]
-                            assert ":" in address
-                            # Should be GCS address format (IP:PORT), not ray:// format
-                            assert not address.startswith("ray://")
+                            with patch("subprocess.Popen") as mock_popen:
+                                # Mock the subprocess to simulate successful ray start
+                                mock_process = Mock()
+                                mock_process.communicate.return_value = (
+                                    "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                    "",
+                                )
+                                mock_process.poll.return_value = 0
+                                mock_popen.return_value = mock_process
+
+                                mock_start_workers.return_value = [
+                                    {
+                                        "status": "started",
+                                        "node_name": f"worker-{i}",
+                                        "message": f"Worker node 'worker-{i}' started successfully",
+                                        "process_id": 1000 + i,
+                                        "config": config,
+                                    }
+                                    for i, config in enumerate(worker_configs)
+                                ]
+                                result = await ray_manager.start_cluster(
+                                    num_cpus=4,
+                                    worker_nodes=worker_configs,
+                                    head_node_port=10001,
+                                    dashboard_port=8265,
+                                )
+                                # Verify result
+                                assert result["status"] == "started"
+                                assert result["total_nodes"] == expected_total_nodes
+                                assert "worker_nodes" in result
+                                assert (
+                                    len(result["worker_nodes"]) == expected_worker_count
+                                )
+                                # Verify worker manager was called
+                                mock_start_workers.assert_called_once()
+                                # Check that the call was made with the correct worker configs
+                                call_args = mock_start_workers.call_args
+                                assert call_args[0][0] == worker_configs
+                                # Check that the address follows the expected format (IP:PORT for GCS)
+                                address = call_args[0][1]
+                                assert ":" in address
+                                # Should be GCS address format (IP:PORT), not ray:// format
+                                assert not address.startswith("ray://")
 
     @pytest.mark.asyncio
     async def test_start_cluster_without_worker_nodes(self):
@@ -111,39 +123,51 @@ class TestMultiNodeCluster:
                             "start_worker_nodes",
                             new_callable=AsyncMock,
                         ) as mock_start_workers:
-                            mock_start_workers.return_value = [
-                                {
-                                    "status": "started",
-                                    "node_name": "default-worker-1",
-                                    "message": "Worker node 'default-worker-1' started successfully",
-                                    "process_id": 1001,
-                                    "config": {
-                                        "num_cpus": 2,
-                                        "num_gpus": 0,
-                                        "object_store_memory": 500 * 1024 * 1024,
+                            with patch("subprocess.Popen") as mock_popen:
+                                # Mock the subprocess to simulate successful ray start
+                                mock_process = Mock()
+                                mock_process.communicate.return_value = (
+                                    "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                    "",
+                                )
+                                mock_process.poll.return_value = 0
+                                mock_popen.return_value = mock_process
+
+                                mock_start_workers.return_value = [
+                                    {
+                                        "status": "started",
                                         "node_name": "default-worker-1",
+                                        "message": "Worker node 'default-worker-1' started successfully",
+                                        "process_id": 1001,
+                                        "config": {
+                                            "num_cpus": 2,
+                                            "num_gpus": 0,
+                                            "object_store_memory": 500 * 1024 * 1024,
+                                            "node_name": "default-worker-1",
+                                        },
                                     },
-                                },
-                                {
-                                    "status": "started",
-                                    "node_name": "default-worker-2",
-                                    "message": "Worker node 'default-worker-2' started successfully",
-                                    "process_id": 1002,
-                                    "config": {
-                                        "num_cpus": 2,
-                                        "num_gpus": 0,
-                                        "object_store_memory": 500 * 1024 * 1024,
+                                    {
+                                        "status": "started",
                                         "node_name": "default-worker-2",
+                                        "message": "Worker node 'default-worker-2' started successfully",
+                                        "process_id": 1002,
+                                        "config": {
+                                            "num_cpus": 2,
+                                            "num_gpus": 0,
+                                            "object_store_memory": 500 * 1024 * 1024,
+                                            "node_name": "default-worker-2",
+                                        },
                                     },
-                                },
-                            ]
-                            result = await ray_manager.start_cluster(num_cpus=4)
-                            assert result["status"] == "started"
-                            assert (
-                                result["total_nodes"] == 3
-                            )  # 1 head + 2 default workers
-                            assert "worker_nodes" in result
-                            assert len(result["worker_nodes"]) == 2  # 2 default workers
+                                ]
+                                result = await ray_manager.start_cluster(num_cpus=4)
+                                assert result["status"] == "started"
+                                assert (
+                                    result["total_nodes"] == 3
+                                )  # 1 head + 2 default workers
+                                assert "worker_nodes" in result
+                                assert (
+                                    len(result["worker_nodes"]) == 2
+                                )  # 2 default workers
 
     @pytest.mark.asyncio
     async def test_stop_cluster_with_workers(self):

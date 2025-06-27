@@ -65,18 +65,28 @@ class TestRayManagerMethods:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 with patch("ray_mcp.ray_manager.JobSubmissionClient") as mock_client:
-                    mock_ray.init.return_value = mock_ray_context
-                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
-                        "node_123"
-                    )
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
 
-                    result = await ray_manager.start_cluster(num_cpus=4, num_gpus=1)
+                        mock_ray.init.return_value = mock_ray_context
+                        mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                            "node_123"
+                        )
 
-                    assert result["status"] == "started"
-                    assert result["address"].startswith("ray://")
-                    assert ":" in result["address"]
-                    assert ray_manager._is_initialized
-                    mock_ray.init.assert_called_once()
+                        result = await ray_manager.start_cluster(num_cpus=4, num_gpus=1)
+
+                        assert result["status"] == "started"
+                        assert result["address"].startswith("ray://")
+                        assert ":" in result["address"]
+                        assert ray_manager._is_initialized
+                        mock_ray.init.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_cluster_ray_not_available(self, ray_manager):
@@ -587,16 +597,26 @@ class TestRayManagerMethods:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 with patch("ray_mcp.ray_manager.JobSubmissionClient", None):
-                    mock_ray.init.return_value = mock_ray_context
-                    mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
-                        "node_123"
-                    )
+                    with patch("subprocess.Popen") as mock_popen:
+                        # Mock the subprocess to simulate successful ray start
+                        mock_process = Mock()
+                        mock_process.communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+                        mock_process.poll.return_value = 0
+                        mock_popen.return_value = mock_process
 
-                    result = await ray_manager.start_cluster()
+                        mock_ray.init.return_value = mock_ray_context
+                        mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                            "node_123"
+                        )
 
-                    assert result["status"] == "started"
-                    # Job client should remain None
-                    assert ray_manager._job_client is None
+                        result = await ray_manager.start_cluster()
+
+                        assert result["status"] == "started"
+                        # Job client should remain None
+                        assert ray_manager._job_client is None
 
     # ===== HELPER METHOD TESTS =====
 

@@ -87,6 +87,9 @@ class TestE2EIntegration:
         # Verify start result
         start_content = get_text_content(start_result)
         start_data = json.loads(start_content)
+        print(f"Start result: {start_data}")
+        if start_data["status"] != "started":
+            print(f"Error message: {start_data.get('message', 'No error message')}")
         assert start_data["status"] == "started"
         print(f"Ray cluster started: {start_data}")
 
@@ -320,6 +323,9 @@ if __name__ == "__main__":
         # Verify start result
         start_content = get_text_content(start_result)
         start_data = json.loads(start_content)
+        print(f"Start result: {start_data}")
+        if start_data["status"] != "started":
+            print(f"Error message: {start_data.get('message', 'No error message')}")
         assert start_data["status"] == "started"
         print(f"Ray cluster started for failure testing: {start_data}")
 

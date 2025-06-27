@@ -175,8 +175,8 @@ class RayManager:
         num_gpus: Optional[int] = None,
         object_store_memory: Optional[int] = None,
         worker_nodes: Optional[List[Dict[str, Any]]] = None,
-        head_node_port: int = 10001,
-        dashboard_port: int = 8265,
+        head_node_port: Optional[int] = None,
+        dashboard_port: Optional[int] = None,
         head_node_host: str = "127.0.0.1",
         **kwargs: Any,
     ) -> Dict[str, Any]:
@@ -244,14 +244,21 @@ class RayManager:
                 import os
                 import subprocess
 
-                # Find a free port for the Ray Client server
-                ray_client_port = find_free_port(20000)
+                # Use specified ports or find free ports
+                if head_node_port is None:
+                    head_node_port = find_free_port(
+                        20000
+                    )  # Start from 20000 to avoid conflicts with worker ports
+                if dashboard_port is None:
+                    dashboard_port = find_free_port(8265)
 
-                # Find a free port for the GCS server (start from ray_client_port + 1)
-                gcs_port = find_free_port(ray_client_port + 1)
+                # Find a free port for the Ray Client server (start from a different range to avoid conflicts)
+                ray_client_port = find_free_port(
+                    30000
+                )  # Start from 30000 to ensure it's different from head_node_port
 
-                # Find a free dashboard port
-                dashboard_port = find_free_port(8265)
+                # Use head_node_port as the GCS server port
+                gcs_port = head_node_port
 
                 # Build ray start command for head node
                 head_cmd = [

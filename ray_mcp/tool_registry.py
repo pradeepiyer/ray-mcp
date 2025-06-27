@@ -86,18 +86,16 @@ class ToolRegistry:
                         },
                     },
                     "head_node_port": {
-                        "type": "integer",
+                        "type": ["integer", "null"],
                         "minimum": 10000,
                         "maximum": 65535,
-                        "default": 10001,
-                        "description": "Port for head node",
+                        "description": "Port for head node (if None, a free port will be found)",
                     },
                     "dashboard_port": {
-                        "type": "integer",
+                        "type": ["integer", "null"],
                         "minimum": 1000,
                         "maximum": 65535,
-                        "default": 8265,
-                        "description": "Port for Ray dashboard",
+                        "description": "Port for Ray dashboard (if None, a free port will be found)",
                     },
                     "head_node_host": {
                         "type": "string",
