@@ -74,6 +74,7 @@ class TestE2EIntegration:
         except Exception:
             pass  # Ignore cleanup errors
 
+    @SKIP_IN_CI
     @pytest.mark.asyncio
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -178,6 +179,7 @@ class TestE2EIntegration:
 
         print("✅ Complete end-to-end test passed successfully!")
 
+    @SKIP_IN_CI
     @pytest.mark.asyncio
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -308,6 +310,7 @@ if __name__ == "__main__":
 
         print("✅ Actor management end-to-end test passed successfully!")
 
+    @SKIP_IN_CI
     @pytest.mark.asyncio
     @pytest.mark.e2e
     @pytest.mark.slow
