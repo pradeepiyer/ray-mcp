@@ -105,6 +105,34 @@ class TestRayManagerMethods:
                     assert args["address"] == "ray://remote:10001"
 
     @pytest.mark.asyncio
+    async def test_start_cluster_with_address_filters_params(
+        self, ray_manager, mock_ray_context
+    ):
+        """Ensure startup params are ignored when connecting to a cluster."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with (
+                patch("ray_mcp.ray_manager.ray") as mock_ray,
+                patch("ray_mcp.ray_manager.logger") as mock_logger,
+                patch("ray_mcp.ray_manager.JobSubmissionClient"),
+            ):
+                mock_ray.init.return_value = mock_ray_context
+
+                result = await ray_manager.start_cluster(
+                    address="ray://remote:10001",
+                    num_cpus=4,
+                    num_gpus=1,
+                    object_store_memory=123,
+                )
+
+                assert result["status"] == "started"
+                mock_ray.init.assert_called_once()
+                call_kwargs = mock_ray.init.call_args[1]
+                assert "num_cpus" not in call_kwargs
+                assert "num_gpus" not in call_kwargs
+                assert "object_store_memory" not in call_kwargs
+                mock_logger.warning.assert_called()
+
+    @pytest.mark.asyncio
     async def test_stop_cluster_success(self, ray_manager):
         """Test successful cluster stop."""
         ray_manager._is_initialized = True
