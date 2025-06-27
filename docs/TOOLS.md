@@ -40,8 +40,9 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 ## Tool Parameters
 
 ### start_ray
-Start a new Ray cluster with head node and worker nodes. **Defaults to multi-node cluster with 2 worker nodes.**
+Start a new Ray cluster with head node and worker nodes, or connect to an existing cluster. **Defaults to multi-node cluster with 2 worker nodes.**
 
+**For new cluster creation:**
 ```json
 {
   "num_cpus": 1,              // Number of CPUs for head node (default: 1)
@@ -64,8 +65,18 @@ Start a new Ray cluster with head node and worker nodes. **Defaults to multi-nod
 }
 ```
 
+**For connecting to existing cluster:**
+```json
+{
+  "address": "ray://127.0.0.1:10001"  // Required: Ray cluster address
+}
+```
+
+**Parameter Filtering for Existing Clusters:**
+When `address` is provided, cluster-starting parameters (`num_cpus`, `num_gpus`, `object_store_memory`, `head_node_port`, `dashboard_port`, `head_node_host`, `worker_nodes`) are automatically filtered out and logged. Only valid connection parameters are passed to `ray.init()`.
+
 **Default Multi-Node Configuration:**
-When no `worker_nodes` parameter is specified, the cluster will start with:
+When no `worker_nodes` parameter is specified and no `address` is provided, the cluster will start with:
 - Head node: 1 CPU, 0 GPUs, 1GB object store memory
 - Worker node 1: 1 CPU, 0 GPUs, 500MB object store memory
 - Worker node 2: 1 CPU, 0 GPUs, 500MB object store memory
@@ -100,6 +111,8 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
 ```
 
 ### connect_ray
+Connect to an existing Ray cluster. **Cluster-starting parameters are automatically filtered out when connecting to existing clusters.**
+
 ```json
 {
   "address": "ray://127.0.0.1:10001"  // Required: Ray cluster address
@@ -111,6 +124,29 @@ When no `worker_nodes` parameter is specified, the cluster will start with:
 - `127.0.0.1:10001`
 - `ray://head-node-ip:10001`
 - `ray://cluster.example.com:10001`
+
+**Parameter Filtering:**
+When connecting to an existing cluster, the following cluster-starting parameters are automatically filtered out and logged:
+- `num_cpus` - Number of CPUs (only valid for new cluster creation)
+- `num_gpus` - Number of GPUs (only valid for new cluster creation)
+- `object_store_memory` - Object store memory (only valid for new cluster creation)
+- `head_node_port` - Head node port (only valid for new cluster creation)
+- `dashboard_port` - Dashboard port (only valid for new cluster creation)
+- `head_node_host` - Head node host (only valid for new cluster creation)
+- `worker_nodes` - Worker node configurations (only valid for new cluster creation)
+
+**Example with filtered parameters:**
+```json
+{
+  "address": "ray://127.0.0.1:10001",
+  "num_cpus": 8,              // Will be filtered out and logged
+  "num_gpus": 2,              // Will be filtered out and logged
+  "object_store_memory": 1000000000,  // Will be filtered out and logged
+  "custom_param": "value"     // Will be passed through to ray.init()
+}
+```
+
+**Note:** The filtering ensures that only valid connection parameters are passed to `ray.init()` when connecting to existing clusters, preventing potential errors and providing clear logging about which parameters were ignored.
 
 ### cluster_info
 ```json

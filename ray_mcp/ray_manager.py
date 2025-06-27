@@ -124,6 +124,50 @@ class RayManager:
                     return None
         return None
 
+    def _filter_cluster_starting_parameters(
+        self, kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Filter out parameters that are only valid for starting new clusters.
+
+        When connecting to an existing cluster (address is provided), these parameters
+        are ignored as they only apply to cluster creation, not connection.
+
+        Args:
+            kwargs: The keyword arguments to filter
+
+        Returns:
+            Filtered kwargs with cluster-starting parameters removed
+        """
+        # Parameters that are only valid for starting new clusters
+        cluster_starting_params = {
+            "num_cpus",
+            "num_gpus",
+            "object_store_memory",
+            "head_node_port",
+            "dashboard_port",
+            "head_node_host",
+            "worker_nodes",
+        }
+
+        filtered_kwargs = {}
+        ignored_params = []
+
+        for key, value in kwargs.items():
+            if key in cluster_starting_params:
+                ignored_params.append(key)
+                logger.info(
+                    f"Ignoring cluster-starting parameter '{key}' when connecting to existing cluster"
+                )
+            else:
+                filtered_kwargs[key] = value
+
+        if ignored_params:
+            logger.info(
+                f"Filtered out cluster-starting parameters when connecting to existing cluster: {ignored_params}"
+            )
+
+        return filtered_kwargs
+
     async def start_cluster(
         self,
         address: Optional[str] = None,
@@ -174,11 +218,24 @@ class RayManager:
 
             if address:
                 # Connect to existing cluster
+                # Filter out cluster-starting parameters that are not valid for connection
+                all_kwargs = {
+                    "num_cpus": num_cpus,
+                    "num_gpus": num_gpus,
+                    "object_store_memory": object_store_memory,
+                    "head_node_port": head_node_port,
+                    "dashboard_port": dashboard_port,
+                    "head_node_host": head_node_host,
+                    "worker_nodes": worker_nodes,
+                    **kwargs,
+                }
+                filtered_kwargs = self._filter_cluster_starting_parameters(all_kwargs)
+
                 init_kwargs: Dict[str, Any] = {
                     "address": address,
                     "ignore_reinit_error": True,
                 }
-                init_kwargs.update(kwargs)
+                init_kwargs.update(filtered_kwargs)
                 ray_context = ray.init(**init_kwargs)
                 self._is_initialized = True
                 self._cluster_address = ray_context.address_info["address"]
@@ -362,14 +419,17 @@ class RayManager:
                     "message": "Ray is not available. Please install Ray.",
                 }
 
+            # Filter out cluster-starting parameters that are not valid for connection
+            filtered_kwargs = self._filter_cluster_starting_parameters(kwargs)
+
             # Prepare connection arguments
             init_kwargs: Dict[str, Any] = {
                 "address": address,
                 "ignore_reinit_error": True,
             }
 
-            # Add any additional kwargs
-            init_kwargs.update(kwargs)
+            # Add any additional filtered kwargs
+            init_kwargs.update(filtered_kwargs)
 
             # Connect to existing Ray cluster
             ray_context = ray.init(**init_kwargs)

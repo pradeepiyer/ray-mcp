@@ -1073,6 +1073,200 @@ class TestRayManager:
             result = parse_gcs_address(f"Ray runtime started\n{stdout}")
             assert result == expected, f"Failed for {stdout}"
 
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_address_filters_parameters(self):
+        """Test that cluster-starting parameters are filtered when connecting to existing cluster."""
+        manager = RayManager()
+
+        # Mock ray.init and related functions
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://127.0.0.1:10001",
+        }
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node_id"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    # Test connecting to existing cluster with cluster-starting parameters
+                    result = await manager.start_cluster(
+                        address="ray://127.0.0.1:10001",
+                        num_cpus=8,  # Should be filtered out
+                        num_gpus=2,  # Should be filtered out
+                        object_store_memory=1000000000,  # Should be filtered out
+                        head_node_port=20001,  # Should be filtered out
+                        dashboard_port=9000,  # Should be filtered out
+                        head_node_host="0.0.0.0",  # Should be filtered out
+                        worker_nodes=[{"num_cpus": 4}],  # Should be filtered out
+                        custom_param="should_pass",  # Should not be filtered
+                        another_param=123,  # Should not be filtered
+                    )
+
+                    assert result["status"] == "started"
+                    assert manager._is_initialized
+
+                    # Verify ray.init was called with only valid parameters
+                    mock_ray.init.assert_called_once()
+                    call_args = mock_ray.init.call_args[1]
+
+                    # Check that cluster-starting parameters were filtered out
+                    assert "num_cpus" not in call_args
+                    assert "num_gpus" not in call_args
+                    assert "object_store_memory" not in call_args
+                    assert "head_node_port" not in call_args
+                    assert "dashboard_port" not in call_args
+                    assert "head_node_host" not in call_args
+                    assert "worker_nodes" not in call_args
+
+                    # Check that valid parameters were passed through
+                    assert call_args["address"] == "ray://127.0.0.1:10001"
+                    assert call_args["ignore_reinit_error"] is True
+                    assert call_args["custom_param"] == "should_pass"
+                    assert call_args["another_param"] == 123
+
+    @pytest.mark.asyncio
+    async def test_connect_cluster_filters_parameters(self):
+        """Test that connect_cluster filters out cluster-starting parameters."""
+        manager = RayManager()
+
+        # Mock ray.init and related functions
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://127.0.0.1:10001",
+        }
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node_id"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    # Test connecting to existing cluster with cluster-starting parameters
+                    result = await manager.connect_cluster(
+                        "ray://127.0.0.1:10001",
+                        num_cpus=8,  # Should be filtered out
+                        num_gpus=2,  # Should be filtered out
+                        object_store_memory=1000000000,  # Should be filtered out
+                        head_node_port=20001,  # Should be filtered out
+                        dashboard_port=9000,  # Should be filtered out
+                        head_node_host="0.0.0.0",  # Should be filtered out
+                        worker_nodes=[{"num_cpus": 4}],  # Should be filtered out
+                        custom_param="should_pass",  # Should not be filtered
+                        another_param=123,  # Should not be filtered
+                    )
+
+                    assert result["status"] == "connected"
+                    assert manager._is_initialized
+
+                    # Verify ray.init was called with only valid parameters
+                    mock_ray.init.assert_called_once()
+                    call_args = mock_ray.init.call_args[1]
+
+                    # Check that cluster-starting parameters were filtered out
+                    assert "num_cpus" not in call_args
+                    assert "num_gpus" not in call_args
+                    assert "object_store_memory" not in call_args
+                    assert "head_node_port" not in call_args
+                    assert "dashboard_port" not in call_args
+                    assert "head_node_host" not in call_args
+                    assert "worker_nodes" not in call_args
+
+                    # Check that valid parameters were passed through
+                    assert call_args["address"] == "ray://127.0.0.1:10001"
+                    assert call_args["ignore_reinit_error"] is True
+                    assert call_args["custom_param"] == "should_pass"
+                    assert call_args["another_param"] == 123
+
+    @pytest.mark.asyncio
+    async def test_filter_cluster_starting_parameters_method(self):
+        """Test the _filter_cluster_starting_parameters helper method directly."""
+        manager = RayManager()
+
+        # Test with mixed parameters
+        test_kwargs = {
+            "num_cpus": 8,
+            "num_gpus": 2,
+            "object_store_memory": 1000000000,
+            "head_node_port": 20001,
+            "dashboard_port": 9000,
+            "head_node_host": "0.0.0.0",
+            "worker_nodes": [{"num_cpus": 4}],
+            "custom_param": "should_pass",
+            "another_param": 123,
+            "ignore_reinit_error": True,
+        }
+
+        with patch("ray_mcp.ray_manager.logger") as mock_logger:
+            filtered_kwargs = manager._filter_cluster_starting_parameters(test_kwargs)
+
+        # Check that cluster-starting parameters were filtered out
+        assert "num_cpus" not in filtered_kwargs
+        assert "num_gpus" not in filtered_kwargs
+        assert "object_store_memory" not in filtered_kwargs
+        assert "head_node_port" not in filtered_kwargs
+        assert "dashboard_port" not in filtered_kwargs
+        assert "head_node_host" not in filtered_kwargs
+        assert "worker_nodes" not in filtered_kwargs
+
+        # Check that valid parameters were preserved
+        assert filtered_kwargs["custom_param"] == "should_pass"
+        assert filtered_kwargs["another_param"] == 123
+        assert filtered_kwargs["ignore_reinit_error"] is True
+
+        # Check that logging was called for each filtered parameter
+        assert mock_logger.info.call_count == 8  # 7 filtered params + 1 summary log
+
+    @pytest.mark.asyncio
+    async def test_start_cluster_with_address_no_parameters_filtered(self):
+        """Test that when no cluster-starting parameters are provided, no filtering occurs."""
+        manager = RayManager()
+
+        # Mock ray.init and related functions
+        mock_context = Mock()
+        mock_context.address_info = {
+            "address": "ray://127.0.0.1:10001",
+        }
+        mock_context.dashboard_url = "http://127.0.0.1:8265"
+        mock_context.session_name = "test_session"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.init.return_value = mock_context
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "test_node_id"
+                )
+
+                with patch("ray_mcp.ray_manager.JobSubmissionClient"):
+                    # Test connecting to existing cluster with only valid parameters
+                    result = await manager.start_cluster(
+                        address="ray://127.0.0.1:10001",
+                        custom_param="should_pass",
+                        another_param=123,
+                    )
+
+                    assert result["status"] == "started"
+                    assert manager._is_initialized
+
+                    # Verify ray.init was called with the parameters
+                    mock_ray.init.assert_called_once()
+                    call_args = mock_ray.init.call_args[1]
+
+                    # Check that valid parameters were passed through
+                    assert call_args["address"] == "ray://127.0.0.1:10001"
+                    assert call_args["ignore_reinit_error"] is True
+                    assert call_args["custom_param"] == "should_pass"
+                    assert call_args["another_param"] == 123
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
