@@ -113,9 +113,3 @@ def run_server():
 
 if __name__ == "__main__":
     run_server()
-
-from ray_mcp.main import server
-
-print("Registered tool functions in MCP server:")
-for name, func in getattr(server, "_tool_functions", {}).items():
-    print(f"  - {name}: {func}")
