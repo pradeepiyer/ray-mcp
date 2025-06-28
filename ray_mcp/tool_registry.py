@@ -119,10 +119,10 @@ class ToolRegistry:
         )
 
         self._register_tool(
-            name="cluster_info",
+            name="inspect_ray",
             description="Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations",
             schema={"type": "object", "properties": {}},
-            handler=self._cluster_info_handler,
+            handler=self._inspect_ray_handler,
         )
 
         # Job management
@@ -255,9 +255,9 @@ class ToolRegistry:
         """Handler for stop_ray tool."""
         return await self.ray_manager.stop_cluster()
 
-    async def _cluster_info_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for cluster_info tool."""
-        return await self.ray_manager.get_cluster_info()
+    async def _inspect_ray_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for inspect_ray tool."""
+        return await self.ray_manager.inspect_ray()
 
     async def _submit_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for submit_job tool."""

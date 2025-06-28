@@ -230,7 +230,7 @@ Log retrieval and analysis examples.
 
 // 2. Check cluster status
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 
@@ -451,7 +451,7 @@ Log retrieval and analysis examples.
 ## Best Practices
 
 1. **Start with simple examples** before moving to complex workflows
-2. **Monitor resource usage** using `cluster_info` regularly
+2. **Monitor resource usage** using `inspect_ray` regularly
 3. **Use appropriate runtime environments** for your specific use case
 4. **Implement proper error handling** in your Ray applications
 5. **Clean up resources** by stopping clusters when done
@@ -471,7 +471,7 @@ Log retrieval and analysis examples.
 ```json
 // Check cluster health
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 

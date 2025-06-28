@@ -188,7 +188,7 @@ def tool_registry(ray_manager):
 async def ray_cluster():
     """Provide a running Ray cluster for testing."""
     # Setup cluster
-    yield cluster_info
+    yield inspect_ray
     # Cleanup cluster
 ```
 
@@ -258,7 +258,7 @@ async def test_error_handling():
     manager = RayManager()
     
     # Test without Ray initialization
-    result = await manager.get_cluster_info()
+    result = await manager.inspect_ray()
     assert result["status"] == "error"
     assert "not initialized" in result["message"]
 ```
@@ -359,9 +359,10 @@ async def test_resource_allocation():
     await manager.init_cluster(num_cpus=4, object_store_memory=2000000000)
     
     # Test resource constraints
-    result = await manager.get_cluster_info()
-    assert result["cluster_info"]["num_cpus"] == 4
-    assert result["cluster_info"]["object_store_memory"] == 2000000000
+    result = await manager.inspect_ray()
+    assert result["status"] == "success"
+    assert result["resources"]["cluster_resources"]["CPU"] == 4
+    assert result["resources"]["cluster_resources"]["object_store_memory"] == 2000000000
 ```
 
 ## Continuous Integration
@@ -460,4 +461,4 @@ uv run pytest --cov=ray_mcp --cov-report=html
 open htmlcov/index.html
 ```
 
-The test suite provides comprehensive coverage of the Ray MCP Server functionality, ensuring reliability and maintainability of the codebase. 
+The test suite provides comprehensive coverage of the Ray MCP Server functionality, ensuring reliability and maintainability of the codebase.

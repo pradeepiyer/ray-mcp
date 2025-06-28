@@ -59,9 +59,9 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         return _format_response(result)
 
     @server.call_tool()
-    async def cluster_info() -> List[TextContent]:
+    async def inspect_ray() -> List[TextContent]:
         """Get comprehensive cluster information including status, resources, nodes, and worker status."""
-        result = await tool_registry.execute_tool("cluster_info", {})
+        result = await tool_registry.execute_tool("inspect_ray", {})
         return _format_response(result)
 
     # Job management tools

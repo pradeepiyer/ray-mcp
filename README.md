@@ -127,7 +127,7 @@ For advanced configurations, you can specify custom worker nodes:
 ```python
 # Check cluster status
 {
-  "tool": "cluster_info"
+  "tool": "inspect_ray"
 }
 
 # Submit a job
@@ -149,9 +149,16 @@ Returns standard JSON responses for backward compatibility:
 {
   "status": "success",
   "message": "Ray cluster started successfully",
-  "cluster_info": {
-    "num_cpus": 4,
-    "num_gpus": 1
+  "cluster_overview": {
+    "status": "running",
+    "total_nodes": 3,
+    "alive_nodes": 3
+  },
+  "resources": {
+    "cluster_resources": {
+      "CPU": 4,
+      "memory": 1000000000
+    }
   }
 }
 ```
@@ -188,7 +195,7 @@ The server provides a comprehensive set of tools for Ray management:
 ### Cluster Operations
 - `init_ray` - Initialize Ray cluster - start a new cluster or connect to existing one
 - `stop_ray` - Stop the current Ray cluster
-- `cluster_info` - Get comprehensive cluster information including status, resources, nodes, and worker status
+- `inspect_ray` - Get comprehensive cluster information including status, resources, nodes, and worker status
 
 ### Job Operations
 - `submit_job` - Submit a new job to the cluster

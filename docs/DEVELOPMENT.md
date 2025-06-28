@@ -314,7 +314,7 @@ ray.init(log_to_driver=True)
 
 - Use appropriate object store memory for your workload
 - Configure worker nodes based on resource requirements
-- Monitor resource usage with `cluster_info`
+- Monitor resource usage with `inspect_ray`
 
 ### Code Optimization
 

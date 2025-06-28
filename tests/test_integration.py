@@ -69,7 +69,7 @@ class TestMCPIntegration:
         expected_tools = [
             "init_ray",
             "stop_ray",
-            "cluster_info",
+            "inspect_ray",
             "submit_job",
             "list_jobs",
             "inspect_job",
@@ -111,15 +111,13 @@ class TestMCPIntegration:
             start_cluster_mock.assert_called_once()
 
             # Test cluster info
-            cluster_info_mock = AsyncMock(return_value={"status": "success"})
-            cluster_info_mock.__signature__ = inspect.signature(
-                RayManager.get_cluster_info
-            )
+            inspect_ray_mock = AsyncMock(return_value={"status": "success"})
+            inspect_ray_mock.__signature__ = inspect.signature(RayManager.inspect_ray)
 
-            with patch.object(RayManager, "get_cluster_info", cluster_info_mock):
-                result = await registry.execute_tool("cluster_info")
+            with patch.object(RayManager, "inspect_ray", inspect_ray_mock):
+                result = await registry.execute_tool("inspect_ray")
                 assert result["status"] == "success"
-                cluster_info_mock.assert_called_once()
+                inspect_ray_mock.assert_called_once()
 
             # Test cluster stop
             stop_cluster_mock = AsyncMock(return_value={"status": "stopped"})

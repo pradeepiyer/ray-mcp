@@ -54,7 +54,7 @@ async def list_tools() -> List[Tool]:
                 with types, constraints, and descriptions for each parameter
 
     The tools are organized into categories:
-    - Basic cluster management: init_ray, stop_ray, cluster_info
+    - Basic cluster management: init_ray, stop_ray, inspect_ray
     - Job management: submit_job, list_jobs, inspect_job, cancel_job
     - Logs & debugging: retrieve_logs
 

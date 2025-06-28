@@ -54,8 +54,8 @@ async def demonstrate_multi_node_cluster():
 
         # Example 2: Get cluster info
         print("\n2. Getting cluster info...")
-        cluster_info = await ray_manager.get_cluster_info()
-        print(f"Cluster info: {json.dumps(cluster_info, indent=2)}")
+        inspect_ray = await ray_manager.inspect_ray()
+        print(f"Cluster info: {json.dumps(inspect_ray, indent=2)}")
 
         # Example 3: Stop the cluster
         print("\n3. Stopping the cluster...")

@@ -86,8 +86,8 @@ async def demonstrate_connect_existing_cluster():
 
         # Example 4: Get cluster info to verify connection
         print("\n4. Getting cluster information...")
-        cluster_info = await ray_manager.get_cluster_info()
-        print(f"Cluster info: {json.dumps(cluster_info, indent=2)}")
+        inspect_ray = await ray_manager.inspect_ray()
+        print(f"Cluster info: {json.dumps(inspect_ray, indent=2)}")
 
         # Example 5: Stop the cluster
         print("\n5. Stopping the cluster...")

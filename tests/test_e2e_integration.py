@@ -96,7 +96,7 @@ class TestE2EIntegration:
 
         # Step 2: Verify cluster status
         print("Checking cluster status...")
-        status_result = await call_tool("cluster_info")
+        status_result = await call_tool("inspect_ray")
         status_content = get_text_content(status_result)
         status_data = json.loads(status_content)
         assert status_data["status"] == "success"
@@ -171,7 +171,7 @@ class TestE2EIntegration:
 
         # Step 5: Verify cluster is stopped
         print("Verifying cluster is stopped...")
-        final_status_result = await call_tool("cluster_info")
+        final_status_result = await call_tool("inspect_ray")
         final_status_content = get_text_content(final_status_result)
         final_status_data = json.loads(final_status_content)
         assert final_status_data["status"] == "not_running"
@@ -360,7 +360,7 @@ print("Job completed!")
         expected_tools = {
             "init_ray",
             "stop_ray",
-            "cluster_info",
+            "inspect_ray",
             "submit_job",
             "list_jobs",
             "inspect_job",
@@ -393,7 +393,7 @@ print("Job completed!")
         assert "Ray is not initialized" in content or "not_running" in content.lower()
 
         # Test cluster status when Ray is not running
-        status_result = await call_tool("cluster_info")
+        status_result = await call_tool("inspect_ray")
         status_content = get_text_content(status_result)
         status_data = json.loads(status_content)
         assert status_data["status"] == "not_running"

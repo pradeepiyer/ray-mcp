@@ -156,14 +156,11 @@ print("Job finished successfully!")
 
         # 4. Node logs (limited support)
         print("\n4. Node Logs (Limited Support):")
-        # Get cluster info to find a node ID
-        cluster_info = await registry.execute_tool("cluster_info", {})
-        if cluster_info["status"] == "success" and "nodes" in cluster_info:
-            node_id = (
-                cluster_info["nodes"][0]["node_id"]
-                if cluster_info["nodes"]
-                else "node_123"
-            )
+        # Get cluster information to find available nodes
+        inspect_ray = await registry.execute_tool("inspect_ray", {})
+        if inspect_ray["status"] == "success" and "nodes" in inspect_ray:
+            # Get the first available node ID
+            node_id = inspect_ray["nodes"][0]["node_id"]
 
             node_logs = await registry.execute_tool(
                 "retrieve_logs",

@@ -516,7 +516,7 @@ class RayManager:
                 "message": f"Failed to stop Ray cluster: {str(e)}",
             }
 
-    async def get_cluster_info(self) -> Dict[str, Any]:
+    async def inspect_ray(self) -> Dict[str, Any]:
         """Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations."""
         try:
             if not RAY_AVAILABLE or ray is None:
@@ -1110,7 +1110,7 @@ class RayManager:
                 return {
                     "status": "error",
                     "message": f"Node {node_id} not found",
-                    "suggestion": "Use cluster_info tool to see available nodes",
+                    "suggestion": "Use inspect_ray tool to see available nodes",
                 }
 
             # Note: Ray doesn't provide direct node log access through Python API

@@ -422,7 +422,7 @@ The Ray MCP Server validates configuration parameters and provides helpful error
 ## Best Practices
 
 1. **Start Simple**: Begin with basic configurations and add complexity gradually
-2. **Monitor Resources**: Use `cluster_info` to monitor resource usage
+2. **Monitor Resources**: Use `inspect_ray` to monitor resource usage
 3. **Test Configurations**: Validate configurations in development before production
 4. **Document Settings**: Keep configuration documentation up to date
 5. **Use Enhanced Output**: Enable enhanced output for better debugging

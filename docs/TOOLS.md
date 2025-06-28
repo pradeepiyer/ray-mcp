@@ -67,18 +67,16 @@ Stop the Ray cluster.
 }
 ```
 
-### cluster_info
+### inspect_ray
 
 Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations.
 
-**Description**: Provides detailed information about the current Ray cluster state, including resource usage, node status, and health metrics.
+**Parameters:** None
 
-**Parameters**: None
-
-**Example**:
+**Example:**
 ```json
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 ```
@@ -230,7 +228,7 @@ This enhanced output leverages the LLM's capabilities to provide actionable insi
 
 ## Best Practices
 
-1. **Always check cluster status** before submitting jobs using `cluster_info`
+1. **Always check cluster status** before submitting jobs using `inspect_ray`
 2. **Use appropriate log levels** when retrieving logs to avoid overwhelming output
 3. **Monitor job status** regularly using `list_jobs` and `inspect_job`
 4. **Clean up resources** by stopping the cluster when done using `stop_ray`

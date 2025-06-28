@@ -27,7 +27,7 @@ This document provides comprehensive troubleshooting information for common issu
 
 // Then use other tools
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 ```
@@ -87,7 +87,7 @@ This document provides comprehensive troubleshooting information for common issu
 
 // Check cluster status
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 ```
@@ -197,7 +197,7 @@ This document provides comprehensive troubleshooting information for common issu
 ```json
 // Check current resource usage
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 
@@ -218,7 +218,7 @@ This document provides comprehensive troubleshooting information for common issu
 
 ```json
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 ```
@@ -309,7 +309,7 @@ make test-e2e
 ```json
 // Monitor resource usage
 {
-  "tool": "cluster_info",
+  "tool": "inspect_ray",
   "arguments": {}
 }
 
