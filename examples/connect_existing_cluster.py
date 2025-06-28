@@ -27,7 +27,7 @@ async def demonstrate_connect_existing_cluster():
         )
 
         # Note: These cluster-starting parameters will be filtered out and logged
-        result = await ray_manager.start_cluster(
+        result = await ray_manager.init_cluster(
             address="ray://127.0.0.1:10001",  # Connect to existing cluster
             num_cpus=8,  # Will be filtered out (cluster-starting parameter)
             num_gpus=2,  # Will be filtered out (cluster-starting parameter)
@@ -51,7 +51,7 @@ async def demonstrate_connect_existing_cluster():
         # Create a new manager instance for this example
         ray_manager2 = RayManager()
 
-        result2 = await ray_manager2.connect_cluster(
+        result2 = await ray_manager2.init_cluster(
             "ray://127.0.0.1:10001",  # Connect to existing cluster
             num_cpus=16,  # Will be filtered out (cluster-starting parameter)
             num_gpus=4,  # Will be filtered out (cluster-starting parameter)
@@ -74,7 +74,7 @@ async def demonstrate_connect_existing_cluster():
 
         ray_manager3 = RayManager()
 
-        result3 = await ray_manager3.connect_cluster(
+        result3 = await ray_manager3.init_cluster(
             "ray://127.0.0.1:10001",  # Connect to existing cluster
             custom_param="no_filtering_needed",  # Valid parameter
             another_param=789,  # Valid parameter

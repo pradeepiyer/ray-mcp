@@ -3,7 +3,7 @@
 ## MCP Server Tool Routing Issues
 
 ### All Tool Calls Route to Same Function
-**Problem**: All tool calls (e.g., `start_ray`, `submit_job`, `get_logs`) return the same response, typically from `get_logs`.
+**Problem**: All tool calls (e.g., `init_ray`, `submit_job`, `get_logs`) return the same response, typically from `get_logs`.
 
 **Root Cause**: MCP server routing issues where multiple `@server.call_tool()` decorators conflict or only the last registered function is used.
 
@@ -18,7 +18,7 @@
 "Use cluster_info tool to verify tool routing is working"
 
 # Test different tools
-"Use start_ray tool with num_cpus=1"
+"Use init_ray tool with num_cpus=1"
 "Use submit_job tool with entrypoint='python examples/simple_job.py'"
 ```
 

@@ -279,5 +279,5 @@ def _wrap_with_system_prompt(tool_name: str, result: Dict[str, Any]) -> str:
 The Ray MCP Server now supports creating clusters with multiple worker nodes:
 
 - **New Module**: `ray_mcp/worker_manager.py` - Comprehensive worker node lifecycle management
-- **Enhanced Tool**: `start_ray` now accepts `worker_nodes` parameter for multi-node setup
+- **Enhanced Tool**: `init_ray` now accepts `worker_nodes` parameter for multi-node setup
 - **New Tool**: `cluster_info` for comprehensive cluster information including status, resources, nodes, and worker status

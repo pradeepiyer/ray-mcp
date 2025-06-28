@@ -14,8 +14,7 @@
 The Ray MCP Server provides a comprehensive set of tools for Ray cluster management, covering cluster operations, job management, actor management, monitoring, and scheduling:
 
 ## Cluster Operations
-- `start_ray` - Start a new Ray cluster with head node and optional worker nodes
-- `connect_ray` - Connect to an existing Ray cluster
+- `init_ray` - Initialize Ray cluster - start a new cluster or connect to existing one
 - `stop_ray` - Stop the current Ray cluster
 - `cluster_info` - Get comprehensive cluster information including status, resources, nodes, and worker status
 
@@ -37,8 +36,8 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 
 ## Tool Parameters
 
-### start_ray
-Start a new Ray cluster with head node and worker nodes, or connect to an existing cluster. **Defaults to multi-node cluster with 2 worker nodes.**
+### init_ray
+Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster with optional worker specifications.
 
 **For new cluster creation:**
 ```json
@@ -108,16 +107,7 @@ When no `worker_nodes` parameter is specified and no `address` is provided, the 
 }
 ```
 
-### connect_ray
-Connect to an existing Ray cluster. **Cluster-starting parameters are automatically filtered out when connecting to existing clusters.**
-
-```json
-{
-  "address": "ray://127.0.0.1:10001"  // Required: Ray cluster address
-}
-```
-
-**Supported address formats:**
+**Supported address formats for connecting to existing clusters:**
 - `ray://127.0.0.1:10001` (recommended)
 - `127.0.0.1:10001`
 - `ray://head-node-ip:10001`
@@ -137,61 +127,21 @@ When connecting to an existing cluster, the following cluster-starting parameter
 ```json
 {
   "address": "ray://127.0.0.1:10001",
-  "num_cpus": 8,              // Will be filtered out and logged
-  "num_gpus": 2,              // Will be filtered out and logged
-  "object_store_memory": 1000000000,  // Will be filtered out and logged
-  "custom_param": "value"     // Will be passed through to ray.init()
+  "num_cpus": 8,  // This will be filtered out and logged
+  "num_gpus": 2   // This will be filtered out and logged
 }
 ```
 
-**Note:** The filtering ensures that only valid connection parameters are passed to `ray.init()` when connecting to existing clusters, preventing potential errors and providing clear logging about which parameters were ignored.
-
-### cluster_info
+**Result:**
 ```json
 {
-  // No parameters required
-}
-```
-
-**Returns comprehensive cluster information including:**
-- **cluster_overview**: Overall cluster status, address, node counts, worker counts
-- **resources**: Cluster resources, available resources, and resource usage breakdown
-- **nodes**: Detailed information about each node in the cluster
-- **worker_nodes**: Status and details of worker nodes managed by WorkerManager
-
-**Example response structure:**
-```json
-{
-  "status": "success",
-  "cluster_overview": {
-    "status": "running",
-    "address": "ray://127.0.0.1:10001",
-    "total_nodes": 3,
-    "alive_nodes": 3,
-    "total_workers": 2,
-    "running_workers": 2
-  },
-  "resources": {
-    "cluster_resources": {"CPU": 12.0, "memory": 32000000000},
-    "available_resources": {"CPU": 8.0, "memory": 20000000000},
-    "resource_usage": {
-      "CPU": {"total": 12.0, "available": 8.0, "used": 4.0},
-      "memory": {"total": 32000000000, "available": 20000000000, "used": 12000000000}
-    }
-  },
-  "nodes": [
-    {
-      "node_id": "node1",
-      "alive": true,
-      "node_name": "head-node",
-      "resources": {"CPU": 4.0},
-      "used_resources": {"CPU": 2.0}
-    }
-  ],
-  "worker_nodes": [
-    {"node_id": "worker1", "status": "running"},
-    {"node_id": "worker2", "status": "running"}
-  ]
+  "status": "connected",
+  "message": "Successfully connected to Ray cluster at ray://127.0.0.1:10001",
+  "address": "ray://127.0.0.1:10001",
+  "dashboard_url": "http://127.0.0.1:8265",
+  "node_id": "node_id_here",
+  "session_name": "session_name_here",
+  "job_client_status": "ready"
 }
 ```
 
@@ -329,8 +279,7 @@ Inspect a job with different modes to get varying levels of detail.
 - All monitoring tools (`performance_metrics`, `health_check`, etc.)
 
 **🔧 Ray initialization tools:**
-- `start_ray` - Start a new Ray cluster
-- `connect_ray` - Connect to an existing Ray cluster
+- `init_ray` - Start a new Ray cluster
 - `stop_ray` - Stop the current Ray cluster
 
 ## WorkerManager Class
@@ -354,7 +303,7 @@ Each worker node can be configured with:
 
 ### Integration with RayManager
 The `WorkerManager` is integrated into the `RayManager` class and automatically handles:
-- Worker node startup when using `start_ray` with `worker_nodes` parameter
+- Worker node startup when using `init_ray` with `worker_nodes` parameter
 - Worker node shutdown when using `stop_ray`
 - Worker status reporting via the `cluster_info` tool
 - Enhanced cluster status with worker node information

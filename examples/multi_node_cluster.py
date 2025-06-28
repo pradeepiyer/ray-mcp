@@ -40,7 +40,7 @@ async def demonstrate_multi_node_cluster():
             },
         ]
 
-        result = await ray_manager.start_cluster(
+        result = await ray_manager.init_cluster(
             num_cpus=4,  # Head node: 4 CPUs
             num_gpus=0,  # Head node: 0 GPUs
             object_store_memory=1000000000,  # Head node: 1GB

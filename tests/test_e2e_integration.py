@@ -83,7 +83,7 @@ class TestE2EIntegration:
 
         # Step 1: Start Ray cluster using MCP tools
         print("Starting Ray cluster...")
-        start_result = await call_tool("start_ray", {"num_cpus": 4})
+        start_result = await call_tool("init_ray", {"num_cpus": 4})
 
         # Verify start result
         start_content = get_text_content(start_result)
@@ -188,7 +188,7 @@ class TestE2EIntegration:
 
         # Step 1: Start Ray cluster
         print("Starting Ray cluster for actor management...")
-        start_result = await call_tool("start_ray", {"num_cpus": 4})
+        start_result = await call_tool("init_ray", {"num_cpus": 4})
 
         # Verify start result
         start_content = get_text_content(start_result)
@@ -321,7 +321,7 @@ if __name__ == "__main__":
 
         # Step 1: Start Ray cluster
         print("Starting Ray cluster for failure testing...")
-        start_result = await call_tool("start_ray", {"num_cpus": 2})
+        start_result = await call_tool("init_ray", {"num_cpus": 2})
 
         # Verify start result
         start_content = get_text_content(start_result)
@@ -487,8 +487,7 @@ print("Job completed!")
         assert isinstance(tools, list)
         tool_names = {tool.name for tool in tools}
         expected_tools = {
-            "start_ray",
-            "connect_ray",
+            "init_ray",
             "stop_ray",
             "cluster_info",
             "submit_job",

@@ -31,30 +31,34 @@ class ToolRegistry:
 
         # Basic cluster management
         self._register_tool(
-            name="start_ray",
-            description="Start a new Ray cluster with head node and worker nodes (defaults to multi-node with 2 workers)",
+            name="init_ray",
+            description="Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster with optional worker specifications.",
             schema={
                 "type": "object",
                 "properties": {
+                    "address": {
+                        "type": "string",
+                        "description": "Ray cluster address to connect to (e.g., 'ray://127.0.0.1:10001'). If provided, connects to existing cluster; if not provided, starts a new cluster.",
+                    },
                     "num_cpus": {
                         "type": "integer",
                         "minimum": 1,
                         "default": 1,
-                        "description": "Number of CPUs for head node",
+                        "description": "Number of CPUs for head node (only used when starting new cluster)",
                     },
                     "num_gpus": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Number of GPUs for head node",
+                        "description": "Number of GPUs for head node (only used when starting new cluster)",
                     },
                     "object_store_memory": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Object store memory in bytes for head node",
+                        "description": "Object store memory in bytes for head node (only used when starting new cluster)",
                     },
                     "worker_nodes": {
                         "type": "array",
-                        "description": "Configuration for worker nodes to start",
+                        "description": "Configuration for worker nodes to start (only used when starting new cluster)",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -89,38 +93,22 @@ class ToolRegistry:
                         "type": ["integer", "null"],
                         "minimum": 10000,
                         "maximum": 65535,
-                        "description": "Port for head node (if None, a free port will be found)",
+                        "description": "Port for head node (only used when starting new cluster, if None, a free port will be found)",
                     },
                     "dashboard_port": {
                         "type": ["integer", "null"],
                         "minimum": 1000,
                         "maximum": 65535,
-                        "description": "Port for Ray dashboard (if None, a free port will be found)",
+                        "description": "Port for Ray dashboard (only used when starting new cluster, if None, a free port will be found)",
                     },
                     "head_node_host": {
                         "type": "string",
                         "default": "127.0.0.1",
-                        "description": "Host address for head node",
+                        "description": "Host address for head node (only used when starting new cluster)",
                     },
                 },
             },
-            handler=self._start_ray_handler,
-        )
-
-        self._register_tool(
-            name="connect_ray",
-            description="Connect to an existing Ray cluster",
-            schema={
-                "type": "object",
-                "properties": {
-                    "address": {
-                        "type": "string",
-                        "description": "Ray cluster address (e.g., 'ray://127.0.0.1:10001' or '127.0.0.1:10001')",
-                    }
-                },
-                "required": ["address"],
-            },
-            handler=self._connect_ray_handler,
+            handler=self._init_ray_handler,
         )
 
         self._register_tool(
@@ -291,15 +279,9 @@ class ToolRegistry:
 
     # Tool handlers - these replace the duplicated logic in main.py and tools.py
 
-    async def _start_ray_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for start_ray tool."""
-        sig = inspect.signature(RayManager.start_cluster)
-        filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
-        return await self.ray_manager.start_cluster(**filtered)
-
-    async def _connect_ray_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for connect_ray tool."""
-        return await self.ray_manager.connect_cluster(**kwargs)
+    async def _init_ray_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for init_ray tool."""
+        return await self.ray_manager.init_cluster(**kwargs)
 
     async def _stop_ray_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for stop_ray tool."""

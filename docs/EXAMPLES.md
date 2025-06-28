@@ -31,7 +31,7 @@ When `RAY_MCP_ENHANCED_OUTPUT=false` (default), tools return standard JSON respo
 
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {"num_cpus": 4}
 }
 ```
@@ -55,14 +55,14 @@ When `RAY_MCP_ENHANCED_OUTPUT=true`, tools return system prompts that instruct t
 
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {"num_cpus": 4}
 }
 ```
 
 **Response (Enhanced):**
 ```
-You are an AI assistant helping with Ray cluster management. A user just called the 'start_ray' tool and received the following response:
+You are an AI assistant helping with Ray cluster management. A user just called the 'init_ray' tool and received the following response:
 
 {
   "status": "success",
@@ -176,7 +176,7 @@ The `examples/` directory contains six comprehensive Ray applications demonstrat
 - Worker status monitoring
 - Cluster resource distribution across nodes
 
-**New Feature**: This example showcases the enhanced `start_ray` tool with `worker_nodes` parameter and the new `cluster_info` tool for comprehensive cluster monitoring.
+**New Feature**: This example showcases the enhanced `init_ray` tool with `worker_nodes` parameter and the new `cluster_info` tool for comprehensive cluster monitoring.
 
 ### 3. Actor Example (`examples/actor_example.py`)
 **Purpose**: Shows Ray actor usage patterns for stateful distributed computing.
@@ -307,7 +307,7 @@ The `examples/` directory contains six comprehensive Ray applications demonstrat
 The Ray MCP Server follows a **manual initialization** approach:
 
 - **Server Startup**: Ray is NOT automatically initialized when the server starts
-- **Explicit Initialization**: You must use `start_ray` or `connect_ray` tools to initialize Ray
+- **Explicit Initialization**: You must use `init_ray` to initialize Ray
 - **Tool Dependencies**: Most tools require Ray to be initialized first
 - **Clear Error Messages**: Tools will fail with helpful error messages if Ray is not initialized
 

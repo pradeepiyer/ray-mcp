@@ -114,12 +114,12 @@ http://localhost:8265
 
 ## Multi-Node Cluster Configuration
 
-The Ray MCP Server now supports multi-node cluster configuration through the `start_ray` tool:
+The Ray MCP Server now supports multi-node cluster configuration through the `init_ray` tool:
 
 ### Worker Node Configuration
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {
     "num_cpus": 4,
     "worker_nodes": [

@@ -40,7 +40,7 @@ Comprehensive configuration with examples and documentation for different Ray cl
 - **Examples**: 
   - `ray://127.0.0.1:10001`
   - `ray://production-cluster:10001`
-- **Note**: Leave empty to use `start_ray` or `connect_ray` tool parameters
+- **Note**: Leave empty to use `init_ray` tool parameters
 
 ### `RAY_DASHBOARD_HOST`
 - **Purpose**: Ray dashboard host binding
@@ -68,7 +68,7 @@ Comprehensive configuration with examples and documentation for different Ray cl
 }
 ```
 - Server starts without Ray initialization
-- Use `start_ray` tool to create local clusters (default: 4 CPUs)
+- Use `init_ray` tool to create local clusters (default: 4 CPUs)
 - Full control over cluster resources
 - Clean shutdown with `stop_ray`
 
@@ -87,7 +87,7 @@ Comprehensive configuration with examples and documentation for different Ray cl
 }
 ```
 - Server starts without Ray initialization
-- Use `connect_ray` tool to connect to persistent clusters
+- Use `init_ray` tool to connect to persistent clusters
 - `RAY_ADDRESS` environment variable is available for tools but doesn't auto-connect
 - Restrict dashboard host for security
 
@@ -102,7 +102,7 @@ Comprehensive configuration with examples and documentation for different Ray cl
 
 **Workflow**:
 1. Start MCP server (Ray not initialized)
-2. Use `start_ray` or `connect_ray` to initialize Ray
+2. Use `init_ray` to initialize Ray
 3. Use other tools that require Ray
 4. Optionally use `stop_ray` to shutdown Ray
 
@@ -111,7 +111,7 @@ Comprehensive configuration with examples and documentation for different Ray cl
 ### Start New Cluster
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {
     "num_cpus": 8,
     "num_gpus": 2,
@@ -125,7 +125,7 @@ Comprehensive configuration with examples and documentation for different Ray cl
 ### Connect to Existing Cluster
 ```json
 {
-  "tool": "connect_ray",
+  "tool": "init_ray",
   "arguments": {
     "address": "ray://cluster.example.com:10001"
   }

@@ -61,7 +61,7 @@ The server supports both single-node and multi-node cluster configurations:
 
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {
     "num_cpus": 4,
     "num_gpus": 1
@@ -75,7 +75,7 @@ The server now defaults to starting multi-node clusters with 2 worker nodes:
 
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {
     "num_cpus": 1
   }
@@ -95,7 +95,7 @@ For advanced configurations, you can specify custom worker nodes:
 
 ```json
 {
-  "tool": "start_ray",
+  "tool": "init_ray",
   "arguments": {
     "num_cpus": 4,
     "num_gpus": 0,
@@ -186,8 +186,7 @@ This approach leverages the LLM's capabilities to provide actionable insights wi
 The server provides a comprehensive set of tools for Ray management, covering cluster operations, job management, actor management, monitoring, and scheduling:
 
 ### Cluster Operations
-- `start_ray` - Start a new Ray cluster with head node and optional worker nodes
-- `connect_ray` - Connect to an existing Ray cluster
+- `init_ray` - Initialize Ray cluster - start a new cluster or connect to existing one
 - `stop_ray` - Stop the current Ray cluster
 - `cluster_info` - Get comprehensive cluster information including status, resources, nodes, and worker status
 

@@ -26,7 +26,8 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
 
     # Basic cluster management tools
     @server.call_tool()
-    async def start_ray(
+    async def init_ray(
+        address: Optional[str] = None,
         num_cpus: Optional[int] = 1,
         num_gpus: Optional[int] = None,
         object_store_memory: Optional[int] = None,
@@ -34,12 +35,12 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         head_node_port: Optional[int] = None,
         dashboard_port: Optional[int] = None,
         head_node_host: str = "127.0.0.1",
-        address: Optional[str] = None,
     ) -> List[TextContent]:
-        """Start a new Ray cluster with head node and worker nodes."""
+        """Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster with optional worker specifications."""
         result = await tool_registry.execute_tool(
-            "start_ray",
+            "init_ray",
             {
+                "address": address,
                 "num_cpus": num_cpus,
                 "num_gpus": num_gpus,
                 "object_store_memory": object_store_memory,
@@ -47,15 +48,8 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
                 "head_node_port": head_node_port,
                 "dashboard_port": dashboard_port,
                 "head_node_host": head_node_host,
-                "address": address,
             },
         )
-        return _format_response(result)
-
-    @server.call_tool()
-    async def connect_ray(address: str) -> List[TextContent]:
-        """Connect to an existing Ray cluster."""
-        result = await tool_registry.execute_tool("connect_ray", {"address": address})
         return _format_response(result)
 
     @server.call_tool()

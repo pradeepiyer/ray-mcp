@@ -48,13 +48,13 @@ async def list_tools() -> List[Tool]:
 
     Returns:
         List[Tool]: List of Tool objects containing:
-            - name: Tool identifier (e.g., "start_ray", "submit_job")
+            - name: Tool identifier (e.g., "init_ray", "submit_job")
             - description: Human-readable description of tool functionality
             - inputSchema: JSON schema defining required and optional parameters
                 with types, constraints, and descriptions for each parameter
 
     The tools are organized into categories:
-    - Basic cluster management: start_ray, connect_ray, stop_ray, cluster_info
+    - Basic cluster management: init_ray, stop_ray, cluster_info
     - Job management: submit_job, list_jobs, job_inspect, cancel_job
     - Actor management: list_actors, kill_actor
     - Logs & debugging: get_logs

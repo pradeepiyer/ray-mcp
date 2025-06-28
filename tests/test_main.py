@@ -14,6 +14,7 @@ import pytest
 
 from ray_mcp.main import list_tools, run_server
 from ray_mcp.tool_registry import ToolRegistry
+from ray_mcp.ray_manager import RayManager
 
 
 @pytest.mark.fast
@@ -98,7 +99,7 @@ class TestToolRegistry:
 
     def test_get_tool_handler(self):
         """Test get_tool_handler returns correct handlers."""
-        handler = self.registry.get_tool_handler("start_ray")
+        handler = self.registry.get_tool_handler("init_ray")
         assert handler is not None
         assert callable(handler)
 
@@ -109,8 +110,7 @@ class TestToolRegistry:
         """Test list_tool_names returns all tool names."""
         names = self.registry.list_tool_names()
         assert len(names) > 0
-        assert "start_ray" in names
-        assert "connect_ray" in names
+        assert "init_ray" in names
         assert "stop_ray" in names
 
     @pytest.mark.asyncio
@@ -123,37 +123,67 @@ class TestToolRegistry:
     @pytest.mark.asyncio
     async def test_execute_tool_success(self):
         """Test execute_tool with valid tool."""
-        self.mock_ray_manager.start_cluster = AsyncMock(
-            return_value={"status": "success"}
+        self.mock_ray_manager.init_cluster = AsyncMock(
+            return_value={
+                "status": "started",
+                "cluster_address": "ray://localhost:10001",
+            }
         )
 
-        result = await self.registry.execute_tool("start_ray", {"num_cpus": 4})
-        assert result["status"] == "success"
-        self.mock_ray_manager.start_cluster.assert_called_once_with(num_cpus=4)
+        result = await self.registry.execute_tool("init_ray", {"num_cpus": 4})
+        assert result["status"] == "started"
+        self.mock_ray_manager.init_cluster.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_execute_tool_exception_handling(self):
-        """Test execute_tool exception handling."""
-        self.mock_ray_manager.start_cluster = AsyncMock(
+    async def test_execute_tool_error(self):
+        """Test execute_tool with tool that raises exception."""
+        self.mock_ray_manager.init_cluster = AsyncMock(
             side_effect=Exception("Test error")
         )
 
-        result = await self.registry.execute_tool("start_ray", {})
+        result = await self.registry.execute_tool("init_ray", {})
         assert result["status"] == "error"
         assert "Test error" in result["message"]
 
     @pytest.mark.asyncio
     async def test_execute_tool_enhanced_output(self):
-        """Test execute_tool with enhanced output enabled."""
-        with patch.dict(os.environ, {"RAY_MCP_ENHANCED_OUTPUT": "true"}):
-            self.mock_ray_manager.start_cluster = AsyncMock(
-                return_value={"status": "success"}
-            )
+        """Test tool execution with enhanced output format."""
+        registry = ToolRegistry(RayManager())
 
-            result = await self.registry.execute_tool("start_ray", {})
-            assert result["status"] == "success"
-            assert "enhanced_output" in result
-            assert "raw_result" in result
+        # Mock Ray availability and initialization
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                # Mock the init_cluster method to return success
+                with patch.object(registry.ray_manager, "init_cluster") as mock_init:
+                    mock_init.return_value = {
+                        "status": "started",
+                        "message": "Ray cluster started successfully",
+                        "address": "ray://127.0.0.1:10001",
+                        "dashboard_url": "http://127.0.0.1:8265",
+                        "node_id": "node_123",
+                        "session_name": "test_session",
+                    }
+
+                    result = await registry.execute_tool(
+                        "init_ray",
+                        {
+                            "num_cpus": 4,
+                            "num_gpus": 0,
+                            "object_store_memory": 1000000000,
+                            "dashboard_port": 8265,
+                            "dashboard_host": "127.0.0.1",
+                            "include_dashboard": True,
+                            "log_to_driver": True,
+                            "worker_nodes": [],
+                        },
+                    )
+
+                    assert result["status"] == "started"
+                    assert "Ray cluster started successfully" in result["message"]
+                    assert result["address"] == "ray://127.0.0.1:10001"
+                    assert result["dashboard_url"] == "http://127.0.0.1:8265"
 
     def test_wrap_with_system_prompt(self):
         """Test _wrap_with_system_prompt function."""
@@ -178,8 +208,8 @@ class TestToolFunctions:
         self.mock_server = Mock()
 
     @pytest.mark.asyncio
-    async def test_start_ray_function(self):
-        """Test start_ray tool function."""
+    async def test_init_ray_function(self):
+        """Test init_ray tool function."""
 
         # Mock the server.call_tool decorator to return the function directly
         def mock_call_tool_decorator():
@@ -190,9 +220,14 @@ class TestToolFunctions:
 
         # Define the tool function using the mock decorator
         @mock_call_tool_decorator()
-        async def start_ray(num_cpus: int = 1, num_gpus: Optional[int] = None):
+        async def init_ray(
+            num_cpus: int = 1,
+            num_gpus: Optional[int] = None,
+            address: Optional[str] = None,
+        ):
             return await self.registry.execute_tool(
-                "start_ray", {"num_cpus": num_cpus, "num_gpus": num_gpus}
+                "init_ray",
+                {"num_cpus": num_cpus, "num_gpus": num_gpus, "address": address},
             )
 
         self.registry.execute_tool = AsyncMock(
@@ -202,15 +237,15 @@ class TestToolFunctions:
             }
         )
 
-        result = await start_ray(num_cpus=4, num_gpus=2)
+        result = await init_ray(num_cpus=4, num_gpus=2)
         assert result["status"] == "success"
         self.registry.execute_tool.assert_called_once_with(
-            "start_ray", {"num_cpus": 4, "num_gpus": 2}
+            "init_ray", {"num_cpus": 4, "num_gpus": 2, "address": None}
         )
 
     @pytest.mark.asyncio
-    async def test_connect_ray_function(self):
-        """Test connect_ray tool function."""
+    async def test_init_ray_function_with_address(self):
+        """Test init_ray tool function with address parameter."""
 
         def mock_call_tool_decorator():
             def decorator(func):
@@ -219,17 +254,17 @@ class TestToolFunctions:
             return decorator
 
         @mock_call_tool_decorator()
-        async def connect_ray(address: str):
-            return await self.registry.execute_tool("connect_ray", {"address": address})
+        async def init_ray(address: str):
+            return await self.registry.execute_tool("init_ray", {"address": address})
 
         self.registry.execute_tool = AsyncMock(
             return_value={"status": "success", "connected": True}
         )
 
-        result = await connect_ray(address="ray://localhost:10001")
+        result = await init_ray(address="ray://localhost:10001")
         assert result["status"] == "success"
         self.registry.execute_tool.assert_called_once_with(
-            "connect_ray", {"address": "ray://localhost:10001"}
+            "init_ray", {"address": "ray://localhost:10001"}
         )
 
     @pytest.mark.asyncio

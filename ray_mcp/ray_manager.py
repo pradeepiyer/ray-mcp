@@ -160,7 +160,7 @@ class RayManager:
 
         return filtered_kwargs
 
-    async def start_cluster(
+    async def init_cluster(
         self,
         address: Optional[str] = None,
         num_cpus: Optional[int] = None,
@@ -172,7 +172,11 @@ class RayManager:
         head_node_host: str = "127.0.0.1",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Start a Ray cluster with head node and optional worker nodes."""
+        """Initialize Ray cluster - start a new cluster or connect to existing one.
+
+        If address is provided, connects to existing cluster; otherwise starts a new cluster.
+        This method unifies the functionality of starting and connecting to Ray clusters.
+        """
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {
@@ -232,6 +236,45 @@ class RayManager:
                 self._is_initialized = True
                 self._cluster_address = ray_context.address_info["address"]
                 dashboard_url = ray_context.dashboard_url
+
+                # Extract GCS address from the provided address for worker nodes
+                if address.startswith("ray://"):
+                    # Extract IP:PORT from ray://IP:PORT format
+                    self._gcs_address = address[6:]  # Remove "ray://" prefix
+                else:
+                    # Assume it's already in IP:PORT format
+                    self._gcs_address = address
+
+                # Initialize job client with retry logic - this must complete before returning success
+                job_client_status = "ready"
+                if JobSubmissionClient is not None and self._cluster_address:
+                    # Use the dashboard URL (HTTP address) for job client
+                    job_client_address = ray_context.dashboard_url
+                    if job_client_address:
+                        self._job_client = await self._initialize_job_client_with_retry(
+                            job_client_address
+                        )
+                        if self._job_client is None:
+                            job_client_status = "unavailable"
+                    else:
+                        logger.warning(
+                            "Dashboard URL not available for job client initialization"
+                        )
+                        job_client_status = "unavailable"
+
+                return {
+                    "status": "connected",
+                    "message": f"Successfully connected to Ray cluster at {address}",
+                    "address": self._cluster_address,
+                    "dashboard_url": ray_context.dashboard_url,
+                    "node_id": (
+                        ray.get_runtime_context().get_node_id()
+                        if ray is not None
+                        else None
+                    ),
+                    "session_name": getattr(ray_context, "session_name", "unknown"),
+                    "job_client_status": job_client_status,
+                }
             else:
                 import os
                 import subprocess
@@ -347,7 +390,6 @@ class RayManager:
                     logger.warning(
                         "Dashboard URL not available for job client initialization"
                     )
-
                     job_client_status = "unavailable"
 
             # Set default worker nodes if none specified and not connecting to existing cluster
@@ -358,38 +400,37 @@ class RayManager:
 
             # Start worker nodes if specified
             worker_results = []
-            if (
-                worker_nodes
-                and isinstance(worker_nodes, list)
-                and self._cluster_address
-            ):
-                # Use stored GCS address for worker nodes
-                worker_address = self._gcs_address if self._gcs_address else address
-                if worker_address is None:
-                    raise RuntimeError("GCS address for worker nodes is not available.")
+            if worker_nodes and address is None:  # Only start workers for new clusters
                 worker_results = await self._worker_manager.start_worker_nodes(
-                    worker_nodes, worker_address  # type: ignore[arg-type]
+                    worker_nodes, self._gcs_address
                 )
 
+            # Determine status based on whether we connected or started
+            if address:
+                status = "connected"
+                message = f"Successfully connected to Ray cluster at {address}"
+            else:
+                status = "started"
+                message = "Ray cluster started successfully"
+
             return {
-                "status": "started",
-                "message": "Ray cluster started successfully",
-                "address": self._cluster_address,
+                "status": status,
+                "message": message,
+                "cluster_address": self._cluster_address,
                 "dashboard_url": dashboard_url,
                 "node_id": (
                     ray.get_runtime_context().get_node_id() if ray is not None else None
                 ),
                 "session_name": getattr(ray_context, "session_name", "unknown"),
                 "job_client_status": job_client_status,
-                "worker_nodes": worker_results,
-                "total_nodes": 1 + len(worker_results),
+                "worker_nodes": worker_results if worker_results else None,
             }
 
         except Exception as e:
-            logger.error(f"Failed to start Ray cluster: {e}")
+            logger.error(f"Failed to initialize Ray cluster: {e}")
             return {
                 "status": "error",
-                "message": f"Failed to start Ray cluster: {str(e)}",
+                "message": f"Failed to initialize Ray cluster: {str(e)}",
             }
 
     def _get_default_worker_config(self) -> List[Dict[str, Any]]:
@@ -408,78 +449,6 @@ class RayManager:
                 "node_name": "default-worker-2",
             },
         ]
-
-    async def connect_cluster(self, address: str, **kwargs: Any) -> Dict[str, Any]:
-        """Connect to an existing Ray cluster."""
-        try:
-            if not RAY_AVAILABLE or ray is None:
-                return {
-                    "status": "error",
-                    "message": "Ray is not available. Please install Ray.",
-                }
-
-            # Filter out cluster-starting parameters that are not valid for connection
-            filtered_kwargs = self._filter_cluster_starting_parameters(kwargs)
-
-            # Prepare connection arguments
-            init_kwargs: Dict[str, Any] = {
-                "address": address,
-                "ignore_reinit_error": True,
-            }
-
-            # Add any additional filtered kwargs
-            init_kwargs.update(filtered_kwargs)
-
-            # Connect to existing Ray cluster
-            ray_context = ray.init(**init_kwargs)
-
-            self._is_initialized = True
-            self._cluster_address = ray_context.address_info["address"]
-
-            # Extract GCS address from the provided address for worker nodes
-            if address.startswith("ray://"):
-                # Extract IP:PORT from ray://IP:PORT format
-                self._gcs_address = address[6:]  # Remove "ray://" prefix
-            else:
-                # Assume it's already in IP:PORT format
-                self._gcs_address = address
-
-            # Initialize job client with retry logic - this must complete before returning success
-            job_client_status = "ready"
-            if JobSubmissionClient is not None and self._cluster_address:
-                # Use the dashboard URL (HTTP address) for job client
-                job_client_address = ray_context.dashboard_url
-                if job_client_address:
-                    self._job_client = await self._initialize_job_client_with_retry(
-                        job_client_address
-                    )
-                    if self._job_client is None:
-                        job_client_status = "unavailable"
-                else:
-                    logger.warning(
-                        "Dashboard URL not available for job client initialization"
-                    )
-
-                    job_client_status = "unavailable"
-
-            return {
-                "status": "connected",
-                "message": f"Successfully connected to Ray cluster at {address}",
-                "address": self._cluster_address,
-                "dashboard_url": ray_context.dashboard_url,
-                "node_id": (
-                    ray.get_runtime_context().get_node_id() if ray is not None else None
-                ),
-                "session_name": getattr(ray_context, "session_name", "unknown"),
-                "job_client_status": job_client_status,
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to connect to Ray cluster: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to connect to Ray cluster at {address}: {str(e)}",
-            }
 
     async def stop_cluster(self) -> Dict[str, Any]:
         """Stop the Ray cluster."""

@@ -13,7 +13,7 @@
     "description": "Configuration guide for Ray cluster connections",
     "connection_options": {
       "start_new_cluster": {
-        "tool": "start_ray",
+        "tool": "init_ray",
         "description": "Start a new Ray cluster (head node) - defaults to 1 CPU",
         "example": {
           "arguments": {
@@ -25,7 +25,7 @@
         "note": "If num_cpus is not specified, defaults to 1 CPU"
       },
       "connect_to_existing_cluster": {
-        "tool": "connect_ray",
+        "tool": "init_ray",
         "description": "Connect to an existing Ray cluster",
         "example": {
           "arguments": {
@@ -61,19 +61,19 @@
     "usage_scenarios": {
       "development": {
         "description": "Local development with new clusters",
-        "recommended_tool": "start_ray",
+        "recommended_tool": "init_ray",
         "default_resources": "4 CPUs (can be customized)",
         "example_workflow": [
-          "Use start_ray tool to create local cluster",
+          "Use init_ray tool to create local cluster",
           "Submit jobs for testing",
           "Use stop_ray when done"
         ]
       },
       "production": {
         "description": "Connect to persistent production clusters",
-        "recommended_tool": "connect_ray",
+        "recommended_tool": "init_ray",
         "example_workflow": [
-          "Use connect_ray tool with production cluster address",
+          "Use init_ray tool with production cluster address",
           "Submit production jobs",
           "Monitor cluster health",
           "Connection persists until server restart"
