@@ -15,6 +15,11 @@ kill_ray_processes() {
     
     if command_exists pgrep; then
         pids=$(pgrep -f "$process_name" 2>/dev/null || true)
+        # Filter out the current script and its parent process to avoid
+        # killing the invoking shell or pytest runner
+        script_pid="$$"
+        parent_pid="$PPID"
+        pids=$(echo "$pids" | grep -v "^${script_pid}$" | grep -v "^${parent_pid}$" || true)
     elif command_exists ps; then
         # Fallback for systems without pgrep
         pids=$(ps aux | grep "$process_name" | grep -v grep | awk '{print $2}' 2>/dev/null || true)
