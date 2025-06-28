@@ -40,6 +40,7 @@ class RayManager:
         self.__is_initialized = False
         self._cluster_address: Optional[str] = None
         self._gcs_address: Optional[str] = None  # Store GCS address for worker nodes
+        self._dashboard_url: Optional[str] = None  # Store dashboard URL for job client
         self._job_client: Optional[Any] = (
             None  # Use Any to avoid type issues with conditional imports
         )
@@ -236,6 +237,7 @@ class RayManager:
                 self._is_initialized = True
                 self._cluster_address = ray_context.address_info["address"]
                 dashboard_url = ray_context.dashboard_url
+                self._dashboard_url = dashboard_url
 
                 # Extract GCS address from the provided address for worker nodes
                 if address.startswith("ray://"):
@@ -346,6 +348,7 @@ class RayManager:
                         "message": f"Failed to start head node (exit code: {exit_code}). stdout: {stdout}, stderr: {stderr}",
                     }
                 dashboard_url = parse_dashboard_url(stdout)
+                self._dashboard_url = dashboard_url
                 gcs_address = parse_gcs_address(stdout)
                 if not gcs_address:
                     return {
@@ -366,6 +369,7 @@ class RayManager:
                     ray_context = ray.init(**init_kwargs)
                     self._is_initialized = True
                     self._cluster_address = ray_address
+                    self._dashboard_url = ray_context.dashboard_url
                 except Exception as e:
                     logger.error(f"Failed to connect to head node: {e}")
                     logger.error(f"Head node stdout: {stdout}")
@@ -492,6 +496,7 @@ class RayManager:
             self._cluster_address = None
             self._gcs_address = None
             self._job_client = None
+            self._dashboard_url = None
 
             return {
                 "status": "stopped",
@@ -747,7 +752,9 @@ class RayManager:
                     import ray.job_submission
 
                     # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_client = ray.job_submission.JobSubmissionClient(
+                        self._dashboard_url
+                    )
 
                     # Prepare submit arguments
                     submit_kwargs: Dict[str, Any] = {
@@ -822,7 +829,9 @@ class RayManager:
                     import ray.job_submission
 
                     # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_client = ray.job_submission.JobSubmissionClient(
+                        self._dashboard_url
+                    )
                     jobs = job_client.list_jobs()
 
                     return {
@@ -882,7 +891,9 @@ class RayManager:
                     import ray.job_submission
 
                     # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_client = ray.job_submission.JobSubmissionClient(
+                        self._dashboard_url
+                    )
                     success = job_client.stop_job(job_id)
 
                     if success:
@@ -1078,7 +1089,9 @@ class RayManager:
                     import ray.job_submission
 
                     # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_client = ray.job_submission.JobSubmissionClient(
+                        self._dashboard_url
+                    )
                     logs = job_client.get_job_logs(job_id)
                     if num_lines > 0:
                         logs = "\n".join(logs.split("\n")[-num_lines:])
@@ -1371,7 +1384,9 @@ class RayManager:
                     import ray.job_submission
 
                     # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_client = ray.job_submission.JobSubmissionClient(
+                        self._dashboard_url
+                    )
                     job_info = job_client.get_job_info(job_id)
 
                     # Base response with job status

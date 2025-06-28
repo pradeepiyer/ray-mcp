@@ -569,6 +569,97 @@ class TestRayManager:
         assert filtered["address"] == "ray://127.0.0.1:10001"
         assert filtered["custom_param"] == "should_be_passed"
 
+    @pytest.mark.asyncio
+    async def test_job_client_passes_address_submit(self):
+        """Ensure submit_job uses dashboard address when creating client."""
+        manager = RayManager()
+        manager._dashboard_url = "http://127.0.0.1:8265"
+        manager._job_client = None
+
+        with patch.object(manager, "_ensure_initialized"):
+            with patch("ray.job_submission.JobSubmissionClient") as mock_client:
+                mock_client.return_value.submit_job.return_value = "jid"
+
+                result = await manager.submit_job("echo hi")
+
+                mock_client.assert_called_once_with("http://127.0.0.1:8265")
+                assert result["status"] == "submitted"
+                assert result["job_id"] == "jid"
+
+    @pytest.mark.asyncio
+    async def test_job_client_passes_address_list(self):
+        """Ensure list_jobs uses dashboard address when creating client."""
+        manager = RayManager()
+        manager._dashboard_url = "http://127.0.0.1:8265"
+        manager._job_client = None
+
+        with patch.object(manager, "_ensure_initialized"):
+            with patch("ray.job_submission.JobSubmissionClient") as mock_client:
+                mock_job = Mock(job_id="a", status="SUCCEEDED", entrypoint="", start_time=0, end_time=0, metadata=None, runtime_env=None)
+                mock_client.return_value.list_jobs.return_value = [mock_job]
+
+                result = await manager.list_jobs()
+
+                mock_client.assert_called_once_with("http://127.0.0.1:8265")
+                assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_job_client_passes_address_cancel(self):
+        """Ensure cancel_job uses dashboard address when creating client."""
+        manager = RayManager()
+        manager._dashboard_url = "http://127.0.0.1:8265"
+        manager._job_client = None
+
+        with patch.object(manager, "_ensure_initialized"):
+            with patch("ray.job_submission.JobSubmissionClient") as mock_client:
+                mock_client.return_value.stop_job.return_value = True
+
+                result = await manager.cancel_job("jid")
+
+                mock_client.assert_called_once_with("http://127.0.0.1:8265")
+                assert result["status"] == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_job_client_passes_address_logs(self):
+        """Ensure retrieve_logs uses dashboard address when creating client."""
+        manager = RayManager()
+        manager._dashboard_url = "http://127.0.0.1:8265"
+        manager._job_client = None
+
+        with patch.object(manager, "_ensure_initialized"):
+            with patch("ray.job_submission.JobSubmissionClient") as mock_client:
+                mock_client.return_value.get_job_logs.return_value = "log"
+
+                result = await manager.retrieve_logs("jid")
+
+                mock_client.assert_called_once_with("http://127.0.0.1:8265")
+                assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_job_client_passes_address_inspect(self):
+        """Ensure job_inspect uses dashboard address when creating client."""
+        manager = RayManager()
+        manager._dashboard_url = "http://127.0.0.1:8265"
+        manager._job_client = None
+
+        with patch.object(manager, "_ensure_initialized"):
+            with patch("ray.job_submission.JobSubmissionClient") as mock_client:
+                mock_info = Mock(
+                    status="RUNNING",
+                    entrypoint="e",
+                    start_time=0,
+                    end_time=0,
+                    metadata={},
+                    runtime_env={},
+                    message="",
+                )
+                mock_client.return_value.get_job_info.return_value = mock_info
+
+                result = await manager.job_inspect("jid")
+
+                mock_client.assert_called_once_with("http://127.0.0.1:8265")
+                assert result["status"] == "success"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
