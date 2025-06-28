@@ -351,7 +351,10 @@ class RayManager:
                 env = os.environ.copy()
                 env["RAY_DISABLE_USAGE_STATS"] = "1"
                 env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
-                print(f"Starting head node with command: {' '.join(head_cmd)}")
+                logger.info(
+                    "Starting head node with command: %s",
+                    " ".join(head_cmd),
+                )
                 head_process = subprocess.Popen(
                     head_cmd,
                     stdout=subprocess.PIPE,
