@@ -147,6 +147,57 @@ class TestRayManager:
                 assert manager2._gcs_address == "127.0.0.1:10003"
 
     @pytest.mark.asyncio
+    async def test_init_cluster_head_process_cleanup_on_start_failure(self, manager):
+        """Head node process should be terminated if startup fails."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+                with (
+                    patch("subprocess.Popen") as mock_popen,
+                    patch("asyncio.sleep", new=AsyncMock()),
+                ):
+                    mock_process = Mock()
+                    mock_process.communicate.return_value = ("error", "")
+                    mock_process.poll.return_value = 1
+                    mock_process.terminate = Mock()
+                    mock_process.kill = Mock()
+                    mock_popen.return_value = mock_process
+
+                    result = await manager.init_cluster()
+
+                    assert result["status"] == "error"
+                    mock_process.terminate.assert_called_once()
+                    assert manager._head_node_process is None
+
+    @pytest.mark.asyncio
+    async def test_init_cluster_head_process_cleanup_on_gcs_parse_failure(
+        self, manager
+    ):
+        """Head node process should be cleaned up when GCS address parsing fails."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+                with (
+                    patch("subprocess.Popen") as mock_popen,
+                    patch("asyncio.sleep", new=AsyncMock()),
+                ):
+                    mock_process = Mock()
+                    mock_process.communicate.return_value = (
+                        "Ray runtime started\nno gcs info",
+                        "",
+                    )
+                    mock_process.poll.return_value = 0
+                    mock_process.terminate = Mock()
+                    mock_process.kill = Mock()
+                    mock_popen.return_value = mock_process
+
+                    result = await manager.init_cluster()
+
+                    assert result["status"] == "error"
+                    mock_process.terminate.assert_called_once()
+                    assert manager._head_node_process is None
+
+    @pytest.mark.asyncio
     async def test_stop_cluster(self):
         """Test stopping cluster."""
         ray_manager = RayManager()

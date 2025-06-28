@@ -171,6 +171,20 @@ class RayManager:
 
         return {k: v for k, v in cleaned.items() if k in valid_params}
 
+    async def _cleanup_head_node_process(self) -> None:
+        """Terminate and reset the head node process if it exists."""
+        if self._head_node_process is not None:
+            try:
+                logger.info("Cleaning up head node process")
+                self._head_node_process.terminate()
+                await asyncio.sleep(1)
+                if self._head_node_process.poll() is None:
+                    self._head_node_process.kill()
+            except Exception as cleanup_error:  # pragma: no cover - best effort
+                logger.error(f"Failed to cleanup head node process: {cleanup_error}")
+            finally:
+                self._head_node_process = None
+
     async def init_cluster(
         self,
         address: Optional[str] = None,
@@ -371,6 +385,7 @@ class RayManager:
                 )
                 exit_code = head_process.poll()
                 if exit_code != 0 or "Ray runtime started" not in stdout:
+                    await self._cleanup_head_node_process()
                     return {
                         "status": "error",
                         "message": f"Failed to start head node (exit code: {exit_code}). stdout: {stdout}, stderr: {stderr}",
@@ -378,6 +393,7 @@ class RayManager:
                 dashboard_url = parse_dashboard_url(stdout)
                 gcs_address = parse_gcs_address(stdout)
                 if not gcs_address:
+                    await self._cleanup_head_node_process()
                     return {
                         "status": "error",
                         "message": f"Could not parse GCS address from head node output. stdout: {stdout}, stderr: {stderr}",
@@ -404,21 +420,7 @@ class RayManager:
                     logger.error(f"Head node stderr: {stderr}")
 
                     # Clean up the head node process if ray.init() failed
-                    if self._head_node_process is not None:
-                        try:
-                            logger.info(
-                                "Cleaning up head node process after ray.init() failure"
-                            )
-                            self._head_node_process.terminate()
-                            # Wait a bit for graceful shutdown
-                            await asyncio.sleep(1)
-                            if self._head_node_process.poll() is None:
-                                self._head_node_process.kill()
-                            self._head_node_process = None
-                        except Exception as cleanup_error:
-                            logger.error(
-                                f"Failed to cleanup head node process: {cleanup_error}"
-                            )
+                    await self._cleanup_head_node_process()
 
                     return {
                         "status": "error",
@@ -479,21 +481,7 @@ class RayManager:
             logger.error(f"Failed to initialize Ray cluster: {e}")
 
             # Clean up the head node process if it was started but initialization failed
-            if self._head_node_process is not None:
-                try:
-                    logger.info(
-                        "Cleaning up head node process after initialization failure"
-                    )
-                    self._head_node_process.terminate()
-                    # Wait a bit for graceful shutdown
-                    await asyncio.sleep(1)
-                    if self._head_node_process.poll() is None:
-                        self._head_node_process.kill()
-                    self._head_node_process = None
-                except Exception as cleanup_error:
-                    logger.error(
-                        f"Failed to cleanup head node process: {cleanup_error}"
-                    )
+            await self._cleanup_head_node_process()
 
             return {
                 "status": "error",
