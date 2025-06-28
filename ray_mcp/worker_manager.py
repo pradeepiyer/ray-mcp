@@ -325,6 +325,8 @@ class WorkerManager:
             - Process tracking issues: Returns "error" status for missing processes
         """
         results = []
+        remaining_processes = []
+        remaining_configs = []
 
         for i, process in enumerate(self.worker_processes):
             try:
@@ -355,6 +357,10 @@ class WorkerManager:
                         "process_id": process.pid,
                     }
                 )
+                # Remove successfully stopped processes from tracking
+                if status not in ["stopped", "force_stopped"]:
+                    remaining_processes.append(process)
+                    remaining_configs.append(self.worker_configs[i])
 
             except Exception as e:
                 logger.error(f"Failed to stop worker {i+1}: {e}")
@@ -365,9 +371,11 @@ class WorkerManager:
                         "message": f"Failed to stop worker: {str(e)}",
                     }
                 )
+                remaining_processes.append(process)
+                remaining_configs.append(self.worker_configs[i])
 
-        # Clear the lists
-        self.worker_processes.clear()
-        self.worker_configs.clear()
+        # Keep only workers that failed to stop
+        self.worker_processes = remaining_processes
+        self.worker_configs = remaining_configs
 
         return results
