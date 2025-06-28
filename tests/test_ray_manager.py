@@ -541,6 +541,34 @@ class TestRayManager:
         assert filtered["address"] == "ray://127.0.0.1:10001"
         assert filtered["custom_param"] == "should_be_passed"
 
+    @pytest.mark.asyncio
+    async def test_job_inspect_with_non_string_logs(self, initialized_manager):
+        """Ensure job_inspect handles non-string log data in debug mode."""
+        job_info = MagicMock()
+        job_info.status = "RUNNING"
+        job_info.entrypoint = "python app.py"
+        job_info.start_time = 0.0
+        job_info.end_time = None
+        job_info.metadata = {}
+        job_info.runtime_env = {}
+        job_info.message = ""
+
+        initialized_manager._job_client.get_job_info.return_value = job_info
+        initialized_manager._job_client.get_job_logs.return_value = [
+            "log line 1",
+            "error line",
+        ]
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await initialized_manager.job_inspect("job_123", mode="debug")
+
+        assert result["status"] == "success"
+        assert result["inspection_mode"] == "debug"
+        assert "debug_info" in result
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
