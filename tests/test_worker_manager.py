@@ -270,6 +270,6 @@ class TestWorkerManager:
         assert result[0]["node_name"] == "worker-1"
         assert "Failed to stop worker" in result[0]["message"]
 
-        # Verify lists are still cleared even on error
-        assert len(worker_manager.worker_processes) == 0
-        assert len(worker_manager.worker_configs) == 0
+        # Verify failing worker is still tracked for retry
+        assert worker_manager.worker_processes == [mock_process]
+        assert worker_manager.worker_configs == [{"node_name": "worker-1"}]
