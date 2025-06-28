@@ -1266,22 +1266,6 @@ class RayManager:
             "suggestions": suggestions,
         }
 
-    # Legacy method for backward compatibility
-    async def get_logs(
-        self,
-        job_id: Optional[str] = None,
-        num_lines: int = 100,
-    ) -> Dict[str, Any]:
-        """Get logs from Ray cluster (legacy method - use retrieve_logs instead)."""
-        if not job_id:
-            return {
-                "status": "error",
-                "message": "job_id parameter is required for log retrieval",
-                "suggestion": "Use retrieve_logs tool for more comprehensive logging capabilities",
-            }
-
-        return await self.retrieve_logs(job_id, "job", num_lines, False)
-
     # ===== ENHANCED MONITORING =====
 
     # Note: monitor_job_progress functionality is now part of job_inspect method

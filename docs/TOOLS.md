@@ -238,27 +238,6 @@ Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive err
 }
 ```
 
-### get_logs
-
-Get logs from a specific job (legacy - use retrieve_logs for more features).
-
-**Description**: Legacy tool for retrieving job logs. Use `retrieve_logs` for more comprehensive functionality.
-
-**Parameters**:
-- `job_id` (string, required): Job ID to get logs for
-- `num_lines` (integer, optional, default: 100): Number of log lines to retrieve
-
-**Example**:
-```json
-{
-  "tool": "get_logs",
-  "arguments": {
-    "job_id": "raysubmit_1234567890",
-    "num_lines": 50
-  }
-}
-```
-
 ## Tool Response Format
 
 All tools return responses in a consistent JSON format:

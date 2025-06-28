@@ -247,28 +247,6 @@ class ToolRegistry:
             handler=self._retrieve_logs_handler,
         )
 
-        # Legacy get_logs tool for backward compatibility
-        self._register_tool(
-            name="get_logs",
-            description="Get logs from a specific job (legacy - use retrieve_logs for more features)",
-            schema={
-                "type": "object",
-                "properties": {
-                    "job_id": {
-                        "type": "string",
-                        "description": "Job ID to get logs for (required)",
-                    },
-                    "num_lines": {
-                        "type": "integer",
-                        "default": 100,
-                        "description": "Number of log lines to retrieve",
-                    },
-                },
-                "required": ["job_id"],
-            },
-            handler=self._get_logs_handler,
-        )
-
     def _register_tool(
         self, name: str, description: str, schema: Dict[str, Any], handler: Callable
     ) -> None:
@@ -350,14 +328,6 @@ class ToolRegistry:
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for retrieve_logs tool."""
         return await self.ray_manager.retrieve_logs(**kwargs)
-
-    async def _get_logs_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for get_logs tool."""
-        sig = inspect.signature(RayManager.get_logs)
-        # Apply default values from the method signature
-        bound_args = sig.bind_partial(**kwargs)
-        bound_args.apply_defaults()
-        return await self.ray_manager.get_logs(**bound_args.arguments)
 
     def _wrap_with_system_prompt(self, tool_name: str, result: Dict[str, Any]) -> str:
         """Wrap tool output with a system prompt for LLM enhancement."""

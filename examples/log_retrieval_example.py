@@ -175,17 +175,8 @@ print("Job finished successfully!")
                 print(f"Node Info: {node_logs['node_info']}")
                 print(f"Suggestions: {node_logs['suggestions']}")
 
-        # 5. Legacy get_logs method (backward compatibility)
-        print("\n5. Legacy get_logs Method:")
-        legacy_logs = await registry.execute_tool(
-            "get_logs", {"job_id": job_id, "num_lines": 5}
-        )
-        print(f"Status: {legacy_logs['status']}")
-        if legacy_logs["status"] == "success":
-            print(f"Logs:\n{legacy_logs['logs']}")
-
-        # 6. Error handling - unsupported log type
-        print("\n6. Error Handling - Unsupported Log Type:")
+        # 5. Error handling - unsupported log type
+        print("\n5. Error Handling - Unsupported Log Type:")
         error_result = await registry.execute_tool(
             "retrieve_logs",
             {"identifier": "test", "log_type": "unsupported", "num_lines": 10},

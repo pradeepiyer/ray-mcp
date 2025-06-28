@@ -176,11 +176,12 @@ This document provides comprehensive troubleshooting information for common issu
   }
 }
 
-// Use legacy get_logs for job logs
+// Use retrieve_logs for job logs
 {
-  "tool": "get_logs",
+  "tool": "retrieve_logs",
   "arguments": {
-    "job_id": "raysubmit_1234567890",
+    "identifier": "raysubmit_1234567890",
+    "log_type": "job",
     "num_lines": 100
   }
 }

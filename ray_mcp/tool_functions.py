@@ -141,14 +141,6 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         )
         return _format_response(result)
 
-    @server.call_tool()
-    async def get_logs(job_id: str, num_lines: int = 100) -> List[TextContent]:
-        """Get logs from a specific job (legacy - use retrieve_logs for more features)."""
-        result = await tool_registry.execute_tool(
-            "get_logs", {"job_id": job_id, "num_lines": num_lines}
-        )
-        return _format_response(result)
-
 
 def _format_response(result: Dict[str, Any]) -> List[TextContent]:
     """Format the tool execution result as TextContent for MCP response."""

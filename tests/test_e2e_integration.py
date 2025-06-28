@@ -373,7 +373,9 @@ sys.exit(1)  # Intentional failure
 
             # Step 4: Test log retrieval functionality
             print("Testing log retrieval functionality...")
-            logs_result = await call_tool("get_logs", {"job_id": fail_job_id})
+            logs_result = await call_tool(
+                "retrieve_logs", {"identifier": fail_job_id, "log_type": "job"}
+            )
             logs_content = get_text_content(logs_result)
             logs_data = json.loads(logs_content)
 
@@ -497,7 +499,6 @@ print("Job completed!")
             "list_actors",
             "kill_actor",
             "retrieve_logs",
-            "get_logs",
         }
         # All required tools must be present
         assert expected_tools.issubset(tool_names)

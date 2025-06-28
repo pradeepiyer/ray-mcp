@@ -57,7 +57,7 @@ async def list_tools() -> List[Tool]:
     - Basic cluster management: init_ray, stop_ray, cluster_info
     - Job management: submit_job, list_jobs, job_inspect, cancel_job
     - Actor management: list_actors, kill_actor
-    - Logs & debugging: get_logs
+    - Logs & debugging: retrieve_logs
 
     Failure modes:
         - No tools available: Returns empty list (should not occur in normal operation)

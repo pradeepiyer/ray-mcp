@@ -197,7 +197,6 @@ The server provides a comprehensive set of tools for Ray management:
 - `job_inspect` - Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
 - `cancel_job` - Cancel a running or queued job
 - `retrieve_logs` - Retrieve logs from jobs, actors, or nodes with comprehensive error analysis
-- `get_logs` - Retrieve job logs and outputs (legacy - use retrieve_logs for more features)
 
 ### Actor Operations
 - `list_actors` - List all actors in the cluster

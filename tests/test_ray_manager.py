@@ -407,34 +407,6 @@ class TestRayManager:
                 assert result["status"] == "error"
                 assert "Unsupported log type" in result["message"]
 
-    @pytest.mark.asyncio
-    async def test_get_logs_job_success(self, initialized_manager):
-        """Test successful job logs retrieval with legacy get_logs method."""
-        mock_logs = "Job started\nProcessing data\nJob completed"
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-
-                initialized_manager._job_client.get_job_logs.return_value = mock_logs
-
-                result = await initialized_manager.get_logs("job_123")
-
-                assert result["status"] == "success"
-                assert result["logs"] == mock_logs
-                initialized_manager._job_client.get_job_logs.assert_called_once_with(
-                    "job_123"
-                )
-
-    @pytest.mark.asyncio
-    async def test_get_logs_no_job_id(self, initialized_manager):
-        """Test get_logs without job_id parameter."""
-        result = await initialized_manager.get_logs()
-
-        assert result["status"] == "error"
-        assert "job_id parameter is required" in result["message"]
-        assert "Use retrieve_logs tool" in result["suggestion"]
-
     def test_generate_health_recommendations(self, manager):
         """Test health recommendation generation."""
         # Test with all checks passing
