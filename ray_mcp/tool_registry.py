@@ -150,7 +150,7 @@ class ToolRegistry:
         )
 
         self._register_tool(
-            name="job_inspect",
+            name="inspect_job",
             description="Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)",
             schema={
                 "type": "object",
@@ -165,7 +165,7 @@ class ToolRegistry:
                 },
                 "required": ["job_id"],
             },
-            handler=self._job_inspect_handler,
+            handler=self._inspect_job_handler,
         )
 
         self._register_tool(
@@ -303,9 +303,9 @@ class ToolRegistry:
         """Handler for list_jobs tool."""
         return await self.ray_manager.list_jobs()
 
-    async def _job_inspect_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for job_inspect tool."""
-        return await self.ray_manager.job_inspect(
+    async def _inspect_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for inspect_job tool."""
+        return await self.ray_manager.inspect_job(
             kwargs["job_id"], kwargs.get("mode", "status")
         )
 

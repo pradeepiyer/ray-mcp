@@ -302,7 +302,7 @@ Log retrieval and analysis examples.
 
 // 3. Monitor training progress
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "logs"
@@ -348,7 +348,7 @@ Log retrieval and analysis examples.
 
 // 3. Monitor pipeline progress
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"
@@ -411,7 +411,7 @@ Log retrieval and analysis examples.
 
 ```json
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"
@@ -502,7 +502,7 @@ Log retrieval and analysis examples.
 
 // Get detailed job information
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"

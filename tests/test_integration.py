@@ -72,7 +72,7 @@ class TestMCPIntegration:
             "cluster_info",
             "submit_job",
             "list_jobs",
-            "job_inspect",
+            "inspect_job",
             "cancel_job",
             "list_actors",
             "kill_actor",
@@ -441,12 +441,12 @@ class TestMCPIntegration:
                     assert called_params["job_id"] == "custom_job_id"
 
     @pytest.mark.asyncio
-    async def test_job_inspect_tool(self):
-        """Test job_inspect tool with different modes."""
+    async def test_inspect_job_tool(self):
+        """Test inspect_job tool with different modes."""
         registry = ToolRegistry(RayManager())
 
         # Mock RayManager method
-        job_inspect_mock = AsyncMock(
+        inspect_job_mock = AsyncMock(
             return_value={
                 "status": "success",
                 "job_id": "job_123",
@@ -455,38 +455,38 @@ class TestMCPIntegration:
                 "inspection_mode": "status",
             }
         )
-        job_inspect_mock.__signature__ = inspect.signature(RayManager.job_inspect)
+        inspect_job_mock.__signature__ = inspect.signature(RayManager.inspect_job)
 
-        with patch.object(RayManager, "job_inspect", job_inspect_mock):
+        with patch.object(RayManager, "inspect_job", inspect_job_mock):
             # Test status mode (default)
-            result = await registry.execute_tool("job_inspect", {"job_id": "job_123"})
+            result = await registry.execute_tool("inspect_job", {"job_id": "job_123"})
             assert isinstance(result, dict)
             assert result["job_status"] == "RUNNING"
             assert result["inspection_mode"] == "status"
-            job_inspect_mock.assert_called_with("job_123", "status")
+            inspect_job_mock.assert_called_with("job_123", "status")
 
             # Test logs mode
-            job_inspect_mock.return_value["inspection_mode"] = "logs"
-            job_inspect_mock.return_value["logs"] = "Job log line 1\nJob log line 2"
+            inspect_job_mock.return_value["inspection_mode"] = "logs"
+            inspect_job_mock.return_value["logs"] = "Job log line 1\nJob log line 2"
             result = await registry.execute_tool(
-                "job_inspect", {"job_id": "job_123", "mode": "logs"}
+                "inspect_job", {"job_id": "job_123", "mode": "logs"}
             )
             assert "logs" in result
             assert result["inspection_mode"] == "logs"
-            job_inspect_mock.assert_called_with("job_123", "logs")
+            inspect_job_mock.assert_called_with("job_123", "logs")
 
             # Test debug mode
-            job_inspect_mock.return_value["inspection_mode"] = "debug"
-            job_inspect_mock.return_value["debug_info"] = {
+            inspect_job_mock.return_value["inspection_mode"] = "debug"
+            inspect_job_mock.return_value["debug_info"] = {
                 "error_logs": [],
                 "debugging_suggestions": [],
             }
             result = await registry.execute_tool(
-                "job_inspect", {"job_id": "job_123", "mode": "debug"}
+                "inspect_job", {"job_id": "job_123", "mode": "debug"}
             )
             assert "debug_info" in result
             assert result["inspection_mode"] == "debug"
-            job_inspect_mock.assert_called_with("job_123", "debug")
+            inspect_job_mock.assert_called_with("job_123", "debug")
 
     @pytest.mark.asyncio
     async def test_init_ray_basic_functionality(self):

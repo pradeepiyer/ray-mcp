@@ -887,7 +887,7 @@ class RayManager:
             logger.error(f"Failed to list jobs: {e}")
             return {"status": "error", "message": f"Failed to list jobs: {str(e)}"}
 
-    # Note: get_job_status functionality is now part of job_inspect method
+    # Note: get_job_status functionality is now part of inspect_job method
 
     async def cancel_job(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job."""
@@ -1291,7 +1291,7 @@ class RayManager:
 
     # ===== ENHANCED MONITORING =====
 
-    # Note: monitor_job_progress functionality is now part of job_inspect method
+    # Note: monitor_job_progress functionality is now part of inspect_job method
 
     def _generate_health_recommendations(
         self, health_checks: Dict[str, bool]
@@ -1325,7 +1325,7 @@ class RayManager:
 
     # ===== LOGS & DEBUGGING =====
 
-    # Note: debug_job functionality is now part of job_inspect method
+    # Note: debug_job functionality is now part of inspect_job method
 
     def _generate_debug_suggestions(self, job_info, job_logs: str) -> List[str]:
         """Generate debugging suggestions based on job info and logs."""
@@ -1360,7 +1360,7 @@ class RayManager:
 
         return suggestions
 
-    async def job_inspect(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
+    async def inspect_job(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
         """
         Inspect a job with different modes: 'status', 'logs', or 'debug'.
 

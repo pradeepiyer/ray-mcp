@@ -91,10 +91,10 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         return _format_response(result)
 
     @server.call_tool()
-    async def job_inspect(job_id: str, mode: str = "status") -> List[TextContent]:
+    async def inspect_job(job_id: str, mode: str = "status") -> List[TextContent]:
         """Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)."""
         result = await tool_registry.execute_tool(
-            "job_inspect", {"job_id": job_id, "mode": mode}
+            "inspect_job", {"job_id": job_id, "mode": mode}
         )
         return _format_response(result)
 

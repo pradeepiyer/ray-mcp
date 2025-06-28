@@ -194,7 +194,7 @@ The server provides a comprehensive set of tools for Ray management:
 ### Job Operations
 - `submit_job` - Submit a new job to the cluster
 - `list_jobs` - List all jobs (running, completed, failed)
-- `job_inspect` - Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
+- `inspect_job` - Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
 - `cancel_job` - Cancel a running or queued job
 - `retrieve_logs` - Retrieve logs from jobs, actors, or nodes with comprehensive error analysis
 

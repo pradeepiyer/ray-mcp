@@ -133,7 +133,7 @@ class TestE2EIntegration:
         print("Testing job status...")
         max_wait = 30
         for i in range(max_wait):
-            status_result = await call_tool("job_inspect", {"job_id": job_id})
+            status_result = await call_tool("inspect_job", {"job_id": job_id})
             status_content = get_text_content(status_result)
             status_data = json.loads(status_content)
             job_status = status_data.get("job_status", "UNKNOWN")
@@ -257,7 +257,7 @@ if __name__ == "__main__":
             print("Polling actor job status...")
             max_wait = 30
             for i in range(max_wait):
-                status_result = await call_tool("job_inspect", {"job_id": actor_job_id})
+                status_result = await call_tool("inspect_job", {"job_id": actor_job_id})
                 status_content = get_text_content(status_result)
                 status_data = json.loads(status_content)
                 job_status = status_data.get("job_status", "UNKNOWN")
@@ -365,7 +365,7 @@ sys.exit(1)  # Intentional failure
 
             # Step 3: Test job status
             print("Testing job status...")
-            status_result = await call_tool("job_inspect", {"job_id": fail_job_id})
+            status_result = await call_tool("inspect_job", {"job_id": fail_job_id})
             status_content = get_text_content(status_result)
             status_data = json.loads(status_content)
             assert status_data["status"] == "success"
@@ -385,7 +385,7 @@ sys.exit(1)  # Intentional failure
             # Step 5: Debug the failed job
             print("Debugging the failed job...")
             debug_result = await call_tool(
-                "job_inspect", {"job_id": fail_job_id, "mode": "debug"}
+                "inspect_job", {"job_id": fail_job_id, "mode": "debug"}
             )
             debug_content = get_text_content(debug_result)
             debug_data = json.loads(debug_content)
@@ -425,7 +425,7 @@ print("Job completed!")
                 max_wait = 30
                 for i in range(max_wait):
                     status_result = await call_tool(
-                        "job_inspect", {"job_id": success_job_id}
+                        "inspect_job", {"job_id": success_job_id}
                     )
                     status_content = get_text_content(status_result)
                     status_data = json.loads(status_content)
@@ -494,7 +494,7 @@ print("Job completed!")
             "cluster_info",
             "submit_job",
             "list_jobs",
-            "job_inspect",
+            "inspect_job",
             "cancel_job",
             "list_actors",
             "kill_actor",

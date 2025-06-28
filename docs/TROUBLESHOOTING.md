@@ -122,7 +122,7 @@ This document provides comprehensive troubleshooting information for common issu
 
 // Inspect specific job
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"
@@ -258,7 +258,7 @@ This document provides comprehensive troubleshooting information for common issu
 
 // Detailed job inspection
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"

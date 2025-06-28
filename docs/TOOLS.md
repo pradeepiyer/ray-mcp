@@ -127,7 +127,7 @@ List all jobs in the Ray cluster.
 }
 ```
 
-### job_inspect
+### inspect_job
 
 Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info).
 
@@ -140,7 +140,7 @@ Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), o
 **Example**:
 ```json
 {
-  "tool": "job_inspect",
+  "tool": "inspect_job",
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"
@@ -277,7 +277,7 @@ This enhanced output leverages the LLM's capabilities to provide actionable insi
 
 1. **Always check cluster status** before submitting jobs using `cluster_info`
 2. **Use appropriate log levels** when retrieving logs to avoid overwhelming output
-3. **Monitor job status** regularly using `list_jobs` and `job_inspect`
+3. **Monitor job status** regularly using `list_jobs` and `inspect_job`
 4. **Clean up resources** by stopping the cluster when done using `stop_ray`
 5. **Use enhanced output mode** for better LLM integration and user experience
 

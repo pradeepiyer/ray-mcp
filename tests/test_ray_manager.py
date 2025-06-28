@@ -625,8 +625,8 @@ class TestRayManager:
         assert filtered["custom_param"] == "should_be_passed"
 
     @pytest.mark.asyncio
-    async def test_job_inspect_with_non_string_logs(self, initialized_manager):
-        """Ensure job_inspect handles non-string log data in debug mode."""
+    async def test_inspect_job_with_non_string_logs(self, initialized_manager):
+        """Ensure inspect_job handles non-string log data in debug mode."""
         job_info = MagicMock()
         job_info.status = "RUNNING"
         job_info.entrypoint = "python app.py"
@@ -646,7 +646,7 @@ class TestRayManager:
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
 
-                result = await initialized_manager.job_inspect("job_123", mode="debug")
+                result = await initialized_manager.inspect_job("job_123", mode="debug")
 
         assert result["status"] == "success"
         assert result["inspection_mode"] == "debug"
