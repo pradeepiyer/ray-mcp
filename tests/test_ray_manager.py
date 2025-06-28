@@ -299,6 +299,29 @@ class TestRayManager:
                 assert result["actor_id"] == "actor123"
 
     @pytest.mark.asyncio
+    async def test_kill_actor_by_id_direct_lookup(self, initialized_manager):
+        """Ensure get_actor is called without namespace for hex IDs."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.kill.return_value = None
+
+                actor_id = "a" * 32
+                await initialized_manager.kill_actor(actor_id, no_restart=True)
+
+                mock_ray.get_actor.assert_called_once_with(actor_id)
+
+    @pytest.mark.asyncio
+    async def test_kill_actor_by_name_with_namespace(self, initialized_manager):
+        """Ensure get_actor is called with wildcard namespace for names."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.kill.return_value = None
+
+                await initialized_manager.kill_actor("my_actor", no_restart=True)
+
+                mock_ray.get_actor.assert_called_once_with("my_actor", namespace="*")
+
+    @pytest.mark.asyncio
     async def test_retrieve_logs_job_success(self, initialized_manager):
         """Test successful job logs retrieval with retrieve_logs."""
         mock_logs = "Job started\nProcessing data\nJob completed"
@@ -364,6 +387,35 @@ class TestRayManager:
                 assert result["identifier"] == "my_actor"
                 assert "Actor logs are not directly accessible" in result["message"]
                 assert "suggestions" in result
+
+    @pytest.mark.asyncio
+    async def test_retrieve_logs_actor_by_id(self, initialized_manager):
+        """Actor log retrieval should use ID lookup without namespace."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_actor = MagicMock()
+                mock_actor._actor_id.hex.return_value = "abc123"
+                mock_ray.get_actor.return_value = mock_actor
+
+                actor_id = "b" * 32
+                await initialized_manager.retrieve_logs(actor_id, "actor", 100)
+
+                mock_ray.get_actor.assert_called_once_with(actor_id)
+
+    @pytest.mark.asyncio
+    async def test_retrieve_logs_actor_by_name(self, initialized_manager):
+        """Actor log retrieval should search across namespaces for names."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_actor = MagicMock()
+                mock_actor._actor_id.hex.return_value = "abc123"
+                mock_ray.get_actor.return_value = mock_actor
+
+                await initialized_manager.retrieve_logs("actor_name", "actor", 100)
+
+                mock_ray.get_actor.assert_called_once_with("actor_name", namespace="*")
 
     @pytest.mark.asyncio
     async def test_retrieve_logs_node_limited(self, initialized_manager):

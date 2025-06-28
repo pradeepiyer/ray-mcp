@@ -987,12 +987,14 @@ class RayManager:
                 if not RAY_AVAILABLE or ray is None:
                     return {"status": "error", "message": "Ray is not available"}
 
-                # If it's a hex string, assume it's an actor ID
-                if len(actor_id) == 32:  # Typical actor ID length
+                # If it's a 32-character hex string, treat it as an actor ID
+                if len(actor_id) == 32 and all(
+                    c in "0123456789abcdefABCDEF" for c in actor_id
+                ):
                     actor_handle = ray.get_actor(actor_id)
                 else:
-                    # Assume it's an actor name
-                    actor_handle = ray.get_actor(actor_id)
+                    # Otherwise, treat as an actor name across namespaces
+                    actor_handle = ray.get_actor(actor_id, namespace="*")
 
                 ray.kill(actor_handle, no_restart=no_restart)
 
@@ -1125,11 +1127,13 @@ class RayManager:
 
             # Try to get actor information
             try:
-                if len(actor_identifier) == 32:  # Assume it's an actor ID
+                if len(actor_identifier) == 32 and all(
+                    c in "0123456789abcdefABCDEF" for c in actor_identifier
+                ):
                     actor_handle = ray.get_actor(actor_identifier)
                 else:
-                    # Assume it's an actor name
-                    actor_handle = ray.get_actor(actor_identifier)
+                    # Treat as an actor name, search across namespaces
+                    actor_handle = ray.get_actor(actor_identifier, namespace="*")
 
                 # Get actor info
                 actor_info = {
