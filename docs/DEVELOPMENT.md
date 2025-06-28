@@ -1,407 +1,361 @@
-# Ray MCP Server Development Guide
+# Development Guide
 
-This document provides comprehensive information for developers working on the Ray MCP Server.
+This guide covers the development workflow, testing strategies, and best practices for the Ray MCP Server.
 
 ## Development Setup
 
 ### Prerequisites
 
-- Python 3.10 or higher
-- UV package manager
-- Git
+- Python 3.10+
+- uv package manager
+- Ray (installed automatically via dependencies)
 
 ### Initial Setup
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd ray-mcp
+cd mcp
 
-# Create virtual environment and install dependencies
-uv sync
+# Install dependencies
+uv sync --all-extras --dev
 
-# Install the package in development mode
-uv pip install -e .
-
-# Activate virtual environment
-source .venv/bin/activate
-```
-
-### Development Dependencies
-
-The project uses UV for dependency management with the following development dependencies:
-
-```toml
-[tool.uv]
-dev-dependencies = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.10.0",
-    "pytest-cov>=4.0.0",
-    "black>=24.0.0",
-    "isort>=5.12.0",
-    "pyright>=1.1.0",
-]
+# Verify installation
+uv run pytest tests/ -k "not e2e" --tb=short
 ```
 
 ## Project Structure
 
 ```
-ray-mcp/
-├── ray_mcp/                 # Main package
+mcp/
+├── ray_mcp/                    # Core server implementation
 │   ├── __init__.py
-│   ├── main.py              # MCP server entry point
-│   ├── tool_registry.py     # Centralized tool registry
-│   ├── ray_manager.py       # Ray cluster management
-│   └── worker_manager.py    # Worker node management
-├── examples/                # Example applications
-├── tests/                   # Test suite
-├── docs/                    # Documentation
-├── scripts/                 # Utility scripts
-├── pyproject.toml          # Project configuration
-└── Makefile                # Development commands
-```
-
-## Architecture Overview
-
-### MCP Server Architecture
-
-The Ray MCP Server uses a **dispatcher pattern** for reliable tool routing:
-
-1. **Centralized Tool Registry** (`tool_registry.py`): All tool definitions, schemas, and handlers
-2. **Single Dispatcher** (`main.py`): Routes all tool calls through `dispatch_tool_call()`
-3. **Ray Manager** (`ray_mcp/ray_manager.py`): Core Ray cluster management logic
-4. **Worker Manager** (`ray_mcp/worker_manager.py`): Multi-node cluster worker management
-
-### Key Components
-
-#### Tool Registry (`ray_mcp/tool_registry.py`)
-
-- Centralized tool registration and metadata
-- Parameter validation and filtering
-- Enhanced output mode support
-- Error handling and response formatting
-
-#### Ray Manager (`ray_mcp/ray_manager.py`)
-
-- Ray cluster initialization and management
-- Job submission and monitoring
-- Actor management
-- Log retrieval and analysis
-- Multi-node cluster support
-
-#### Worker Manager (`ray_mcp/worker_manager.py`)
-
-- Worker node process management
-- Worker status monitoring
-- Resource allocation tracking
-- Worker lifecycle management
-
-## Development Commands
-
-### Testing
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run fast tests (excludes e2e)
-make test-fast
-
-# Run e2e tests with cleanup
-make test-e2e
-
-# Run specific test categories
-uv run pytest tests/test_ray_manager.py
-uv run pytest tests/test_multi_node_cluster.py
-uv run pytest tests/test_e2e_integration.py
-
-# Run tests with coverage
-uv run pytest --cov=ray_mcp tests/
-```
-
-### Code Quality
-
-```bash
-# Run all linting checks
-make lint
-
-# Format code
-make format
-
-# Type checking
-uv run pyright ray_mcp/
-
-# Tool function specific linting
-make lint-tool-functions
-```
-
-### Package Management
-
-```bash
-# Sync dependencies
-uv sync
-
-# Update lock file
-uv lock
-
-# Check for updates
-uv tree
-uv pip check
+│   ├── main.py                # MCP server entry point
+│   ├── ray_manager.py         # Ray cluster management
+│   ├── worker_manager.py      # Worker node management
+│   ├── tool_registry.py       # MCP tool registry
+│   └── tool_functions.py      # Individual tool functions
+├── tests/                     # Test suite
+│   ├── conftest.py           # Pytest configuration
+│   ├── test_e2e_integration.py  # Optimized e2e tests
+│   ├── test_integration.py      # Integration tests
+│   ├── test_main.py             # Main module tests
+│   ├── test_ray_manager.py      # Ray manager unit tests
+│   ├── test_worker_manager.py   # Worker manager tests
+│   └── test_multi_node_cluster.py # Multi-node cluster tests
+├── examples/                  # Example scripts
+├── docs/                      # Documentation
+├── scripts/                   # Utility scripts
+├── pyproject.toml            # Project configuration
+└── pytest.ini               # Pytest configuration
 ```
 
 ## Testing Strategy
 
 ### Test Categories
 
-1. **Unit Tests**: Fast, isolated tests for individual components
-2. **Integration Tests**: Medium-speed tests with Ray interaction
-3. **End-to-End Tests**: Comprehensive tests with full Ray workflows
-4. **Multi-Node Tests**: Tests for multi-node cluster functionality
+The project uses a comprehensive testing strategy with three main categories:
 
-### Test Files
+#### 1. Unit Tests
+- **Purpose**: Test individual components in isolation
+- **Execution Time**: Fast execution for quick feedback
+- **Coverage**: Core functionality, error handling, edge cases
+- **Location**: `tests/test_*.py` (excluding e2e)
 
-- `tests/test_ray_manager.py`: Core Ray management functionality
-- `tests/test_multi_node_cluster.py`: Multi-node cluster features
-- `tests/test_e2e_integration.py`: End-to-end workflow tests
-- `tests/test_main.py`: MCP server functionality
-- `tests/test_worker_manager.py`: Worker node management
-- `tests/test_integration.py`: Integration test scenarios
+#### 2. Integration Tests
+- **Purpose**: Test component interactions and workflows
+- **Execution Time**: Fast execution (included in unit test suite)
+- **Coverage**: Tool registry, MCP integration, parameter validation
 
-### Test Configuration
+#### 3. End-to-End Tests
+- **Purpose**: Test complete workflows in real Ray clusters
+- **Execution Time**: 
+  - CI: Optimized for minimal resource usage
+  - Local: Full cluster testing with comprehensive coverage
+- **Coverage**: Complete cluster lifecycle, job management, debugging
 
-```python
-# pytest.ini
-[tool:pytest]
-testpaths = tests
-python_files = test_*.py
-python_classes = Test*
-python_functions = test_*
-addopts = 
-    --strict-markers
-    --strict-config
-    --tb=short
-markers =
-    unit: Unit tests
-    integration: Integration tests
-    e2e: End-to-end tests
-    smoke: Smoke tests
+### Environment-Specific Optimization
+
+The test suite automatically adapts to different environments:
+
+#### CI Environment
+- **Detection**: `GITHUB_ACTIONS=true` or `CI=true`
+- **Configuration**: Head node only (1 CPU)
+- **Wait Times**: 10 seconds
+- **Resource Usage**: Minimal for CI constraints
+
+#### Local Environment
+- **Configuration**: Full cluster (2 CPU head + 2 worker nodes)
+- **Wait Times**: 30 seconds
+- **Resource Usage**: Comprehensive testing
+
+### Running Tests
+
+```bash
+# Run all tests (including e2e)
+uv run pytest tests/
+
+# Run unit tests only (fast)
+uv run pytest tests/ -k "not e2e"
+
+# Run e2e tests only
+uv run pytest tests/test_e2e_integration.py
+
+# Run specific test file
+uv run pytest tests/test_ray_manager.py
+
+# Run with coverage
+uv run pytest tests/ --cov=ray_mcp --cov-report=html
+
+# Run in CI mode (head node only)
+CI=true uv run pytest tests/test_e2e_integration.py
+
+# Run with verbose output
+uv run pytest tests/ -v --tb=short
 ```
 
-## Code Style and Standards
+### Test Performance Metrics
 
-### Code Formatting
+| Test Category | Execution Time | Coverage |
+|---------------|----------------|----------|
+| Unit Tests | Fast | High |
+| E2E Tests (CI) | Optimized | Good |
+| E2E Tests (Local) | Moderate | Good |
+| **Total** | **Fast to Moderate** | **Comprehensive** |
 
-The project uses Black for code formatting and isort for import sorting:
+## Development Workflow
+
+### 1. Feature Development
+
+```bash
+# Create feature branch
+git checkout -b feature/new-feature
+
+# Make changes
+# ... edit files ...
+
+# Run tests
+uv run pytest tests/ -k "not e2e"  # Fast feedback
+uv run pytest tests/               # Full test suite
+
+# Commit changes
+git add .
+git commit -m "Add new feature"
+```
+
+### 2. Code Quality Checks
 
 ```bash
 # Format code
-uv run black ray_mcp/ examples/ tests/
+uv run black ray_mcp/ tests/
+uv run isort ray_mcp/ tests/
 
-# Sort imports
-uv run isort ray_mcp/ examples/ tests/
-```
+# Type checking
+uv run pyright ray_mcp/
 
-### Type Checking
+# Lint tool functions
+uv run python scripts/lint_tool_functions.py
 
-Type checking is performed with Pyright:
-
-```bash
+# Run all quality checks
+uv run black --check ray_mcp/ tests/
+uv run isort --check-only ray_mcp/ tests/
 uv run pyright ray_mcp/
 ```
 
-### Linting Rules
+### 3. Testing Best Practices
 
-- Use type hints for all function parameters and return values
-- Follow PEP 8 style guidelines
-- Use descriptive variable and function names
-- Add docstrings for all public functions and classes
-- Avoid using `locals()` in tool functions (enforced by custom linting)
+#### Before Committing
+- Run unit tests: `uv run pytest tests/ -k "not e2e"`
+- Ensure all tests pass
+- Check code formatting and linting
 
-## Adding New Tools
+#### Before Pushing
+- Run full test suite: `uv run pytest tests/`
+- Verify e2e tests pass in both CI and local modes
+- Check coverage reports
 
-### 1. Define Tool Schema
+#### For Major Changes
+- Test in CI mode: `CI=true uv run pytest tests/test_e2e_integration.py`
+- Test in local mode: `uv run pytest tests/test_e2e_integration.py`
+- Update documentation if needed
 
-Add the tool definition to `ray_mcp/tool_registry.py`:
+## Test Optimization History
 
-```python
-self._register_tool(
-    name="new_tool",
-    description="Description of the new tool",
-    schema={
-        "type": "object",
-        "properties": {
-            "param1": {
-                "type": "string",
-                "description": "Description of parameter"
-            }
-        },
-        "required": ["param1"]
-    },
-    handler=self._new_tool_handler,
-)
-```
+### Recent Optimizations
 
-### 2. Implement Handler
+The test suite has been optimized for CI environments:
 
-Add the handler method to the `ToolRegistry` class:
+#### E2E Test Optimizations
+- **Removed redundant tests**: Eliminated unnecessary e2e tests
+- **CI resource optimization**: Head node only in CI environments
+- **Reduced wait times**: 10s in CI vs 30s locally
+- **Lightweight test jobs**: Replaced heavy examples with minimal test scripts
 
-```python
-async def _new_tool_handler(self, **kwargs) -> Dict[str, Any]:
-    """Handler for new_tool."""
-    return await self.ray_manager.new_tool_method(**kwargs)
-```
+#### Unit Test Optimizations
+- **Removed duplicate tests**: Eliminated redundant unit tests
+- **Improved test isolation**: Better mocking and cleanup
+- **Faster execution**: Optimized for quick feedback
 
-### 3. Implement Core Logic
+### Performance Improvements
 
-Add the core implementation to `ray_mcp/ray_manager.py`:
-
-```python
-async def new_tool_method(self, param1: str) -> Dict[str, Any]:
-    """Implementation of the new tool."""
-    try:
-        # Implementation logic
-        return {"status": "success", "result": "data"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-```
-
-### 4. Add Tests
-
-Create tests for the new tool:
-
-```python
-async def test_new_tool():
-    """Test the new tool functionality."""
-    manager = RayManager()
-    result = await manager.new_tool_method("test_param")
-    assert result["status"] == "success"
-```
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| E2E Test Count | Multiple | Few | Significant reduction |
+| Unit Test Count | Many | Optimized | Reduced redundancy |
+| CI Execution Time | Slow | Fast | Much faster |
+| Resource Usage (CI) | High | Low | Minimal usage |
 
 ## Debugging
 
-### Local Development
+### Common Issues
 
-```bash
-# Run server in debug mode
-RAY_LOG_LEVEL=DEBUG python -m ray_mcp.main
-
-# Run with enhanced output
-RAY_MCP_ENHANCED_OUTPUT=true python -m ray_mcp.main
-```
-
-### Debug Configuration
-
-```python
-# Enable debug logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Debug Ray initialization
-ray.init(log_to_driver=True)
-```
-
-### Common Debugging Scenarios
-
-1. **Cluster Startup Issues**: Check port availability and resource conflicts
-2. **Job Submission Problems**: Verify runtime environment and entrypoint
-3. **Multi-Node Issues**: Check network connectivity and worker configuration
-4. **Tool Routing Problems**: Verify tool registration in registry
-
-## Performance Optimization
-
-### Cluster Configuration
-
-- Use appropriate object store memory for your workload
-- Configure worker nodes based on resource requirements
-- Monitor resource usage with `inspect_ray`
-
-### Code Optimization
-
-- Use async/await patterns consistently
-- Implement proper error handling and cleanup
-- Optimize log retrieval for large outputs
-- Use efficient data structures for large datasets
-
-## Contributing
-
-### Development Workflow
-
-1. Create a feature branch from main
-2. Implement changes with tests
-3. Run all tests and linting checks
-4. Update documentation as needed
-5. Submit a pull request
-
-### Code Review Checklist
-
-- [ ] All tests pass
-- [ ] Code follows style guidelines
-- [ ] Type hints are complete
-- [ ] Documentation is updated
-- [ ] No new linting errors
-- [ ] Performance impact is considered
-
-### Release Process
-
-1. Update version in `pyproject.toml`
-2. Update changelog
-3. Run full test suite
-4. Create release tag
-5. Build and publish package
-
-## Troubleshooting
-
-### Common Development Issues
-
-1. **Import Errors**: Ensure virtual environment is activated
-2. **Test Failures**: Check Ray cluster state and cleanup
-3. **Linting Errors**: Run formatting tools and fix style issues
-4. **Type Errors**: Add proper type hints and run type checker
-
-### Environment Issues
-
-```bash
-# Reset development environment
-make clean
-uv sync
-uv pip install -e .
-```
-
-### Ray Cluster Issues
-
+#### Ray Process Cleanup
 ```bash
 # Clean up Ray processes
 ./scripts/ray_cleanup.sh
+
+# Or manually
+ray stop
+pkill -f ray
+```
+
+#### Test Failures
+```bash
+# Run specific failing test
+uv run pytest tests/test_ray_manager.py::TestRayManager::test_specific_test -v -s
+
+# Run with debug output
+uv run pytest tests/ -v -s --tb=long
 
 # Check Ray status
 ray status
 ```
 
-## Documentation
+#### Environment Issues
+```bash
+# Verify Ray installation
+python -c "import ray; print(ray.__version__)"
 
-### Documentation Structure
+# Check environment variables
+echo $GITHUB_ACTIONS
+echo $CI
+```
 
-- `README.md`: Main project documentation
-- `docs/TOOLS.md`: Tool reference and usage
-- `docs/EXAMPLES.md`: Example applications and workflows
-- `docs/CONFIGURATION.md`: Configuration options
-- `docs/DEVELOPMENT.md`: Development guide (this file)
-- `docs/TROUBLESHOOTING.md`: Troubleshooting guide
+### Debugging E2E Tests
 
-### Updating Documentation
+```bash
+# Run e2e test with verbose output
+uv run pytest tests/test_e2e_integration.py::TestE2EIntegration::test_complete_ray_workflow -v -s
 
-- Keep documentation in sync with code changes
-- Update examples when adding new features
-- Maintain consistent formatting and style
-- Test documentation examples
+# Run in CI mode for debugging
+CI=true uv run pytest tests/test_e2e_integration.py -v -s
+
+# Check cluster status during test
+ray status
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+The project includes optimized CI workflows:
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test-full:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    - name: Install uv
+      uses: astral-sh/setup-uv@v1
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+    - name: Run full test suite
+      run: uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=xml
+```
+
+### CI Optimizations
+
+- **Automatic environment detection**: Tests run in CI mode automatically
+- **Resource constraints**: Head node only for minimal resource usage
+- **Fast execution**: Optimized for CI time limits
+- **Comprehensive coverage**: All essential functionality tested
+
+## Contributing
+
+### Pull Request Process
+
+1. **Fork and clone** the repository
+2. **Create feature branch**: `git checkout -b feature/your-feature`
+3. **Make changes** following the development workflow
+4. **Run tests**: Ensure all tests pass
+5. **Update documentation**: If needed
+6. **Submit PR**: With clear description of changes
+
+### Code Review Checklist
+
+- [ ] All tests pass (unit + e2e)
+- [ ] Code is formatted and linted
+- [ ] Documentation is updated
+- [ ] No breaking changes (or documented)
+- [ ] Performance impact considered
+- [ ] CI optimizations maintained
+
+### Testing Requirements
+
+- **New features**: Must include unit tests
+- **Bug fixes**: Must include regression tests
+- **E2E changes**: Must test in both CI and local modes
+- **Performance changes**: Must measure impact
+
+## Performance Monitoring
+
+### Test Performance Tracking
+
+Monitor test performance over time:
+
+```bash
+# Track execution times
+time uv run pytest tests/ -k "not e2e"
+time uv run pytest tests/test_e2e_integration.py
+
+# Check coverage trends
+uv run pytest tests/ --cov=ray_mcp --cov-report=term-missing
+```
+
+### Resource Usage Monitoring
+
+- **CI builds**: Monitor execution time and resource usage
+- **Local development**: Track test performance on different machines
+- **Coverage reports**: Ensure coverage doesn't decrease
 
 ## Best Practices
 
-1. **Test-Driven Development**: Write tests before implementing features
-2. **Type Safety**: Use type hints throughout the codebase
-3. **Error Handling**: Implement comprehensive error handling
-4. **Documentation**: Keep documentation up to date
-5. **Code Review**: Review all changes before merging
-6. **Performance**: Consider performance implications of changes
-7. **Backward Compatibility**: Maintain compatibility when possible
+### Code Quality
+
+- **Type hints**: Use throughout the codebase
+- **Docstrings**: Document all public functions
+- **Error handling**: Comprehensive error handling and logging
+- **Testing**: High test coverage with meaningful tests
+
+### Performance
+
+- **Resource optimization**: Minimize resource usage in CI
+- **Fast feedback**: Unit tests should run quickly
+- **Efficient cleanup**: Proper resource cleanup in tests
+- **Environment detection**: Automatic optimization based on environment
+
+### Maintainability
+
+- **Clear structure**: Well-organized project structure
+- **Documentation**: Keep documentation up to date
+- **Consistent patterns**: Follow established patterns
+- **Regular updates**: Keep dependencies updated

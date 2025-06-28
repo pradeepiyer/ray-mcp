@@ -1,38 +1,36 @@
 # Ray MCP Server
 
-A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distributed computing workflows.
+A Model Context Protocol (MCP) server that provides comprehensive Ray cluster management and job orchestration capabilities through a standardized interface.
+
+## Overview
+
+The Ray MCP Server enables AI assistants and other MCP clients to interact with Ray clusters for distributed computing tasks. It provides tools for cluster initialization, job submission, monitoring, debugging, and resource management.
 
 ## Features
 
-- **Multi-Node Cluster Management**: Start and manage Ray clusters with head nodes and worker nodes
-- **Job Management**: Submit, monitor, and cancel distributed jobs
-- **Actor Management**: List and manage Ray actors
-- **Enhanced Logging**: Comprehensive log retrieval with error analysis
-- **LLM-Enhanced Output**: Optional enhanced responses with context and suggestions
+### 🚀 **Cluster Management**
+- Initialize Ray clusters with configurable resources
+- Start multi-node clusters with worker nodes
+- Monitor cluster health and performance
+- Gracefully shutdown clusters
 
-## MCP Server Architecture
+### 📊 **Job Orchestration**
+- Submit distributed jobs to Ray clusters
+- Monitor job status and progress
+- Retrieve job logs and debug information
+- List and manage multiple jobs
 
-The Ray MCP Server uses a **dispatcher pattern** to handle tool routing and ensure reliable MCP protocol compliance:
+### 🔍 **Monitoring & Debugging**
+- Real-time cluster status monitoring
+- Resource utilization analysis
+- Health checks and optimization recommendations
+- Comprehensive logging and error analysis
 
-### Tool Registration and Routing
-- **Centralized Tool Registry**: All tool schemas, metadata, and handlers are defined in `ray_mcp/tool_registry.py`
-- **Single Dispatcher Function**: A single `@server.call_tool()`-decorated function (`dispatch_tool_call`) handles all tool requests
-- **Tool Name Routing**: The dispatcher receives the tool name and arguments, then delegates to the appropriate handler via `tool_registry.execute_tool()`
-
-### Architecture Benefits
-- **Reliable Routing**: Eliminates MCP server routing issues where all tool calls might be directed to a single function
-- **Centralized Logic**: All tool logic is centralized in the `ToolRegistry` class
-- **Type Safety**: Maintains proper parameter validation and type checking
-- **Extensibility**: Easy to add new tools by updating only the registry
-
-### Key Components
-```
-ray_mcp/
-├── main.py              # MCP server with dispatcher pattern
-├── tool_registry.py     # Centralized tool registry and handlers
-├── ray_manager.py       # Core Ray cluster management logic
-└── worker_manager.py    # Worker node management
-```
+### ⚡ **Performance Optimized**
+- CI-optimized test suite with minimal resource usage
+- Automatic environment detection (CI vs local)
+- Efficient resource allocation and cleanup
+- Fast startup and shutdown times
 
 ## Quick Start
 
@@ -41,235 +39,186 @@ ray_mcp/
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd ray-mcp
+cd mcp
 
 # Install dependencies
-uv sync
-
-# Install the package
-uv pip install -e .
-
-# Activate virtual environment
-source .venv/bin/activate
-```
-
-### Starting Ray Clusters
-
-The server supports both single-node and multi-node cluster configurations:
-
-#### Simple Single-Node Cluster
-
-```json
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 4,
-    "num_gpus": 1
-  }
-}
-```
-
-#### Multi-Node Cluster (Default)
-
-The server now defaults to starting multi-node clusters with 2 worker nodes:
-
-```json
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 1
-  }
-}
-```
-
-This creates:
-- Head node: 1 CPU, 0 GPUs, 1GB object store memory
-- Worker node 1: 1 CPU, 0 GPUs, 500MB object store memory  
-- Worker node 2: 1 CPU, 0 GPUs, 500MB object store memory
-
-**Note:** Default workers are configured with 1 CPU each to ensure they can start successfully with the default head node configuration (1 CPU). This prevents resource conflicts and ensures reliable cluster startup.
-
-#### Custom Multi-Node Setup
-
-For advanced configurations, you can specify custom worker nodes:
-
-```json
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 4,
-    "num_gpus": 0,
-    "object_store_memory": 1000000000,
-    "worker_nodes": [
-      {
-        "num_cpus": 2,
-        "num_gpus": 0,
-        "object_store_memory": 500 * 1024 * 1024,
-        "node_name": "cpu-worker-1"
-      },
-      {
-        "num_cpus": 4,
-        "num_gpus": 1,
-        "object_store_memory": 1000000000,
-        "node_name": "gpu-worker-1",
-        "resources": {"custom_resource": 2}
-      }
-    ],
-    "head_node_port": 10001,
-    "dashboard_port": 8265,
-    "head_node_host": "127.0.0.1"
-  }
-}
+uv sync --all-extras --dev
 ```
 
 ### Basic Usage
 
 ```python
-# Check cluster status
+# Initialize a Ray cluster
 {
-  "tool": "inspect_ray"
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "worker_nodes": [
+      {
+        "num_cpus": 2,
+        "node_name": "worker-1"
+      }
+    ]
+  }
 }
 
 # Submit a job
 {
   "tool": "submit_job",
   "arguments": {
-    "entrypoint": "python examples/simple_job.py"
+    "entrypoint": "python my_script.py"
   }
 }
-```
 
-## Enhanced Output Configuration
-
-The Ray MCP Server supports LLM-enhanced tool responses that provide human-readable summaries, context, and suggested next steps. This feature is controlled by the `RAY_MCP_ENHANCED_OUTPUT` environment variable:
-
-### Default Behavior (RAY_MCP_ENHANCED_OUTPUT=false)
-Returns standard JSON responses for backward compatibility:
-```json
+# Monitor cluster status
 {
-  "status": "success",
-  "message": "Ray cluster started successfully",
-  "cluster_overview": {
-    "status": "running",
-    "total_nodes": 3,
-    "alive_nodes": 3
-  },
-  "resources": {
-    "cluster_resources": {
-      "CPU": 4,
-      "memory": 1000000000
-    }
-  }
+  "tool": "inspect_ray",
+  "arguments": {}
 }
 ```
-
-### Enhanced Output (RAY_MCP_ENHANCED_OUTPUT=true)
-Wraps responses with system prompts that instruct the LLM to generate:
-- **Tool Result Summary**: Brief summary of what the tool call accomplished
-- **Context**: Additional context about what the result means
-- **Suggested Next Steps**: Relevant next actions with specific tool names
-- **Available Commands**: Quick reference of commonly used tools
-
-**Configuration Example:**
-```json
-{
-  "mcpServers": {
-    "ray-mcp": {
-      "command": "/path/to/your/venv/bin/ray-mcp",
-      "env": {
-        "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0",
-        "RAY_MCP_ENHANCED_OUTPUT": "true"
-      }
-    }
-  }
-}
-```
-
-This approach leverages the LLM's capabilities to provide actionable insights without requiring external API calls or tool-specific code.
-
-## Available Tools
-
-The server provides a comprehensive set of tools for Ray management:
-
-### Cluster Operations
-- `init_ray` - Initialize Ray cluster - start a new cluster or connect to existing one
-- `stop_ray` - Stop the current Ray cluster
-- `inspect_ray` - Get comprehensive cluster information including status, resources, nodes, and worker status
-
-### Job Operations
-- `submit_job` - Submit a new job to the cluster
-- `list_jobs` - List all jobs (running, completed, failed)
-- `inspect_job` - Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
-- `cancel_job` - Cancel a running or queued job
-- `retrieve_logs` - Retrieve logs from jobs, actors, or nodes with comprehensive error analysis
-
-## Examples
-
-See the `examples/` directory for working examples:
-
-- `simple_job.py` - Basic Ray job example
-- `multi_node_cluster.py` - Multi-node cluster demonstration with worker node management
-- `actor_example.py` - Actor-based computation
-- `data_pipeline.py` - Data processing pipeline
-- `distributed_training.py` - Distributed machine learning
-- `workflow_orchestration.py` - Complex workflow orchestration
-- `connect_existing_cluster.py` - Connect to existing Ray cluster
-- `log_retrieval_example.py` - Log retrieval and analysis examples
 
 ## Configuration
 
-See `docs/config/` for configuration examples and setup instructions.
+### Environment-Specific Optimization
 
-## Development
+The server automatically optimizes resource usage based on the environment:
+
+- **CI Environments**: Head node only (1 CPU) for minimal resource usage
+- **Local Development**: Full cluster with worker nodes for comprehensive testing
+
+### Resource Constraints
+
+| Environment | CPU Allocation | Worker Nodes | Wait Time |
+|-------------|----------------|--------------|-----------|
+| CI          | 1 CPU          | None         | 10s       |
+| Local       | 2 CPUs         | 2 workers    | 30s       |
+
+## Testing
+
+### Test Suite Overview
+
+The project includes a comprehensive test suite optimized for different environments:
+
+- **Unit Tests**: Core functionality tests with fast execution
+- **Integration Tests**: End-to-end workflow testing
+- **E2E Tests**: Optimized integration tests for CI and local environments
 
 ### Running Tests
 
 ```bash
-# Run all tests
-uv run pytest
+# Run all tests (including e2e)
+uv run pytest tests/
 
-# Run specific test categories
-uv run pytest tests/test_ray_manager.py
-uv run pytest tests/test_multi_node_cluster.py
+# Run unit tests only
+uv run pytest tests/ -k "not e2e"
+
+# Run e2e tests only
 uv run pytest tests/test_e2e_integration.py
 
-# Run fast tests (excludes e2e)
-make test-fast
-
-# Run e2e tests with cleanup
-make test-e2e
+# Run with coverage
+uv run pytest tests/ --cov=ray_mcp --cov-report=html
 ```
 
-### Test Categories
+### Test Performance
 
-The test suite includes comprehensive coverage:
+- **Unit Tests**: Fast execution with comprehensive coverage
+- **E2E Tests (CI)**: Optimized for minimal resource usage
+- **E2E Tests (Local)**: Full cluster testing with comprehensive coverage
+- **Overall Coverage**: Combined coverage from unit and e2e tests
 
-- **Unit Tests**: Fast, isolated tests for individual components
-- **Integration Tests**: Medium-speed tests with Ray interaction
-- **End-to-End Tests**: Comprehensive tests with full Ray workflows
-- **Multi-Node Tests**: Tests for multi-node cluster functionality
+## Available Tools
 
-### Code Quality
+### Cluster Operations
+- `init_ray` - Initialize or connect to Ray clusters
+- `stop_ray` - Gracefully shutdown Ray clusters
+- `inspect_ray` - Get comprehensive cluster information
 
-```bash
-# Run linting and formatting checks
-make lint
+### Job Management
+- `submit_job` - Submit jobs to Ray clusters
+- `list_jobs` - List all jobs in the cluster
+- `inspect_job` - Get detailed job information
+- `cancel_job` - Cancel running jobs
 
-# Format code automatically
-make format
+### Logging & Debugging
+- `retrieve_logs` - Retrieve logs from jobs, actors, or nodes
 
-# Run type checking
-uv run pyright ray_mcp/
+## Architecture
 
-# Run code formatting
-uv run black ray_mcp/
-uv run isort ray_mcp/
+### Core Components
 
-# Check for locals() usage in tool functions (static analysis)
-make lint-tool-functions
+- **RayManager**: Manages Ray cluster lifecycle and operations
+- **WorkerManager**: Handles multi-node cluster worker processes
+- **ToolRegistry**: Provides MCP-compliant tool interface
+- **Tool Functions**: Individual tool implementations
+
+### MCP Integration
+
+The server implements the Model Context Protocol (MCP) specification, providing:
+- Standardized tool definitions and schemas
+- JSON-RPC communication protocol
+- Type-safe parameter validation
+- Consistent error handling
+
+## Development
+
+### Project Structure
+
 ```
+mcp/
+├── ray_mcp/                 # Core server implementation
+│   ├── main.py             # MCP server entry point
+│   ├── ray_manager.py      # Ray cluster management
+│   ├── worker_manager.py   # Worker node management
+│   ├── tool_registry.py    # MCP tool registry
+│   └── tool_functions.py   # Individual tool functions
+├── tests/                  # Test suite
+│   ├── test_e2e_integration.py  # Optimized e2e tests
+│   ├── test_integration.py      # Integration tests
+│   ├── test_ray_manager.py      # Unit tests
+│   └── test_worker_manager.py   # Worker management tests
+├── examples/               # Example scripts and configurations
+├── docs/                   # Documentation
+└── scripts/                # Utility scripts
+```
+
+### Development Workflow
+
+1. **Setup**: Install dependencies with `uv sync --all-extras --dev`
+2. **Testing**: Run tests with `uv run pytest tests/`
+3. **Linting**: Check code quality with `uv run black`, `uv run isort`, `uv run pyright`
+4. **Documentation**: Update docs in the `docs/` directory
+
+### CI/CD Integration
+
+The project is optimized for CI environments:
+- Automatic environment detection
+- Resource-constrained testing
+- Fast execution times
+- Comprehensive coverage reporting
+
+## Documentation
+
+- **[Tools Reference](docs/TOOLS.md)** - Complete tool documentation
+- **[Configuration Guide](docs/CONFIGURATION.md)** - Setup and configuration
+- **[Development Guide](docs/DEVELOPMENT.md)** - Development workflow
+- **[Examples](docs/EXAMPLES.md)** - Usage examples and patterns
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run the test suite
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0 - see the LICENSE file for details. 
+[License information]
+
+## Support
+
+For issues and questions:
+- Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+- Review the [Examples](docs/EXAMPLES.md)
+- Open an issue on GitHub 

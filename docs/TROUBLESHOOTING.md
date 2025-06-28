@@ -1,6 +1,6 @@
-# Ray MCP Server Troubleshooting Guide
+# Troubleshooting Guide
 
-This document provides comprehensive troubleshooting information for common issues with the Ray MCP Server.
+This guide provides solutions for common issues encountered when using the Ray MCP Server.
 
 ## Common Issues and Solutions
 
@@ -58,7 +58,69 @@ This document provides comprehensive troubleshooting information for common issu
 }
 ```
 
-### 2. Multi-Node Cluster Issues
+### 2. Test Environment Issues
+
+#### Issue: Tests fail in CI but pass locally
+
+**Symptoms**: E2E tests fail in GitHub Actions but work on your machine.
+
+**Causes**:
+- Resource constraints in CI environment
+- Different environment detection
+- Timing issues with CI resources
+
+**Solutions**:
+
+**Check Environment Detection**:
+```bash
+# Verify CI environment detection
+echo $GITHUB_ACTIONS
+echo $CI
+
+# Run tests in CI mode locally
+CI=true uv run pytest tests/test_e2e_integration.py
+```
+
+**Resource Optimization**:
+- CI tests automatically use head node only (1 CPU)
+- Local tests use full cluster (2 CPU head + 2 workers)
+- Wait times are reduced in CI (10s vs 30s)
+
+**Debug CI Issues**:
+```bash
+# Run with verbose output in CI
+CI=true uv run pytest tests/test_e2e_integration.py -v -s
+
+# Check resource usage
+ray status
+```
+
+#### Issue: E2E tests take too long
+
+**Symptoms**: Tests run for several minutes or timeout.
+
+**Solutions**:
+
+**For CI Environments**:
+```bash
+# Ensure CI mode is enabled
+export CI=true
+export GITHUB_ACTIONS=true
+
+# Run optimized tests
+uv run pytest tests/test_e2e_integration.py
+```
+
+**For Local Development**:
+```bash
+# Run unit tests only for fast feedback
+uv run pytest tests/ -k "not e2e"
+
+# Run e2e tests separately
+uv run pytest tests/test_e2e_integration.py
+```
+
+### 3. Multi-Node Cluster Issues
 
 #### Issue: Worker nodes fail to start
 
@@ -101,68 +163,272 @@ This document provides comprehensive troubleshooting information for common issu
 - Verify firewall settings
 - Ensure head node is accessible from worker machines
 
-### 3. Job Submission Issues
+### 4. Job Submission Issues
 
 #### Issue: Job submission fails
 
-**Symptoms**: `submit_job` returns error or job doesn't start.
+**Symptoms**: Jobs fail to submit or start.
 
 **Causes**:
-- Invalid entrypoint path
-- Missing dependencies
-- Runtime environment issues
+- Invalid entrypoint command
+- Missing runtime environment
+- Resource constraints
 
 **Solutions**:
 ```json
-// Check job status
-{
-  "tool": "list_jobs",
-  "arguments": {}
-}
-
-// Inspect specific job
-{
-  "tool": "inspect_job",
-  "arguments": {
-    "job_id": "raysubmit_1234567890",
-    "mode": "debug"
-  }
-}
-
-// Get job logs
-{
-  "tool": "retrieve_logs",
-  "arguments": {
-    "identifier": "raysubmit_1234567890",
-    "log_type": "job",
-    "include_errors": true
-  }
-}
-```
-
-#### Issue: Runtime environment problems
-
-**Symptoms**: Jobs fail due to missing dependencies.
-
-**Solutions**:
-```json
-// Specify runtime environment
+// Use absolute paths for entrypoint
 {
   "tool": "submit_job",
   "arguments": {
-    "entrypoint": "python examples/distributed_training.py",
+    "entrypoint": "python /full/path/to/script.py"
+  }
+}
+
+// Add runtime environment if needed
+{
+  "tool": "submit_job",
+  "arguments": {
+    "entrypoint": "python script.py",
     "runtime_env": {
-      "pip": ["torch", "numpy", "scikit-learn"]
+      "pip": ["numpy", "pandas"]
     }
   }
 }
 ```
 
-### 4. Log Retrieval Issues
+#### Issue: Jobs hang or timeout
 
-#### Issue: Can't retrieve logs
+**Symptoms**: Jobs start but don't complete or take too long.
 
-**Symptoms**: `retrieve_logs` returns errors or empty results.
+**Solutions**:
+```json
+// Check job status
+{
+  "tool": "inspect_job",
+  "arguments": {
+    "job_id": "your_job_id"
+  }
+}
+
+// Retrieve job logs for debugging
+{
+  "tool": "retrieve_logs",
+  "arguments": {
+    "identifier": "your_job_id",
+    "log_type": "job"
+  }
+}
+```
+
+### 5. Resource Management Issues
+
+#### Issue: High resource usage in CI
+
+**Symptoms**: CI builds fail due to resource constraints.
+
+**Solutions**:
+
+**Automatic Optimization**:
+- Tests automatically detect CI environment
+- Head node only configuration in CI
+- Reduced wait times and resource allocation
+
+**Manual Optimization**:
+```bash
+# Force CI mode
+export CI=true
+
+# Run minimal tests
+uv run pytest tests/ -k "not e2e"
+
+# Run e2e tests with minimal resources
+CI=true uv run pytest tests/test_e2e_integration.py
+```
+
+#### Issue: Memory issues with large jobs
+
+**Symptoms**: Jobs fail due to insufficient memory.
+
+**Solutions**:
+```json
+// Increase object store memory
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "object_store_memory": 2000000000  // 2GB
+  }
+}
+
+// Monitor memory usage
+{
+  "tool": "inspect_ray",
+  "arguments": {}
+}
+```
+
+### 6. Test Suite Issues
+
+#### Issue: Unit tests fail
+
+**Symptoms**: Unit tests fail with import or assertion errors.
+
+**Solutions**:
+```bash
+# Clean up environment
+./scripts/ray_cleanup.sh
+
+# Reinstall dependencies
+uv sync --all-extras --dev
+
+# Run tests with verbose output
+uv run pytest tests/ -k "not e2e" -v -s
+```
+
+#### Issue: E2E tests fail intermittently
+
+**Symptoms**: E2E tests pass sometimes but fail randomly.
+
+**Solutions**:
+```bash
+# Clean up Ray processes
+ray stop
+pkill -f ray
+
+# Run cleanup script
+./scripts/ray_cleanup.sh
+
+# Run tests with retry
+uv run pytest tests/test_e2e_integration.py --maxfail=1 -x
+```
+
+### 7. Development Environment Issues
+
+#### Issue: Import errors
+
+**Symptoms**: Module import errors when running tests or server.
+
+**Solutions**:
+```bash
+# Verify virtual environment
+which python
+echo $VIRTUAL_ENV
+
+# Reinstall package
+uv pip install -e .
+
+# Check dependencies
+uv pip list | grep ray
+```
+
+#### Issue: Code formatting issues
+
+**Symptoms**: Linting or formatting errors.
+
+**Solutions**:
+```bash
+# Format code
+uv run black ray_mcp/ tests/
+
+# Sort imports
+uv run isort ray_mcp/ tests/
+
+# Type checking
+uv run pyright ray_mcp/
+```
+
+### 8. Performance Issues
+
+#### Issue: Slow test execution
+
+**Symptoms**: Tests take longer than expected.
+
+**Solutions**:
+
+**Optimize Test Execution**:
+```bash
+# Run only unit tests for fast feedback
+uv run pytest tests/ -k "not e2e"
+
+# Run specific test categories
+uv run pytest tests/test_ray_manager.py
+
+# Use parallel execution (if supported)
+uv run pytest tests/ -n auto
+```
+
+**Monitor Performance**:
+```bash
+# Track execution times
+time uv run pytest tests/ -k "not e2e"
+time uv run pytest tests/test_e2e_integration.py
+
+# Check resource usage
+top -p $(pgrep -f pytest)
+```
+
+### 9. CI/CD Issues
+
+#### Issue: GitHub Actions failures
+
+**Symptoms**: CI builds fail consistently.
+
+**Solutions**:
+
+**Check CI Configuration**:
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test-full:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    - name: Install uv
+      uses: astral-sh/setup-uv@v1
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+    - name: Run full test suite
+      run: uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=xml
+```
+
+**Debug CI Issues**:
+```bash
+# Run tests locally in CI mode
+CI=true uv run pytest tests/ -v -s
+
+# Check environment variables
+env | grep -E "(CI|GITHUB|RAY)"
+```
+
+### 10. Logging and Debugging
+
+#### Issue: Insufficient logging information
+
+**Symptoms**: Hard to debug issues due to lack of information.
+
+**Solutions**:
+```bash
+# Enable debug logging
+export RAY_LOG_LEVEL=DEBUG
+export RAY_MCP_DEBUG=true
+
+# Run with verbose output
+uv run pytest tests/ -v -s --tb=long
+
+# Check Ray logs
+tail -f /tmp/ray/session_*/logs/*
+```
+
+#### Issue: Log retrieval fails
+
+**Symptoms**: Can't retrieve logs from jobs or nodes.
 
 **Solutions**:
 ```json
@@ -170,280 +436,87 @@ This document provides comprehensive troubleshooting information for common issu
 {
   "tool": "retrieve_logs",
   "arguments": {
-    "identifier": "raysubmit_1234567890",
-    "log_type": "job",
-    "num_lines": 100
+    "identifier": "job_id",
+    "log_type": "job"
   }
 }
 
-// Use retrieve_logs for job logs
-{
-  "tool": "retrieve_logs",
-  "arguments": {
-    "identifier": "raysubmit_1234567890",
-    "log_type": "job",
-    "num_lines": 100
-  }
-}
-```
-
-### 5. Resource Management Issues
-
-#### Issue: Insufficient resources
-
-**Symptoms**: Jobs fail due to resource constraints.
-
-**Solutions**:
-```json
-// Check current resource usage
-{
-  "tool": "inspect_ray",
-  "arguments": {}
-}
-
-// Start cluster with more resources
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 8,
-    "num_gpus": 2,
-    "object_store_memory": 4000000000
-  }
-}
-```
-
-## Debugging Commands
-
-### Cluster Health Check
-
-```json
-{
-  "tool": "inspect_ray",
-  "arguments": {}
-}
-```
-
-### Job Debugging
-
-```json
-// List all jobs
-{
-  "tool": "list_jobs",
-  "arguments": {}
-}
-
-// Detailed job inspection
+// Check available log types
 {
   "tool": "inspect_job",
   "arguments": {
-    "job_id": "raysubmit_1234567890",
+    "job_id": "job_id",
     "mode": "debug"
   }
 }
-
-// Get comprehensive logs
-{
-  "tool": "retrieve_logs",
-  "arguments": {
-    "identifier": "raysubmit_1234567890",
-    "log_type": "job",
-    "num_lines": 500,
-    "include_errors": true
-  }
-}
 ```
 
-## Environment-Specific Issues
+## Environment-Specific Troubleshooting
 
-### Development Environment
+### CI Environment
 
-#### Issue: Import errors
+**Common Issues**:
+- Resource constraints
+- Timing issues
+- Environment detection problems
 
 **Solutions**:
 ```bash
-# Ensure virtual environment is activated
-source .venv/bin/activate
+# Force CI mode
+export CI=true
+export GITHUB_ACTIONS=true
 
-# Reinstall dependencies
-uv sync
-uv pip install -e .
+# Use minimal resources
+uv run pytest tests/test_e2e_integration.py
+
+# Check resource usage
+free -h
+nproc
 ```
 
-#### Issue: Test failures
+### Local Development
+
+**Common Issues**:
+- Port conflicts
+- Resource conflicts
+- Dependency issues
 
 **Solutions**:
 ```bash
-# Clean up Ray processes
+# Clean up environment
 ./scripts/ray_cleanup.sh
 
-# Run tests with cleanup
-make test-e2e
+# Check for conflicting processes
+ps aux | grep ray
+lsof -i :10001
+
+# Reinstall dependencies
+uv sync --all-extras --dev
 ```
-
-### Production Environment
-
-#### Issue: Network connectivity
-
-**Solutions**:
-- Verify firewall settings
-- Check network routes
-- Ensure ports are accessible
-
-#### Issue: Resource constraints
-
-**Solutions**:
-- Monitor system resources
-- Adjust cluster configuration
-- Use appropriate worker node specifications
-
-## Performance Issues
-
-### Slow Job Execution
-
-**Causes**:
-- Insufficient resources
-- Network latency
-- Inefficient code
-
-**Solutions**:
-```json
-// Monitor resource usage
-{
-  "tool": "inspect_ray",
-  "arguments": {}
-}
-
-// Optimize cluster configuration
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 16,
-    "object_store_memory": 8000000000,
-    "worker_nodes": [
-      {
-        "num_cpus": 8,
-        "object_store_memory": 4000000000
-      }
-    ]
-  }
-}
-```
-
-### Memory Issues
-
-**Symptoms**: Out of memory errors or slow performance.
-
-**Solutions**:
-- Increase object store memory
-- Monitor memory usage
-- Optimize data processing patterns
-
-## Error Messages and Meanings
-
-### Common Error Messages
-
-1. **"Ray is not initialized"**: Start Ray cluster first
-2. **"Port already in use"**: Use different ports or automatic allocation
-3. **"Job submission failed"**: Check entrypoint and runtime environment
-4. **"Worker node failed to start"**: Check resource configuration
-5. **"Connection refused"**: Check network connectivity
-
-### Error Response Format
-
-```json
-{
-  "status": "error",
-  "message": "Error description",
-  "error": "Detailed error information"
-}
-```
-
-## Recovery Procedures
-
-### Cluster Recovery
-
-```json
-// Stop current cluster
-{
-  "tool": "stop_ray",
-  "arguments": {}
-}
-
-// Restart with clean configuration
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 4
-  }
-}
-```
-
-### Job Recovery
-
-```json
-// Cancel problematic job
-{
-  "tool": "cancel_job",
-  "arguments": {
-    "job_id": "raysubmit_1234567890"
-  }
-}
-
-// Resubmit with corrected configuration
-{
-  "tool": "submit_job",
-  "arguments": {
-    "entrypoint": "python examples/simple_job.py"
-  }
-}
-```
-
-## Prevention Best Practices
-
-1. **Monitor Resources**: Regularly check cluster status
-2. **Use Appropriate Configuration**: Match cluster size to workload
-3. **Handle Errors Gracefully**: Implement proper error handling in jobs
-4. **Clean Up Resources**: Stop clusters when not in use
-5. **Test Configurations**: Validate setups in development first
-6. **Use Enhanced Output**: Enable enhanced output for better debugging
 
 ## Getting Help
 
-### Debug Information
+### Before Asking for Help
+
+1. **Check this guide** for your specific issue
+2. **Run cleanup scripts**: `./scripts/ray_cleanup.sh`
+3. **Check environment**: Verify Python version, dependencies, and environment variables
+4. **Run tests**: Ensure tests pass in your environment
+5. **Check logs**: Look for error messages and stack traces
+
+### Providing Information
 
 When reporting issues, include:
 
-1. **Cluster Configuration**: The `init_ray` arguments used
-2. **Job Configuration**: The `submit_job` arguments used
-3. **Error Messages**: Complete error responses
-4. **System Information**: OS, Python version, Ray version
-5. **Logs**: Relevant log output from tools
+- **Environment**: OS, Python version, Ray version
+- **Error messages**: Full error output and stack traces
+- **Steps to reproduce**: Exact commands and configuration
+- **Expected vs actual behavior**: What you expected vs what happened
+- **Test results**: Output from running the test suite
 
-### Useful Commands
+### Resources
 
-```bash
-# Check Ray status
-ray status
-
-# Clean up Ray processes
-./scripts/ray_cleanup.sh
-
-# Check system resources
-htop
-df -h
-free -h
-
-# Check network connectivity
-ping <head-node-ip>
-telnet <head-node-ip> <port>
-```
-
-### Enhanced Output Mode
-
-Enable enhanced output for better debugging:
-
-```bash
-export RAY_MCP_ENHANCED_OUTPUT=true
-```
-
-This provides additional context and suggestions for resolving issues. 
+- **[Development Guide](DEVELOPMENT.md)**: Development workflow and best practices
+- **[Configuration Guide](CONFIGURATION.md)**: Setup and configuration options
+- **[Examples](EXAMPLES.md)**: Usage examples and patterns
+- **[Tools Reference](TOOLS.md)**: Complete tool documentation 

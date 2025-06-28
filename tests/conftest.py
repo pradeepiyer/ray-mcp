@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures for Ray MCP tests."""
 
 import os
+
 import pytest
 
 from tests.test_utils import run_ray_cleanup, wait_for_ray_shutdown
