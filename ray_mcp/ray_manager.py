@@ -1221,6 +1221,7 @@ class RayManager:
         if not logs:
             return {"error_count": 0, "errors": [], "suggestions": []}
 
+        logs = str(logs)
         lines = logs.split("\n")
         error_lines = [
             line
@@ -1324,6 +1325,8 @@ class RayManager:
         """Generate debugging suggestions based on job info and logs."""
         suggestions = []
 
+        job_logs = str(job_logs) if job_logs is not None else ""
+
         if job_info.status == "FAILED":
             suggestions.append(
                 "Job failed. Check error logs for specific error messages."
@@ -1401,17 +1404,17 @@ class RayManager:
                         response["debug_info"] = {
                             "error_logs": [
                                 line
-                                for line in response.get("logs", "").split("\n")
+                                for line in str(response.get("logs", "")).split("\n")
                                 if "error" in line.lower()
                                 or "exception" in line.lower()
                             ],
                             "recent_logs": (
-                                response.get("logs", "").split("\n")[-20:]
+                                str(response.get("logs", "")).split("\n")[-20:]
                                 if response.get("logs")
                                 else []
                             ),
                             "debugging_suggestions": self._generate_debug_suggestions(
-                                job_info, response.get("logs", "")
+                                job_info, str(response.get("logs", ""))
                             ),
                         }
 
@@ -1456,16 +1459,16 @@ class RayManager:
                 response["debug_info"] = {
                     "error_logs": [
                         line
-                        for line in response.get("logs", "").split("\n")
+                        for line in str(response.get("logs", "")).split("\n")
                         if "error" in line.lower() or "exception" in line.lower()
                     ],
                     "recent_logs": (
-                        response.get("logs", "").split("\n")[-20:]
+                        str(response.get("logs", "")).split("\n")[-20:]
                         if response.get("logs")
                         else []
                     ),
                     "debugging_suggestions": self._generate_debug_suggestions(
-                        job_info, response.get("logs", "")
+                        job_info, str(response.get("logs", ""))
                     ),
                 }
 
