@@ -1,6 +1,6 @@
 # Ray MCP Server - Test Automation (UV Native)
 
-.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions wc test-e2e-clean test-e2e-clean-x test-e2e-file test-e2e-clean-verbose
+.PHONY: test test-fast test-e2e test-full install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions wc test-e2e-clean test-e2e-clean-x test-e2e-file test-e2e-clean-verbose
 
 # Default development test (fast)
 test: test-fast
@@ -8,12 +8,7 @@ test: test-fast
 # Fast test suite (excludes e2e tests) - for development
 test-fast:
 	@echo "🏃‍♂️ Running fast test suite..."
-	@./scripts/test-fast.sh
-
-# Smoke tests - minimal verification
-test-smoke:
-	@echo "💨 Running smoke tests..."
-	@uv run pytest tests/ -m "smoke" --tb=short -v --maxfail=1
+	@uv run pytest tests/ -k "not e2e" --tb=short -v --cov=ray_mcp --cov-report=term-missing
 
 # End-to-end tests only - for major changes
 test-e2e:
@@ -21,7 +16,7 @@ test-e2e:
 	@echo "🧹 Running initial cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "🚀 Starting e2e tests with automatic cleanup..."
-	@python -m pytest tests/ -m e2e -v --tb=short
+	@uv run pytest tests/ -m e2e -v --tb=short
 	@echo "🧹 Running final cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "✅ E2E tests completed with cleanup"
@@ -29,11 +24,7 @@ test-e2e:
 # Full test suite - all tests including e2e
 test-full:
 	@echo "🔍 Running complete test suite..."
-	@./scripts/test-full.sh
-
-# Smart test runner - detects changes and runs appropriate tests
-test-smart:
-	@scripts/smart-test.sh
+	@uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=term-missing --cov-report=html:htmlcov
 
 # Tool function specific tests
 test-tool-functions:
@@ -162,7 +153,7 @@ test-e2e-clean:
 	@echo "🧹 Running initial cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "🚀 Starting e2e tests with automatic cleanup..."
-	@python -m pytest tests/ -m e2e -v --tb=short
+	@uv run pytest tests/ -m e2e -v --tb=short
 	@echo "🧹 Running final cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "✅ E2E tests completed with cleanup"
@@ -173,7 +164,7 @@ test-e2e-verbose:
 	@echo "🧹 Running initial cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "🚀 Starting e2e tests with automatic cleanup..."
-	@python -m pytest tests/ -m e2e -v -s --tb=long
+	@uv run pytest tests/ -m e2e -v -s --tb=long
 	@echo "🧹 Running final cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "✅ E2E tests completed with cleanup"
@@ -184,7 +175,7 @@ test-e2e-file:
 	@echo "🧹 Running initial cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "🚀 Starting e2e tests from test_e2e_integration.py..."
-	@python -m pytest tests/test_e2e_integration.py -v --tb=short
+	@uv run pytest tests/test_e2e_integration.py -v --tb=short
 	@echo "🧹 Running final cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "✅ E2E tests completed with cleanup"
@@ -201,13 +192,11 @@ help:
 	@echo "  uv-check         Check dependency consistency"
 	@echo ""
 	@echo "🧪 Testing:"
-	@echo "  test             Run all tests"
+	@echo "  test             Run fast tests only"
 	@echo "  test-fast        Run fast tests only"
-	@echo "  test-smoke       Run smoke tests"
 	@echo "  test-e2e         Run e2e tests with automatic cleanup"
 	@echo "  test-e2e-verbose Run e2e tests with detailed output and cleanup"
 	@echo "  test-full        Run full test suite"
-	@echo "  test-smart       Run smart test selection"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  lint-tool-functions  Lint tool function signatures"
