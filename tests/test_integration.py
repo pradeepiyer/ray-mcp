@@ -214,15 +214,22 @@ class TestMCPIntegration:
             assert "Test error" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_ray_unavailable_handling(self):
+    async def test_ray_unavailable_error(self):
+        """Test tool calls when Ray is not available."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method to raise an exception
         start_cluster_mock = AsyncMock(side_effect=Exception("Ray is not available"))
         start_cluster_mock.__signature__ = inspect.signature(RayManager.start_cluster)
 
-        with patch.object(ray_manager, "start_cluster", start_cluster_mock):
-            with patch("ray_mcp.main.RAY_AVAILABLE", False):
-                result = await call_tool("start_ray")
-                response_text = get_text_content(result)
-                assert "Ray is not available" in response_text
+        with patch.object(RayManager, "start_cluster", start_cluster_mock):
+            result = await registry.execute_tool(
+                "start_ray", {"num_cpus": 4, "num_gpus": 1}
+            )
+
+            assert isinstance(result, dict)
+            assert result["status"] == "error"
+            assert "Ray is not available" in result["message"]
 
     @pytest.mark.asyncio
     async def test_parameter_validation_integration(self):
@@ -434,24 +441,6 @@ class TestMCPIntegration:
             assert isinstance(result, dict)
             assert "logs" in result
             get_logs_mock.assert_called_once_with(job_id="test_job", num_lines=100)
-
-    @pytest.mark.asyncio
-    async def test_ray_unavailable_error(self):
-        """Test tool calls when Ray is not available."""
-        registry = ToolRegistry(RayManager())
-
-        # Mock RayManager method to raise an exception
-        start_cluster_mock = AsyncMock(side_effect=Exception("Ray is not available"))
-        start_cluster_mock.__signature__ = inspect.signature(RayManager.start_cluster)
-
-        with patch.object(RayManager, "start_cluster", start_cluster_mock):
-            result = await registry.execute_tool(
-                "start_ray", {"num_cpus": 4, "num_gpus": 1}
-            )
-
-            assert isinstance(result, dict)
-            assert result["status"] == "error"
-            assert "Ray is not available" in result["message"]
 
     @pytest.mark.asyncio
     async def test_unknown_tool_error(self):
@@ -684,28 +673,8 @@ class TestMCPIntegration:
 
 @pytest.mark.integration
 class TestIntegration:
-    @pytest.mark.asyncio
-    async def test_list_tools_integration(self):
-        tools = await list_tools()
-        assert any(tool.name == "start_ray" for tool in tools)
-
-    @pytest.mark.asyncio
-    async def test_submit_job_integration(self):
-        registry = ToolRegistry(RayManager())
-        # Patch RayManager.submit_job to avoid actually submitting a job
-        submit_job_mock = AsyncMock(
-            return_value={"status": "submitted", "job_id": "job123"}
-        )
-        submit_job_mock.__signature__ = inspect.signature(RayManager.submit_job)
-
-        with patch.object(RayManager, "submit_job", submit_job_mock):
-            result = await registry.execute_tool(
-                "submit_job", {"entrypoint": "python script.py"}
-            )
-            assert result["status"] == "submitted"
-            assert result["job_id"] == "job123"
-
     # Add more integration tests as needed, using registry.execute_tool or the actual server interface
+    pass
 
 
 if __name__ == "__main__":

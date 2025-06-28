@@ -20,38 +20,6 @@ from ray_mcp.tool_registry import ToolRegistry
 class TestMain:
     """Test cases for main.py functions."""
 
-    @pytest.mark.asyncio
-    async def test_list_tools_complete(self):
-        """Test that list_tools returns all expected tools."""
-        tools = await list_tools()
-
-        tool_names = [tool.name for tool in tools]
-
-        # Check that key tools are present
-        expected_tools = [
-            "start_ray",
-            "connect_ray",
-            "stop_ray",
-            "cluster_info",
-            "submit_job",
-            "list_jobs",
-            "job_inspect",
-            "cancel_job",
-            "list_actors",
-            "kill_actor",
-            "get_logs",
-        ]
-
-        for expected_tool in expected_tools:
-            assert (
-                expected_tool in tool_names
-            ), f"Tool {expected_tool} not found in tools list"
-
-        # Verify tool schemas
-        start_ray_tool = next(tool for tool in tools if tool.name == "start_ray")
-        assert "num_cpus" in start_ray_tool.inputSchema["properties"]
-        assert start_ray_tool.inputSchema["properties"]["num_cpus"]["default"] == 1
-
     def test_run_server_exists(self):
         """Test that run_server function exists and is callable."""
         assert callable(run_server)

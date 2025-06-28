@@ -827,19 +827,8 @@ class TestRayManager:
 
     # ===== HELPER FUNCTION TESTS =====
 
-    def test_parse_dashboard_url_single_quoted(self):
-        """Test parse_dashboard_url with single-quoted URL."""
-        from ray_mcp.ray_manager import RayManager
-
-        # Create a manager instance to access the helper function
-        manager = RayManager()
-
-        # Test with single-quoted URL
-        stdout = (
-            "Ray runtime started\nView the Ray dashboard at 'http://127.0.0.1:8265'"
-        )
-
-        # Extract the helper function from the start_cluster method
+    def test_parse_dashboard_url_comprehensive(self):
+        """Test parse_dashboard_url with various URL formats and edge cases."""
         import re
 
         def parse_dashboard_url(stdout: str):
@@ -847,159 +836,38 @@ class TestRayManager:
             match = re.search(pattern, stdout)
             return match.group(1) if match else None
 
-        result = parse_dashboard_url(stdout)
-        assert result == "http://127.0.0.1:8265"
-
-    def test_parse_dashboard_url_double_quoted(self):
-        """Test parse_dashboard_url with double-quoted URL."""
-        import re
-
-        def parse_dashboard_url(stdout: str):
-            pattern = r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with double-quoted URL
-        stdout = (
-            'Ray runtime started\nView the Ray dashboard at "http://127.0.0.1:8265"'
-        )
-        result = parse_dashboard_url(stdout)
-        assert result == "http://127.0.0.1:8265"
-
-    def test_parse_dashboard_url_unquoted(self):
-        """Test parse_dashboard_url with unquoted URL."""
-        import re
-
-        def parse_dashboard_url(stdout: str):
-            pattern = r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with unquoted URL
-        stdout = "Ray runtime started\nView the Ray dashboard at http://127.0.0.1:8265"
-        result = parse_dashboard_url(stdout)
-        assert result == "http://127.0.0.1:8265"
-
-    def test_parse_dashboard_url_not_found(self):
-        """Test parse_dashboard_url when URL is not found."""
-        import re
-
-        def parse_dashboard_url(stdout: str):
-            pattern = r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with no dashboard URL
-        stdout = "Ray runtime started\nNo dashboard information"
-        result = parse_dashboard_url(stdout)
-        assert result is None
-
-    def test_parse_dashboard_url_complex_url(self):
-        """Test parse_dashboard_url with complex URL containing query parameters."""
-        import re
-
-        def parse_dashboard_url(stdout: str):
-            pattern = r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with complex URL
-        stdout = 'Ray runtime started\nView the Ray dashboard at "http://127.0.0.1:8265?token=abc123"'
-        result = parse_dashboard_url(stdout)
-        assert result == "http://127.0.0.1:8265?token=abc123"
-
-    def test_parse_gcs_address_single_quoted(self):
-        """Test parse_gcs_address with single-quoted address."""
-        import re
-
-        def parse_gcs_address(stdout: str):
-            pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with single-quoted address
-        stdout = "Ray runtime started\n--address='127.0.0.1:10001'"
-        result = parse_gcs_address(stdout)
-        assert result == "127.0.0.1:10001"
-
-    def test_parse_gcs_address_double_quoted(self):
-        """Test parse_gcs_address with double-quoted address."""
-        import re
-
-        def parse_gcs_address(stdout: str):
-            pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with double-quoted address
-        stdout = 'Ray runtime started\n--address="127.0.0.1:10001"'
-        result = parse_gcs_address(stdout)
-        assert result == "127.0.0.1:10001"
-
-    def test_parse_gcs_address_unquoted(self):
-        """Test parse_gcs_address with unquoted address."""
-        import re
-
-        def parse_gcs_address(stdout: str):
-            pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with unquoted address
-        stdout = "Ray runtime started\n--address=127.0.0.1:10001"
-        result = parse_gcs_address(stdout)
-        assert result == "127.0.0.1:10001"
-
-    def test_parse_gcs_address_not_found(self):
-        """Test parse_gcs_address when address is not found."""
-        import re
-
-        def parse_gcs_address(stdout: str):
-            pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with no address
-        stdout = "Ray runtime started\nNo address information"
-        result = parse_gcs_address(stdout)
-        assert result is None
-
-    def test_parse_gcs_address_multiple_addresses(self):
-        """Test parse_gcs_address with multiple address patterns in output."""
-        import re
-
-        def parse_gcs_address(stdout: str):
-            pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with multiple address patterns (should match the first one)
-        stdout = "Ray runtime started\n--address='127.0.0.1:10001'\n--address='192.168.1.1:10002'"
-        result = parse_gcs_address(stdout)
-        assert result == "127.0.0.1:10001"
-
-    def test_parse_gcs_address_complex_ip(self):
-        """Test parse_gcs_address with complex IP addresses."""
-        import re
-
-        def parse_gcs_address(stdout: str):
-            pattern = r"--address=['\"]?([\d\.]+:\d+)['\"]?"
-            match = re.search(pattern, stdout)
-            return match.group(1) if match else None
-
-        # Test with complex IP addresses
+        # Test cases covering all scenarios
         test_cases = [
-            ("--address='192.168.1.100:10001'", "192.168.1.100:10001"),
-            ('--address="10.0.0.50:20001"', "10.0.0.50:20001"),
-            ("--address=172.16.0.25:30001", "172.16.0.25:30001"),
+            # Single-quoted URL
+            (
+                "Ray runtime started\nView the Ray dashboard at 'http://127.0.0.1:8265'",
+                "http://127.0.0.1:8265",
+            ),
+            # Double-quoted URL
+            (
+                'Ray runtime started\nView the Ray dashboard at "http://127.0.0.1:8265"',
+                "http://127.0.0.1:8265",
+            ),
+            # Unquoted URL
+            (
+                "Ray runtime started\nView the Ray dashboard at http://127.0.0.1:8265",
+                "http://127.0.0.1:8265",
+            ),
+            # Complex URL with query parameters
+            (
+                'Ray runtime started\nView the Ray dashboard at "http://127.0.0.1:8265?token=abc123"',
+                "http://127.0.0.1:8265?token=abc123",
+            ),
+            # URL not found
+            ("Ray runtime started\nNo dashboard information", None),
         ]
 
         for stdout, expected in test_cases:
-            result = parse_gcs_address(f"Ray runtime started\n{stdout}")
-            assert result == expected, f"Failed for {stdout}"
+            result = parse_dashboard_url(stdout)
+            assert result == expected, f"Failed for: {stdout}"
 
-    def test_parse_gcs_address_edge_cases(self):
-        """Test parse_gcs_address with edge cases."""
+    def test_parse_gcs_address_comprehensive(self):
+        """Test parse_gcs_address with various address formats and edge cases."""
         import re
 
         def parse_gcs_address(stdout: str):
@@ -1007,21 +875,44 @@ class TestRayManager:
             match = re.search(pattern, stdout)
             return match.group(1) if match else None
 
-        # Test edge cases
+        # Test cases covering all scenarios
         test_cases = [
-            # Valid cases
-            ("--address='0.0.0.0:10001'", "0.0.0.0:10001"),
-            ("--address='255.255.255.255:65535'", "255.255.255.255:65535"),
-            ("--address='127.0.0.1:1'", "127.0.0.1:1"),
+            # Single-quoted address
+            ("Ray runtime started\n--address='127.0.0.1:10001'", "127.0.0.1:10001"),
+            # Double-quoted address
+            ('Ray runtime started\n--address="127.0.0.1:10001"', "127.0.0.1:10001"),
+            # Unquoted address
+            ("Ray runtime started\n--address=127.0.0.1:10001", "127.0.0.1:10001"),
+            # Complex IP addresses
+            (
+                "Ray runtime started\n--address='192.168.1.100:10001'",
+                "192.168.1.100:10001",
+            ),
+            ('Ray runtime started\n--address="10.0.0.50:20001"', "10.0.0.50:20001"),
+            ("Ray runtime started\n--address=172.16.0.25:30001", "172.16.0.25:30001"),
+            # Edge cases
+            ("Ray runtime started\n--address='0.0.0.0:10001'", "0.0.0.0:10001"),
+            (
+                "Ray runtime started\n--address='255.255.255.255:65535'",
+                "255.255.255.255:65535",
+            ),
+            ("Ray runtime started\n--address='127.0.0.1:1'", "127.0.0.1:1"),
+            # Multiple addresses (should match first)
+            (
+                "Ray runtime started\n--address='127.0.0.1:10001'\n--address='192.168.1.1:10002'",
+                "127.0.0.1:10001",
+            ),
+            # Address not found
+            ("Ray runtime started\nNo address information", None),
             # Invalid cases (should not match)
-            ("--address='invalid:port'", None),
-            ("--address='127.0.0.1'", None),  # No port
-            ("--address=':10001'", None),  # No IP
+            ("Ray runtime started\n--address='invalid:port'", None),
+            ("Ray runtime started\n--address='127.0.0.1'", None),  # No port
+            ("Ray runtime started\n--address=':10001'", None),  # No IP
         ]
 
         for stdout, expected in test_cases:
-            result = parse_gcs_address(f"Ray runtime started\n{stdout}")
-            assert result == expected, f"Failed for {stdout}"
+            result = parse_gcs_address(stdout)
+            assert result == expected, f"Failed for: {stdout}"
 
     @pytest.mark.asyncio
     async def test_start_cluster_with_address_filters_parameters(self):
