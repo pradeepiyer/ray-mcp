@@ -68,4 +68,4 @@ See LICENSE file.
 
 ## Support
 - See [Troubleshooting](docs/TROUBLESHOOTING.md)
-- Open an issue on GitHub 
+- Open an issue on GitHub

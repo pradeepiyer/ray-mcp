@@ -72,4 +72,4 @@ This guide covers the most common configuration options for the Ray MCP Server.
 
 ---
 
-For more, see [TOOLS.md](TOOLS.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md). 
+For more, see [TOOLS.md](TOOLS.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
