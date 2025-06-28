@@ -53,8 +53,7 @@ ray-mcp/
 │   ├── main.py              # MCP server entry point
 │   ├── tool_registry.py     # Centralized tool registry
 │   ├── ray_manager.py       # Ray cluster management
-│   ├── worker_manager.py    # Worker node management
-│   └── types.py             # Type definitions
+│   └── worker_manager.py    # Worker node management
 ├── examples/                # Example applications
 ├── tests/                   # Test suite
 ├── docs/                    # Documentation

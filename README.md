@@ -31,8 +31,7 @@ ray_mcp/
 ├── main.py              # MCP server with dispatcher pattern
 ├── tool_registry.py     # Centralized tool registry and handlers
 ├── ray_manager.py       # Core Ray cluster management logic
-├── worker_manager.py    # Worker node management
-└── types.py             # Type definitions
+└── worker_manager.py    # Worker node management
 ```
 
 ## Quick Start
@@ -197,10 +196,6 @@ The server provides a comprehensive set of tools for Ray management:
 - `inspect_job` - Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
 - `cancel_job` - Cancel a running or queued job
 - `retrieve_logs` - Retrieve logs from jobs, actors, or nodes with comprehensive error analysis
-
-### Actor Operations
-- `list_actors` - List all actors in the cluster
-- `kill_actor` - Terminate a specific actor
 
 ## Examples
 

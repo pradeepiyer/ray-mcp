@@ -104,23 +104,6 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         result = await tool_registry.execute_tool("cancel_job", {"job_id": job_id})
         return _format_response(result)
 
-    # Actor management tools
-    @server.call_tool()
-    async def list_actors(
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> List[TextContent]:
-        """List all actors in the Ray cluster."""
-        result = await tool_registry.execute_tool("list_actors", {"filters": filters})
-        return _format_response(result)
-
-    @server.call_tool()
-    async def kill_actor(actor_id: str, no_restart: bool = False) -> List[TextContent]:
-        """Kill a specific actor."""
-        result = await tool_registry.execute_tool(
-            "kill_actor", {"actor_id": actor_id, "no_restart": no_restart}
-        )
-        return _format_response(result)
-
     # Enhanced monitoring tools
     @server.call_tool()
     async def retrieve_logs(

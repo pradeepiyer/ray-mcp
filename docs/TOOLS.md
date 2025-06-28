@@ -8,8 +8,7 @@ The Ray MCP Server provides tools organized into the following categories:
 
 1. **Cluster Operations** - Initialize, stop, and monitor Ray clusters
 2. **Job Management** - Submit, monitor, and manage distributed jobs
-3. **Actor Management** - List and manage Ray actors
-4. **Logging & Debugging** - Retrieve logs and debug issues
+3. **Logging & Debugging** - Retrieve logs and debug issues
 
 ## Cluster Operations
 
@@ -163,50 +162,6 @@ Cancel a running job.
   "tool": "cancel_job",
   "arguments": {
     "job_id": "raysubmit_1234567890"
-  }
-}
-```
-
-## Actor Management
-
-### list_actors
-
-List all actors in the Ray cluster.
-
-**Description**: Returns information about all actors currently running in the cluster.
-
-**Parameters**:
-- `filters` (object, optional): Optional filters to apply to actor list
-
-**Example**:
-```json
-{
-  "tool": "list_actors",
-  "arguments": {
-    "filters": {
-      "state": "ALIVE"
-    }
-  }
-}
-```
-
-### kill_actor
-
-Kill a specific actor.
-
-**Description**: Terminates a specific actor by its ID.
-
-**Parameters**:
-- `actor_id` (string, required): Actor ID to kill
-- `no_restart` (boolean, optional, default: false): Whether to prevent actor restart
-
-**Example**:
-```json
-{
-  "tool": "kill_actor",
-  "arguments": {
-    "actor_id": "actor_1234567890",
-    "no_restart": true
   }
 }
 ```

@@ -308,12 +308,6 @@ Log retrieval and analysis examples.
     "mode": "logs"
   }
 }
-
-// 4. List actors (training workers)
-{
-  "tool": "list_actors",
-  "arguments": {}
-}
 ```
 
 ### 3. Data Pipeline Workflow
@@ -415,25 +409,6 @@ Log retrieval and analysis examples.
   "arguments": {
     "job_id": "raysubmit_1234567890",
     "mode": "debug"
-  }
-}
-```
-
-### Actor Management
-
-```json
-// List all actors
-{
-  "tool": "list_actors",
-  "arguments": {}
-}
-
-// Kill specific actor
-{
-  "tool": "kill_actor",
-  "arguments": {
-    "actor_id": "actor_1234567890",
-    "no_restart": true
   }
 }
 ```

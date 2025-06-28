@@ -20,15 +20,6 @@ except ImportError:
     ray = None  # type: ignore
     JobSubmissionClient = None  # type: ignore
 
-from .types import (
-    ErrorResponse,
-    HealthReport,
-    JobId,
-    JobInfo,
-    JobStatus,
-    NodeId,
-    NodeInfo,
-)
 from .worker_manager import WorkerManager
 
 logger = logging.getLogger(__name__)
@@ -941,94 +932,6 @@ class RayManager:
             logger.error(f"Failed to cancel job: {e}")
             return {"status": "error", "message": f"Failed to cancel job: {str(e)}"}
 
-    async def list_actors(
-        self, filters: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """List actors in the cluster."""
-        try:
-            self._ensure_initialized()
-
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            actors = ray.util.list_named_actors(all_namespaces=True)
-
-            actor_info = []
-            for actor in actors:
-                try:
-                    actor_handle = ray.get_actor(
-                        actor["name"], namespace=actor["namespace"]
-                    )
-                    actor_info.append(
-                        {
-                            "name": actor["name"],
-                            "namespace": actor["namespace"],
-                            "actor_id": actor_handle._actor_id.hex(),
-                            "state": "ALIVE",  # If we can get the handle, assume it's alive
-                        }
-                    )
-                except Exception:
-                    actor_info.append(
-                        {
-                            "name": actor["name"],
-                            "namespace": actor["namespace"],
-                            "actor_id": "unknown",
-                            "state": "UNKNOWN",
-                        }
-                    )
-
-            # Apply filters if provided
-            if filters:
-                # Simple filtering - can be extended
-                if "name" in filters:
-                    actor_info = [a for a in actor_info if filters["name"] in a["name"]]
-                if "namespace" in filters:
-                    actor_info = [
-                        a for a in actor_info if a["namespace"] == filters["namespace"]
-                    ]
-
-            return {"status": "success", "actors": actor_info}
-
-        except Exception as e:
-            logger.error(f"Failed to list actors: {e}")
-            return {"status": "error", "message": f"Failed to list actors: {str(e)}"}
-
-    async def kill_actor(
-        self, actor_id: str, no_restart: bool = False
-    ) -> Dict[str, Any]:
-        """Kill an actor."""
-        try:
-            self._ensure_initialized()
-
-            # Try to find the actor by ID or name
-            try:
-                if not RAY_AVAILABLE or ray is None:
-                    return {"status": "error", "message": "Ray is not available"}
-
-                # If it's a 32-character hex string, treat it as an actor ID
-                if len(actor_id) == 32 and all(
-                    c in "0123456789abcdefABCDEF" for c in actor_id
-                ):
-                    actor_handle = ray.get_actor(actor_id)
-                else:
-                    # Otherwise, treat as an actor name across namespaces
-                    actor_handle = ray.get_actor(actor_id, namespace="*")
-
-                ray.kill(actor_handle, no_restart=no_restart)
-
-                return {
-                    "status": "killed",
-                    "actor_id": actor_id,
-                    "message": f"Actor {actor_id} killed successfully",
-                }
-
-            except ValueError:
-                return {"status": "error", "message": f"Actor {actor_id} not found"}
-
-        except Exception as e:
-            logger.error(f"Failed to kill actor: {e}")
-            return {"status": "error", "message": f"Failed to kill actor: {str(e)}"}
-
     async def retrieve_logs(
         self,
         identifier: str,
@@ -1176,7 +1079,7 @@ class RayManager:
                 return {
                     "status": "error",
                     "message": f"Actor {actor_identifier} not found",
-                    "suggestion": "Use list_actors tool to see available actors",
+                    "suggestion": "Check Ray dashboard for available actors",
                 }
 
         except Exception as e:

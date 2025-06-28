@@ -187,31 +187,7 @@ This document provides comprehensive troubleshooting information for common issu
 }
 ```
 
-### 5. Actor Management Issues
-
-#### Issue: Actors not responding
-
-**Symptoms**: Actors appear in list but don't respond to operations.
-
-**Solutions**:
-```json
-// List all actors
-{
-  "tool": "list_actors",
-  "arguments": {}
-}
-
-// Kill problematic actor
-{
-  "tool": "kill_actor",
-  "arguments": {
-    "actor_id": "actor_1234567890",
-    "no_restart": true
-  }
-}
-```
-
-### 6. Resource Management Issues
+### 5. Resource Management Issues
 
 #### Issue: Insufficient resources
 
@@ -273,24 +249,6 @@ This document provides comprehensive troubleshooting information for common issu
     "log_type": "job",
     "num_lines": 500,
     "include_errors": true
-  }
-}
-```
-
-### Actor Debugging
-
-```json
-// List all actors
-{
-  "tool": "list_actors",
-  "arguments": {}
-}
-
-// Kill specific actor
-{
-  "tool": "kill_actor",
-  "arguments": {
-    "actor_id": "actor_1234567890"
   }
 }
 ```

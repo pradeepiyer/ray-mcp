@@ -181,40 +181,6 @@ class ToolRegistry:
             handler=self._cancel_job_handler,
         )
 
-        # Actor management
-        self._register_tool(
-            name="list_actors",
-            description="List all actors in the Ray cluster",
-            schema={
-                "type": "object",
-                "properties": {
-                    "filters": {
-                        "type": "object",
-                        "description": "Optional filters to apply to actor list",
-                    }
-                },
-            },
-            handler=self._list_actors_handler,
-        )
-
-        self._register_tool(
-            name="kill_actor",
-            description="Kill a specific actor",
-            schema={
-                "type": "object",
-                "properties": {
-                    "actor_id": {"type": "string", "description": "Actor ID to kill"},
-                    "no_restart": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Whether to prevent actor restart",
-                    },
-                },
-                "required": ["actor_id"],
-            },
-            handler=self._kill_actor_handler,
-        )
-
         self._register_tool(
             name="retrieve_logs",
             description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis",
@@ -312,18 +278,6 @@ class ToolRegistry:
     async def _cancel_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for cancel_job tool."""
         return await self.ray_manager.cancel_job(kwargs["job_id"])
-
-    async def _list_actors_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for list_actors tool."""
-        return await self.ray_manager.list_actors(kwargs.get("filters"))
-
-    async def _kill_actor_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for kill_actor tool."""
-        sig = inspect.signature(RayManager.kill_actor)
-        # Apply default values from the method signature
-        bound_args = sig.bind_partial(**kwargs)
-        bound_args.apply_defaults()
-        return await self.ray_manager.kill_actor(**bound_args.arguments)
 
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for retrieve_logs tool."""

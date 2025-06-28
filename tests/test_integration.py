@@ -74,8 +74,6 @@ class TestMCPIntegration:
             "list_jobs",
             "inspect_job",
             "cancel_job",
-            "list_actors",
-            "kill_actor",
             "retrieve_logs",
         ]
 
@@ -281,56 +279,6 @@ class TestMCPIntegration:
             start_cluster_mock.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_list_actors_tool_with_filters(self):
-        """Test list_actors tool with filter parameters."""
-        registry = ToolRegistry(RayManager())
-        # Mock the ray manager to return success
-        start_cluster_mock = AsyncMock(return_value={"status": "started"})
-        start_cluster_mock.__signature__ = inspect.signature(RayManager.init_cluster)
-
-        with patch.object(RayManager, "init_cluster", start_cluster_mock):
-            # First initialize the cluster
-            result = await registry.execute_tool("init_ray", {"num_cpus": 4})
-            assert result["status"] == "started"
-
-            # Then test list_actors with filters
-            list_actors_mock = AsyncMock(
-                return_value={"status": "success", "actors": []}
-            )
-            list_actors_mock.__signature__ = inspect.signature(RayManager.list_actors)
-
-            with patch.object(RayManager, "list_actors", list_actors_mock):
-                result = await registry.execute_tool(
-                    "list_actors", {"filters": {"state": "ALIVE"}}
-                )
-                assert result["status"] == "success"
-                list_actors_mock.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_kill_actor_tool(self):
-        """Test kill_actor tool functionality."""
-        registry = ToolRegistry(RayManager())
-        # Mock the ray manager to return success
-        start_cluster_mock = AsyncMock(return_value={"status": "started"})
-        start_cluster_mock.__signature__ = inspect.signature(RayManager.init_cluster)
-
-        with patch.object(RayManager, "init_cluster", start_cluster_mock):
-            # First initialize the cluster
-            result = await registry.execute_tool("init_ray", {"num_cpus": 4})
-            assert result["status"] == "started"
-
-            # Then test kill_actor
-            kill_actor_mock = AsyncMock(return_value={"status": "success"})
-            kill_actor_mock.__signature__ = inspect.signature(RayManager.kill_actor)
-
-            with patch.object(RayManager, "kill_actor", kill_actor_mock):
-                result = await registry.execute_tool(
-                    "kill_actor", {"actor_id": "actor_123", "no_restart": True}
-                )
-                assert result["status"] == "success"
-                kill_actor_mock.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_retrieve_logs_tool(self):
         """Test retrieve_logs tool functionality."""
         registry = ToolRegistry(RayManager())
@@ -344,13 +292,7 @@ class TestMCPIntegration:
             assert result["status"] == "started"
 
             # Then test retrieve_logs
-            retrieve_logs_mock = AsyncMock(
-                return_value={
-                    "status": "success",
-                    "logs": "test logs",
-                    "log_type": "job",
-                }
-            )
+            retrieve_logs_mock = AsyncMock(return_value={"status": "success"})
             retrieve_logs_mock.__signature__ = inspect.signature(
                 RayManager.retrieve_logs
             )
@@ -358,7 +300,12 @@ class TestMCPIntegration:
             with patch.object(RayManager, "retrieve_logs", retrieve_logs_mock):
                 result = await registry.execute_tool(
                     "retrieve_logs",
-                    {"identifier": "job_123", "log_type": "job", "num_lines": 50},
+                    {
+                        "identifier": "job_123",
+                        "log_type": "job",
+                        "num_lines": 100,
+                        "include_errors": True,
+                    },
                 )
                 assert result["status"] == "success"
                 retrieve_logs_mock.assert_called_once()
