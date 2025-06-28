@@ -1,6 +1,6 @@
 # Ray MCP Server - Test Automation (UV Native)
 
-.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions count-lines test-e2e-clean test-e2e-clean-x test-e2e-file test-e2e-clean-verbose
+.PHONY: test test-fast test-smoke test-e2e test-full test-smart install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions wc test-e2e-clean test-e2e-clean-x test-e2e-file test-e2e-clean-verbose
 
 # Default development test (fast)
 test: test-fast
@@ -113,16 +113,48 @@ clean:
 	@find . -name "*.pyc" -delete
 	@find . -name "__pycache__" -type d -exec rm -rf {} +
 
-# Count lines of code (excluding common non-code files)
-count-lines:
-	@echo "📏 Counting lines of code in the repo..."
-	@find . -type f \( -name '*.py' -o -name '*.sh' \) \
-	  -not -path './.venv/*' -not -path './.git/*' -not -path './htmlcov/*' \
-	  -not -path './.mypy_cache/*' -not -path './.pytest_cache/*' \
-	  -not -path './*.egg-info/*' -not -path './__pycache__/*' \
-	  -not -path './uv.lock' -not -path './.coverage*' \
-	  -not -path './.gitignore' \
-	  -exec cat {} + | wc -l
+# Count lines of code with breakdown per directory
+wc:
+	@echo "🔍 Counting lines of code with directory breakdown..."
+	@echo ""
+	@echo "📊 Total lines by file type:"
+	@echo "================================"
+	@echo "Python files:"
+	@find . -name "*.py" -not -path "./.venv/*" -not -path "./.git/*" -not -path "./.mypy_cache/*" -not -path "./.pytest_cache/*" -not -path "./htmlcov/*" -not -path "./.coverage_data/*" | xargs wc -l | tail -1
+	@echo ""
+	@echo "Shell scripts:"
+	@find . -name "*.sh" -not -path "./.venv/*" -not -path "./.git/*" | xargs wc -l | tail -1
+	@echo ""
+	@echo "Markdown files:"
+	@find . -name "*.md" -not -path "./.venv/*" -not -path "./.git/*" | xargs wc -l | tail -1
+	@echo ""
+	@echo "Configuration files:"
+	@find . -name "*.toml" -o -name "*.ini" -o -name "*.cfg" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" | grep -v ".venv" | grep -v ".git" | xargs wc -l | tail -1
+	@echo ""
+	@echo "📁 Breakdown by directory:"
+	@echo "================================"
+	@echo "ray_mcp/ (main package):"
+	@find ./ray_mcp -name "*.py" | xargs wc -l | tail -1
+	@echo ""
+	@echo "tests/ (test files):"
+	@find ./tests -name "*.py" | xargs wc -l | tail -1
+	@echo ""
+	@echo "examples/ (example files):"
+	@find ./examples -name "*.py" | xargs wc -l | tail -1
+	@echo ""
+	@echo "scripts/ (utility scripts):"
+	@find ./scripts -name "*.py" -o -name "*.sh" | xargs wc -l | tail -1
+	@echo ""
+	@echo "docs/ (documentation):"
+	@find ./docs -name "*.md" -o -name "*.py" | xargs wc -l | tail -1
+	@echo ""
+	@echo "📈 Summary:"
+	@echo "================================"
+	@echo "Total Python lines:"
+	@find . -name "*.py" -not -path "./.venv/*" -not -path "./.git/*" -not -path "./.mypy_cache/*" -not -path "./.pytest_cache/*" -not -path "./htmlcov/*" -not -path "./.coverage_data/*" | xargs wc -l | tail -1
+	@echo ""
+	@echo "Total code lines (Python + Shell + Config):"
+	@find . -name "*.py" -o -name "*.sh" -o -name "*.toml" -o -name "*.ini" -o -name "*.cfg" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" | grep -v ".venv" | grep -v ".git" | grep -v ".mypy_cache" | grep -v ".pytest_cache" | grep -v "htmlcov" | grep -v ".coverage_data" | xargs wc -l | tail -1
 
 # Run e2e tests with automatic cleanup between tests (using pytest plugin)
 test-e2e-clean:
@@ -180,5 +212,5 @@ help:
 	@echo "🔧 Development:"
 	@echo "  lint-tool-functions  Lint tool function signatures"
 	@echo "  test-tool-functions  Test tool function signatures"
-	@echo "  count-lines      Count lines of code"
-	@echo "  clean            Clean build artifacts" 
+	@echo "  wc                 Count lines of code with directory breakdown"
+	@echo "  clean              Clean build artifacts" 
