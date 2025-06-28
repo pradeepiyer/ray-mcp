@@ -1,253 +1,490 @@
-# Troubleshooting
+# Ray MCP Server Troubleshooting Guide
 
-## MCP Server Tool Routing Issues
+This document provides comprehensive troubleshooting information for common issues with the Ray MCP Server.
 
-### All Tool Calls Route to Same Function
-**Problem**: All tool calls (e.g., `init_ray`, `submit_job`, `get_logs`) return the same response, typically from `get_logs`.
+## Common Issues and Solutions
 
-**Root Cause**: MCP server routing issues where multiple `@server.call_tool()` decorators conflict or only the last registered function is used.
+### 1. Ray Initialization Problems
 
-**Solution**: The Ray MCP Server now uses a **dispatcher pattern** to ensure reliable tool routing:
-- Single `@server.call_tool()` function (`dispatch_tool_call`) handles all tool requests
-- Tool name and arguments are passed to the dispatcher
-- Dispatcher routes to appropriate handler via `tool_registry.execute_tool()`
+#### Issue: "Ray is not initialized. Please start Ray first."
 
-**Verification**: 
-```bash
-# Check that tools are properly registered
-"Use cluster_info tool to verify tool routing is working"
+**Symptoms**: Tools return this error when trying to use Ray functionality.
 
-# Test different tools
-"Use init_ray tool with num_cpus=1"
-"Use submit_job tool with entrypoint='python examples/simple_job.py'"
+**Causes**:
+- Ray cluster hasn't been started
+- Ray initialization failed
+- Connection to existing cluster failed
+
+**Solutions**:
+```json
+// First, initialize Ray
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4
+  }
+}
+
+// Then use other tools
+{
+  "tool": "cluster_info",
+  "arguments": {}
+}
 ```
 
-### Tool Registration Failures
-**Problem**: Tools not appearing in client tool lists or failing to register.
+#### Issue: Port conflicts during cluster startup
+
+**Symptoms**: Error messages about ports being in use.
 
 **Solutions**:
-1. **Check Tool Registry**: Verify tools are registered in `ray_mcp/tool_registry.py`
-2. **Restart Server**: Restart the MCP server after configuration changes
-3. **Check Logs**: Look for registration errors in server logs
-4. **Verify Dispatcher**: Ensure `dispatch_tool_call` function is properly decorated
+```json
+// Use automatic port allocation
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4
+    // Don't specify head_node_port or dashboard_port
+  }
+}
 
-## Common Issues
+// Or specify different ports
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "head_node_port": 10002,
+    "dashboard_port": 8266
+  }
+}
+```
 
-### 1. Ray not starting
-**Problem**: Ray cluster fails to start or connect
+### 2. Multi-Node Cluster Issues
+
+#### Issue: Worker nodes fail to start
+
+**Symptoms**: Head node starts but worker nodes show errors.
+
+**Causes**:
+- Resource conflicts between head and worker nodes
+- Network connectivity issues
+- Insufficient system resources
+
+**Solutions**:
+```json
+// Ensure worker resources don't exceed head node capacity
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4,
+    "worker_nodes": [
+      {
+        "num_cpus": 2,  // Less than head node
+        "node_name": "worker-1"
+      }
+    ]
+  }
+}
+
+// Check cluster status
+{
+  "tool": "cluster_info",
+  "arguments": {}
+}
+```
+
+#### Issue: Worker nodes not connecting to head node
+
+**Symptoms**: Workers start but don't appear in cluster info.
+
+**Solutions**:
+- Check network connectivity between nodes
+- Verify firewall settings
+- Ensure head node is accessible from worker machines
+
+### 3. Job Submission Issues
+
+#### Issue: Job submission fails
+
+**Symptoms**: `submit_job` returns error or job doesn't start.
+
+**Causes**:
+- Invalid entrypoint path
+- Missing dependencies
+- Runtime environment issues
+
+**Solutions**:
+```json
+// Check job status
+{
+  "tool": "list_jobs",
+  "arguments": {}
+}
+
+// Inspect specific job
+{
+  "tool": "job_inspect",
+  "arguments": {
+    "job_id": "raysubmit_1234567890",
+    "mode": "debug"
+  }
+}
+
+// Get job logs
+{
+  "tool": "retrieve_logs",
+  "arguments": {
+    "identifier": "raysubmit_1234567890",
+    "log_type": "job",
+    "include_errors": true
+  }
+}
+```
+
+#### Issue: Runtime environment problems
+
+**Symptoms**: Jobs fail due to missing dependencies.
+
+**Solutions**:
+```json
+// Specify runtime environment
+{
+  "tool": "submit_job",
+  "arguments": {
+    "entrypoint": "python examples/distributed_training.py",
+    "runtime_env": {
+      "pip": ["torch", "numpy", "scikit-learn"]
+    }
+  }
+}
+```
+
+### 4. Log Retrieval Issues
+
+#### Issue: Can't retrieve logs
+
+**Symptoms**: `retrieve_logs` returns errors or empty results.
+
+**Solutions**:
+```json
+// Try different log types
+{
+  "tool": "retrieve_logs",
+  "arguments": {
+    "identifier": "raysubmit_1234567890",
+    "log_type": "job",
+    "num_lines": 100
+  }
+}
+
+// Use legacy get_logs for job logs
+{
+  "tool": "get_logs",
+  "arguments": {
+    "job_id": "raysubmit_1234567890",
+    "num_lines": 100
+  }
+}
+```
+
+### 5. Actor Management Issues
+
+#### Issue: Actors not responding
+
+**Symptoms**: Actors appear in list but don't respond to operations.
+
+**Solutions**:
+```json
+// List all actors
+{
+  "tool": "list_actors",
+  "arguments": {}
+}
+
+// Kill problematic actor
+{
+  "tool": "kill_actor",
+  "arguments": {
+    "actor_id": "actor_1234567890",
+    "no_restart": true
+  }
+}
+```
+
+### 6. Resource Management Issues
+
+#### Issue: Insufficient resources
+
+**Symptoms**: Jobs fail due to resource constraints.
+
+**Solutions**:
+```json
+// Check current resource usage
+{
+  "tool": "cluster_info",
+  "arguments": {}
+}
+
+// Start cluster with more resources
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 8,
+    "num_gpus": 2,
+    "object_store_memory": 4000000000
+  }
+}
+```
+
+## Debugging Commands
+
+### Cluster Health Check
+
+```json
+{
+  "tool": "cluster_info",
+  "arguments": {}
+}
+```
+
+### Job Debugging
+
+```json
+// List all jobs
+{
+  "tool": "list_jobs",
+  "arguments": {}
+}
+
+// Detailed job inspection
+{
+  "tool": "job_inspect",
+  "arguments": {
+    "job_id": "raysubmit_1234567890",
+    "mode": "debug"
+  }
+}
+
+// Get comprehensive logs
+{
+  "tool": "retrieve_logs",
+  "arguments": {
+    "identifier": "raysubmit_1234567890",
+    "log_type": "job",
+    "num_lines": 500,
+    "include_errors": true
+  }
+}
+```
+
+### Actor Debugging
+
+```json
+// List all actors
+{
+  "tool": "list_actors",
+  "arguments": {}
+}
+
+// Kill specific actor
+{
+  "tool": "kill_actor",
+  "arguments": {
+    "actor_id": "actor_1234567890"
+  }
+}
+```
+
+## Environment-Specific Issues
+
+### Development Environment
+
+#### Issue: Import errors
 
 **Solutions**:
 ```bash
-# Check Ray installation
-uv add ray[default]
-# or if using development environment:
+# Ensure virtual environment is activated
+source .venv/bin/activate
+
+# Reinstall dependencies
 uv sync
-
-# Check port availability
-ray start --head --port=6379
-
-# Check for existing Ray processes
-ray stop
-pkill -f ray
-
-# Start with explicit configuration
-ray start --head --num-cpus=4 --dashboard-host=0.0.0.0
+uv pip install -e .
 ```
 
-### 2. Job submission fails
-**Problem**: Jobs fail to submit or execute
+#### Issue: Test failures
 
 **Solutions**:
 ```bash
-# Verify runtime environment and entrypoint
-# Test job submission manually
-from ray.job_submission import JobSubmissionClient
-client = JobSubmissionClient("http://127.0.0.1:8265")
+# Clean up Ray processes
+./scripts/ray_cleanup.sh
 
-# Check job dependencies
-uv pip list | grep ray
-# or: uv tree | grep ray
-
-# Verify script exists and is executable
-python my_script.py
+# Run tests with cleanup
+make test-e2e
 ```
 
-### 3. MCP connection issues
-**Problem**: AI assistant can't connect to Ray MCP server
+### Production Environment
+
+#### Issue: Network connectivity
 
 **Solutions**:
-```bash
-# Check server logs
-ray-mcp
+- Verify firewall settings
+- Check network routes
+- Ensure ports are accessible
 
-# Verify configuration
-cat ~/.config/claude-desktop/claude_desktop_config.json
-
-# Test server directly
-ray-mcp --help
-
-# Check process is running
-ps aux | grep ray-mcp
-```
-
-### 4. "Ray is not initialized" errors
-**Problem**: Tools fail with initialization errors
-
-**Solution**:
-You must initialize Ray first:
-```
-"Start a Ray cluster with 4 CPUs"
-# or
-"Connect to Ray cluster at ray://127.0.0.1:10001"
-```
-
-### 5. Permission denied errors
-**Problem**: Ray fails to create directories or files
+#### Issue: Resource constraints
 
 **Solutions**:
-```bash
-# Check permissions
-ls -la /tmp/ray
-
-# Clean up old Ray sessions
-ray stop
-rm -rf /tmp/ray/session_*
-
-# Start with different temp directory
-export RAY_TMPDIR=/home/user/ray_tmp
-mkdir -p $RAY_TMPDIR
-ray start --head
-```
-
-### 6. Memory or resource errors
-**Problem**: Out of memory or resource allocation failures
-
-**Solutions**:
-```bash
-# Start with limited resources
-ray start --head --num-cpus=2 --object-store-memory=1000000000
-
-# Check system resources
-free -h
-df -h
-
-# Monitor Ray resource usage
-ray status
-```
-
-## Debugging
-
-### Enable Debug Logging
-```bash
-export RAY_LOG_LEVEL=DEBUG
-ray-mcp
-```
-
-### Check Ray Dashboard
-Open in browser:
-```
-http://localhost:8265
-```
-
-### Ray Status Commands
-```bash
-# Check cluster status
-ray status
-
-# List running jobs
-ray job list
-
-# Get job logs
-ray job logs <job_id>
-
-# Check Ray processes
-ray summary
-```
-
-### MCP Server Debugging
-```bash
-# Run server with verbose output
-ray-mcp --log-level DEBUG
-
-# Check MCP protocol communication
-# (Enable debug in your MCP client)
-```
-
-## Log Locations
-
-### Ray Logs
-- **Default location**: `/tmp/ray/session_*/logs/`
-- **Dashboard logs**: `/tmp/ray/session_*/logs/dashboard.log`
-- **Worker logs**: `/tmp/ray/session_*/logs/worker-*.log`
-
-### Ray MCP Server Logs
-- **Stdout/stderr**: Check terminal where `ray-mcp` was started
-- **System logs**: Check system logging (varies by OS)
+- Monitor system resources
+- Adjust cluster configuration
+- Use appropriate worker node specifications
 
 ## Performance Issues
 
 ### Slow Job Execution
-1. Check cluster resources: `ray status`
-2. Monitor resource usage in dashboard
-3. Optimize job parallelization
-4. Check network connectivity for distributed setups
 
-### High Memory Usage
-1. Reduce object store memory: `--object-store-memory=500 * 1024 * 1024`
-2. Use Ray object references efficiently
-3. Clean up unused objects: `ray.shutdown()`
+**Causes**:
+- Insufficient resources
+- Network latency
+- Inefficient code
+
+**Solutions**:
+```json
+// Monitor resource usage
+{
+  "tool": "cluster_info",
+  "arguments": {}
+}
+
+// Optimize cluster configuration
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 16,
+    "object_store_memory": 8000000000,
+    "worker_nodes": [
+      {
+        "num_cpus": 8,
+        "object_store_memory": 4000000000
+      }
+    ]
+  }
+}
+```
+
+### Memory Issues
+
+**Symptoms**: Out of memory errors or slow performance.
+
+**Solutions**:
+- Increase object store memory
+- Monitor memory usage
+- Optimize data processing patterns
+
+## Error Messages and Meanings
+
+### Common Error Messages
+
+1. **"Ray is not initialized"**: Start Ray cluster first
+2. **"Port already in use"**: Use different ports or automatic allocation
+3. **"Job submission failed"**: Check entrypoint and runtime environment
+4. **"Worker node failed to start"**: Check resource configuration
+5. **"Connection refused"**: Check network connectivity
+
+### Error Response Format
+
+```json
+{
+  "status": "error",
+  "message": "Error description",
+  "error": "Detailed error information"
+}
+```
+
+## Recovery Procedures
+
+### Cluster Recovery
+
+```json
+// Stop current cluster
+{
+  "tool": "stop_ray",
+  "arguments": {}
+}
+
+// Restart with clean configuration
+{
+  "tool": "init_ray",
+  "arguments": {
+    "num_cpus": 4
+  }
+}
+```
+
+### Job Recovery
+
+```json
+// Cancel problematic job
+{
+  "tool": "cancel_job",
+  "arguments": {
+    "job_id": "raysubmit_1234567890"
+  }
+}
+
+// Resubmit with corrected configuration
+{
+  "tool": "submit_job",
+  "arguments": {
+    "entrypoint": "python examples/simple_job.py"
+  }
+}
+```
+
+## Prevention Best Practices
+
+1. **Monitor Resources**: Regularly check cluster status
+2. **Use Appropriate Configuration**: Match cluster size to workload
+3. **Handle Errors Gracefully**: Implement proper error handling in jobs
+4. **Clean Up Resources**: Stop clusters when not in use
+5. **Test Configurations**: Validate setups in development first
+6. **Use Enhanced Output**: Enable enhanced output for better debugging
 
 ## Getting Help
 
-1. **Check Ray documentation**: https://docs.ray.io/
-2. **Ray GitHub issues**: https://github.com/ray-project/ray/issues
-3. **MCP specification**: https://spec.modelcontextprotocol.io/
-4. **Create issue**: In this repository for Ray MCP Server specific issues
+### Debug Information
 
-## Known Limitations
+When reporting issues, include:
 
-- **Log Retrieval**: Actor and node log retrieval has some limitations (job logs fully supported)
-- **Authentication**: No built-in authentication (relies on Ray cluster security)
-- **Multi-cluster**: Currently supports single cluster per server instance
-- **Windows**: Some Ray features may have limited Windows support
+1. **Cluster Configuration**: The `init_ray` arguments used
+2. **Job Configuration**: The `submit_job` arguments used
+3. **Error Messages**: Complete error responses
+4. **System Information**: OS, Python version, Ray version
+5. **Logs**: Relevant log output from tools
 
-## Multi-Node Cluster Issues
+### Useful Commands
 
-### Worker Node Startup Failures
-**Problem**: Worker nodes fail to start or connect to the head node.
-
-**Solutions**:
-1. **Check Network Connectivity**: Ensure worker nodes can reach the head node
-2. **Verify Port Configuration**: Check that head_node_port (default: 10001) is accessible
-3. **Resource Availability**: Ensure sufficient CPU/memory resources for worker nodes
-4. **Firewall Settings**: Verify that Ray ports are open between nodes
-
-**Debug Steps**:
 ```bash
-# Check worker node status
-"Use cluster_info tool to check worker node status and cluster connectivity"
+# Check Ray status
+ray status
 
-# Check cluster status
-"Use cluster_info tool to verify cluster connectivity"
+# Clean up Ray processes
+./scripts/ray_cleanup.sh
 
-# Check Ray logs
-"Check Ray logs in /tmp/ray/session_*/logs/"
+# Check system resources
+htop
+df -h
+free -h
+
+# Check network connectivity
+ping <head-node-ip>
+telnet <head-node-ip> <port>
 ```
 
-### Worker Node Process Management
-**Problem**: Worker nodes stop unexpectedly or become unresponsive.
+### Enhanced Output Mode
 
-**Solutions**:
-1. **Process Monitoring**: Use `cluster_info` tool to monitor worker processes
-2. **Resource Monitoring**: Check CPU/memory usage on worker nodes
-3. **Graceful Shutdown**: Use `stop_ray` to properly shutdown all worker nodes
-4. **Force Restart**: If needed, manually kill worker processes and restart
+Enable enhanced output for better debugging:
 
-### Configuration Issues
-**Problem**: Worker node configuration errors or invalid parameters.
+```bash
+export RAY_MCP_ENHANCED_OUTPUT=true
+```
 
-**Solutions**:
-1. **Parameter Validation**: Ensure all required parameters (num_cpus) are provided
-2. **Resource Limits**: Check that requested resources are available
-3. **Node Names**: Ensure unique node names if specified
-4. **Custom Resources**: Verify custom resource syntax and availability 
+This provides additional context and suggestions for resolving issues. 

@@ -1,283 +1,408 @@
-# Development
+# Ray MCP Server Development Guide
 
-## Architecture
+This document provides comprehensive information for developers working on the Ray MCP Server.
+
+## Development Setup
+
+### Prerequisites
+
+- Python 3.10 or higher
+- UV package manager
+- Git
+
+### Initial Setup
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd ray-mcp
+
+# Create virtual environment and install dependencies
+uv sync
+
+# Install the package in development mode
+uv pip install -e .
+
+# Activate virtual environment
+source .venv/bin/activate
+```
+
+### Development Dependencies
+
+The project uses UV for dependency management with the following development dependencies:
+
+```toml
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.0.0",
+    "black>=24.0.0",
+    "isort>=5.12.0",
+    "pyright>=1.1.0",
+]
+```
+
+## Project Structure
 
 ```
-ray_mcp/
-├── __init__.py          # Package initialization
-├── main.py              # MCP server entry point with dispatcher pattern
-├── ray_manager.py       # Core Ray cluster management logic
-├── tool_registry.py     # Centralized tool registry: schemas, metadata, handlers
-└── types.py             # Type definitions
-
-examples/
-├── simple_job.py        # Basic Ray job example
-└── actor_example.py     # Ray actor usage example
-
-tests/
-├── test_mcp_tools.py           # MCP tool call tests
-├── test_ray_manager.py         # Ray manager unit tests
-├── test_ray_manager_methods.py # Detailed method tests
-├── test_integration.py         # Integration tests
-├── test_full_parameter_flow.py # Tool function parameter validation tests
-└── README.md                   # Test documentation
-
-docs/config/
-├── claude_desktop_config.json # Claude Desktop configuration
-├── mcp_server_config.json     # Comprehensive config examples
-└── README.md                  # Configuration guide
+ray-mcp/
+├── ray_mcp/                 # Main package
+│   ├── __init__.py
+│   ├── main.py              # MCP server entry point
+│   ├── tool_registry.py     # Centralized tool registry
+│   ├── ray_manager.py       # Ray cluster management
+│   ├── worker_manager.py    # Worker node management
+│   └── types.py             # Type definitions
+├── examples/                # Example applications
+├── tests/                   # Test suite
+├── docs/                    # Documentation
+├── scripts/                 # Utility scripts
+├── pyproject.toml          # Project configuration
+└── Makefile                # Development commands
 ```
+
+## Architecture Overview
+
+### MCP Server Architecture
+
+The Ray MCP Server uses a **dispatcher pattern** for reliable tool routing:
+
+1. **Centralized Tool Registry** (`tool_registry.py`): All tool definitions, schemas, and handlers
+2. **Single Dispatcher** (`main.py`): Routes all tool calls through `dispatch_tool_call()`
+3. **Ray Manager** (`ray_mcp/ray_manager.py`): Core Ray cluster management logic
+4. **Worker Manager** (`ray_mcp/worker_manager.py`): Multi-node cluster worker management
 
 ### Key Components
 
-- **MCP Server**: Main server handling MCP protocol communication with dispatcher pattern
-- **RayManager**: Core class managing Ray cluster operations
-- **Tool Registry**: Centralized registry (`tool_registry.py`) for all tool schemas, metadata, and handlers
-- **Dispatcher Function**: Single `@server.call_tool()` function that routes all tool calls to the appropriate handlers
-- **Error Handling**: Comprehensive error handling and status reporting
-- **Enhanced Output**: System prompt wrapper for LLM-generated suggestions and next steps
+#### Tool Registry (`ray_mcp/tool_registry.py`)
 
-## How to Add a New Tool (2024+)
+- Centralized tool registration and metadata
+- Parameter validation and filtering
+- Enhanced output mode support
+- Error handling and response formatting
 
-> **Tool registration is now DRY and centralized with reliable routing!**
+#### Ray Manager (`ray_mcp/ray_manager.py`)
 
-1. **Add to the registry:**
-   - Open `ray_mcp/tool_registry.py`.
-   - Add a new entry in the `_register_all_tools` method with:
-     - `name`, `description`, `schema`, and a handler (async method).
-   - The handler should call the appropriate method on `RayManager` or implement custom logic.
+- Ray cluster initialization and management
+- Job submission and monitoring
+- Actor management
+- Log retrieval and analysis
+- Multi-node cluster support
 
-2. **No additional MCP registration needed:**
-   - The dispatcher function automatically handles routing for all tools registered in the registry.
-   - No need to add individual `@server.call_tool()` functions.
+#### Worker Manager (`ray_mcp/worker_manager.py`)
 
-3. **No more manual schema duplication!**
-   - All schemas, descriptions, and handlers are now in one place (`tool_registry.py`).
-   - The old `tools.py` and individual tool functions are deprecated and removed.
+- Worker node process management
+- Worker status monitoring
+- Resource allocation tracking
+- Worker lifecycle management
 
-4. **Test your tool:**
-   - Add or update tests in `tests/` as needed.
-   - Run `make test` to verify.
+## Development Commands
 
-## Setup for Development
-
-### Migration to uv
-> **📦 Package Manager Migration**: Ray MCP Server has migrated from `pip`/`requirements.txt` to `uv` for improved dependency management, faster installs, and better reproducibility. All installation and development commands now use `uv`.
-
-### Prerequisites
-- Python 3.10 or higher
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
-- Ray 2.47.0 or higher (current latest: 2.47.1)
-- MCP SDK 1.0.0 or higher
-
-### Install uv (if not already installed)
-```bash
-# Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# or: pip install uv
-```
-
-### Install from source
-```bash
-git clone https://github.com/pradeepiyer/ray-mcp.git
-cd ray-mcp
-uv sync  # Install all dependencies including dev dependencies
-```
-
-### Alternative installation methods
-```bash
-# Install package only (production)
-uv pip install -e .
-
-# Development setup (recommended)
-make dev-install
-```
-
-## Running Tests
-
-### Test Categories
-
-We have organized tests into different categories for optimal development workflow:
-
-- **Unit tests**: Fast, isolated tests (`test_ray_manager.py`, `test_ray_manager_methods.py`)
-- **Integration tests**: Medium-speed tests with some Ray interaction (`test_integration.py`, `test_mcp_tools.py`)
-- **End-to-end tests**: Comprehensive, slow tests with full Ray workflows (`test_e2e_integration.py`)
-
-### Quick Test Commands
+### Testing
 
 ```bash
-# Fast development testing (excludes e2e tests) - recommended for daily development
-make test
+# Run all tests
+uv run pytest
 
-# Smoke tests - minimal verification (30 seconds)
-make test-smoke
+# Run fast tests (excludes e2e)
+make test-fast
 
-# End-to-end tests only - for major changes (5-10 minutes)
+# Run e2e tests with cleanup
 make test-e2e
 
-# Complete test suite - for releases (10-15 minutes)
-make test-full
+# Run specific test categories
+uv run pytest tests/test_ray_manager.py
+uv run pytest tests/test_multi_node_cluster.py
+uv run pytest tests/test_e2e_integration.py
 
-# Smart test runner - automatically chooses appropriate tests based on changes
-make test-smart
+# Run tests with coverage
+uv run pytest --cov=ray_mcp tests/
 ```
 
-### Manual Test Execution
+### Code Quality
 
 ```bash
-# Fast tests (excludes e2e) - typical development workflow
-uv run pytest tests/ -m "not e2e and not slow" --tb=short -v
+# Run all linting checks
+make lint
 
-# Only end-to-end tests
-uv run pytest tests/ -m "e2e" --tb=short -v
+# Format code
+make format
 
-# Only smoke tests
-uv run pytest tests/ -m "smoke" --tb=short -v
+# Type checking
+uv run pyright ray_mcp/
 
-# All tests
-uv run pytest tests/ --tb=short -v
+# Tool function specific linting
+make lint-tool-functions
 ```
 
-### When to Run Different Test Suites
+### Package Management
 
-- **Daily Development**: `make test` (fast tests, ~1-2 minutes)
-- **Before Committing**: `make test-smart` (intelligent test selection)
-- **Major Changes**: `make test-e2e` (comprehensive e2e tests)
-- **Before Releases**: `make test-full` (complete test suite)
-- **Quick Verification**: `make test-smoke` (basic functionality check)
+```bash
+# Sync dependencies
+uv sync
+
+# Update lock file
+uv lock
+
+# Check for updates
+uv tree
+uv pip check
+```
+
+## Testing Strategy
 
 ### Test Categories
-- **Unit tests**: `test_ray_manager.py`, `test_ray_manager_methods.py`
-- **Integration tests**: `test_integration.py`, `test_mcp_tools.py`
-- **End-to-end tests**: `test_e2e_integration.py`
 
-## Code Quality
+1. **Unit Tests**: Fast, isolated tests for individual components
+2. **Integration Tests**: Medium-speed tests with Ray interaction
+3. **End-to-End Tests**: Comprehensive tests with full Ray workflows
+4. **Multi-Node Tests**: Tests for multi-node cluster functionality
+
+### Test Files
+
+- `tests/test_ray_manager.py`: Core Ray management functionality
+- `tests/test_multi_node_cluster.py`: Multi-node cluster features
+- `tests/test_e2e_integration.py`: End-to-end workflow tests
+- `tests/test_main.py`: MCP server functionality
+- `tests/test_worker_manager.py`: Worker node management
+- `tests/test_integration.py`: Integration test scenarios
+
+### Test Configuration
+
+```python
+# pytest.ini
+[tool:pytest]
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = 
+    --strict-markers
+    --strict-config
+    --tb=short
+markers =
+    unit: Unit tests
+    integration: Integration tests
+    e2e: End-to-end tests
+    smoke: Smoke tests
+```
+
+## Code Style and Standards
 
 ### Code Formatting
+
+The project uses Black for code formatting and isort for import sorting:
+
 ```bash
-black ray_mcp/
-isort ray_mcp/
+# Format code
+uv run black ray_mcp/ examples/ tests/
+
+# Sort imports
+uv run isort ray_mcp/ examples/ tests/
 ```
 
 ### Type Checking
+
+Type checking is performed with Pyright:
+
 ```bash
-pyright .
+uv run pyright ray_mcp/
 ```
 
-### Linting
-```bash
-ruff check ray_mcp/
+### Linting Rules
+
+- Use type hints for all function parameters and return values
+- Follow PEP 8 style guidelines
+- Use descriptive variable and function names
+- Add docstrings for all public functions and classes
+- Avoid using `locals()` in tool functions (enforced by custom linting)
+
+## Adding New Tools
+
+### 1. Define Tool Schema
+
+Add the tool definition to `ray_mcp/tool_registry.py`:
+
+```python
+self._register_tool(
+    name="new_tool",
+    description="Description of the new tool",
+    schema={
+        "type": "object",
+        "properties": {
+            "param1": {
+                "type": "string",
+                "description": "Description of parameter"
+            }
+        },
+        "required": ["param1"]
+    },
+    handler=self._new_tool_handler,
+)
 ```
 
-## Contributing
+### 2. Implement Handler
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make changes with tests
-4. Ensure tests pass (`make test`)
-5. For major changes, run e2e tests (`make test-e2e`)
-6. Format code (`black . && isort .`)
-7. Submit a pull request
+Add the handler method to the `ToolRegistry` class:
 
-### Contribution Guidelines
-- Add tests for new functionality
-- Follow existing code style
-- Update documentation as needed
-- Ensure all tests pass
-- Use `make test-smart` to run appropriate tests for your changes
+```python
+async def _new_tool_handler(self, **kwargs) -> Dict[str, Any]:
+    """Handler for new_tool."""
+    return await self.ray_manager.new_tool_method(**kwargs)
+```
 
-## Release Process
+### 3. Implement Core Logic
 
-1. Update version in `pyproject.toml`
-2. Update CHANGELOG.md
-3. Run full test suite (`make test-full`)
-4. Create release PR
-5. Tag release after merge
-6. GitHub Actions will handle PyPI deployment
+Add the core implementation to `ray_mcp/ray_manager.py`:
+
+```python
+async def new_tool_method(self, param1: str) -> Dict[str, Any]:
+    """Implementation of the new tool."""
+    try:
+        # Implementation logic
+        return {"status": "success", "result": "data"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+```
+
+### 4. Add Tests
+
+Create tests for the new tool:
+
+```python
+async def test_new_tool():
+    """Test the new tool functionality."""
+    manager = RayManager()
+    result = await manager.new_tool_method("test_param")
+    assert result["status"] == "success"
+```
 
 ## Debugging
 
-### Common Development Issues
-
-1. **Ray import errors**: Ensure Ray is properly installed
-   ```bash
-   uv add ray[default]
-   # or if using the development environment:
-   uv sync
-   ```
-
-2. **MCP protocol issues**: Check server logs and client configuration
-   ```bash
-   ray-mcp --log-level DEBUG
-   ```
-
-3. **Test failures**: Run specific test files
-   ```bash
-   uv run pytest tests/test_specific_module.py -v
-   ```
-
-### Debugging Tools
-
-- Ray Dashboard: `http://localhost:8265`
-- MCP Server logs: Check stdout/stderr
-- Ray logs: Usually in `/tmp/ray/session_*/logs/` 
-
-## Enhanced Output Development
-
-The Ray MCP Server includes an optional enhanced output feature that wraps tool responses with system prompts for LLM-generated suggestions and next steps.
-
-### How It Works
-
-1. **Environment Variable Control**: The feature is controlled by `RAY_MCP_ENHANCED_OUTPUT` environment variable
-2. **System Prompt Wrapper**: When enabled, tool responses are wrapped with structured prompts
-3. **LLM Enhancement**: The LLM generates human-readable summaries, context, and next steps
-4. **Backward Compatibility**: Default behavior returns standard JSON responses
-
-### Development Configuration
+### Local Development
 
 ```bash
-# Enable enhanced output for development
-export RAY_MCP_ENHANCED_OUTPUT=true
+# Run server in debug mode
+RAY_LOG_LEVEL=DEBUG python -m ray_mcp.main
 
-# Disable enhanced output (default)
-export RAY_MCP_ENHANCED_OUTPUT=false
+# Run with enhanced output
+RAY_MCP_ENHANCED_OUTPUT=true python -m ray_mcp.main
 ```
 
-### Testing Enhanced Output
-
-```bash
-# Test with enhanced output enabled
-RAY_MCP_ENHANCED_OUTPUT=true uv run pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
-
-# Test with standard output (default)
-uv run pytest tests/test_main.py::TestMain::test_call_tool_with_arguments -v
-```
-
-### Implementation Details
-
-- **Location**: `ray_mcp/main.py` - `_wrap_with_system_prompt()` function
-- **Configuration**: Environment variable `RAY_MCP_ENHANCED_OUTPUT`
-- **Fallback**: Returns original JSON if environment variable is not set to "true"
-- **Structure**: System prompts include tool name, JSON response, and LLM instructions
-
-### Customizing the Prompt
-
-To modify the system prompt structure, edit the `_wrap_with_system_prompt()` function in `ray_mcp/main.py`:
+### Debug Configuration
 
 ```python
-def _wrap_with_system_prompt(tool_name: str, result: Dict[str, Any]) -> str:
-    # Customize the prompt structure here
-    system_prompt = f"""You are an AI assistant helping with Ray cluster management...
-    # ... rest of the prompt
-    """
-    return system_prompt
+# Enable debug logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Debug Ray initialization
+ray.init(log_to_driver=True)
 ```
 
-## Recent Features
+### Common Debugging Scenarios
 
-### Multi-Node Cluster Support
-The Ray MCP Server now supports creating clusters with multiple worker nodes:
+1. **Cluster Startup Issues**: Check port availability and resource conflicts
+2. **Job Submission Problems**: Verify runtime environment and entrypoint
+3. **Multi-Node Issues**: Check network connectivity and worker configuration
+4. **Tool Routing Problems**: Verify tool registration in registry
 
-- **New Module**: `ray_mcp/worker_manager.py` - Comprehensive worker node lifecycle management
-- **Enhanced Tool**: `init_ray` now accepts `worker_nodes` parameter for multi-node setup
-- **New Tool**: `cluster_info` for comprehensive cluster information including status, resources, nodes, and worker status
+## Performance Optimization
+
+### Cluster Configuration
+
+- Use appropriate object store memory for your workload
+- Configure worker nodes based on resource requirements
+- Monitor resource usage with `cluster_info`
+
+### Code Optimization
+
+- Use async/await patterns consistently
+- Implement proper error handling and cleanup
+- Optimize log retrieval for large outputs
+- Use efficient data structures for large datasets
+
+## Contributing
+
+### Development Workflow
+
+1. Create a feature branch from main
+2. Implement changes with tests
+3. Run all tests and linting checks
+4. Update documentation as needed
+5. Submit a pull request
+
+### Code Review Checklist
+
+- [ ] All tests pass
+- [ ] Code follows style guidelines
+- [ ] Type hints are complete
+- [ ] Documentation is updated
+- [ ] No new linting errors
+- [ ] Performance impact is considered
+
+### Release Process
+
+1. Update version in `pyproject.toml`
+2. Update changelog
+3. Run full test suite
+4. Create release tag
+5. Build and publish package
+
+## Troubleshooting
+
+### Common Development Issues
+
+1. **Import Errors**: Ensure virtual environment is activated
+2. **Test Failures**: Check Ray cluster state and cleanup
+3. **Linting Errors**: Run formatting tools and fix style issues
+4. **Type Errors**: Add proper type hints and run type checker
+
+### Environment Issues
+
+```bash
+# Reset development environment
+make clean
+uv sync
+uv pip install -e .
+```
+
+### Ray Cluster Issues
+
+```bash
+# Clean up Ray processes
+./scripts/ray_cleanup.sh
+
+# Check Ray status
+ray status
+```
+
+## Documentation
+
+### Documentation Structure
+
+- `README.md`: Main project documentation
+- `docs/TOOLS.md`: Tool reference and usage
+- `docs/EXAMPLES.md`: Example applications and workflows
+- `docs/CONFIGURATION.md`: Configuration options
+- `docs/DEVELOPMENT.md`: Development guide (this file)
+- `docs/TROUBLESHOOTING.md`: Troubleshooting guide
+
+### Updating Documentation
+
+- Keep documentation in sync with code changes
+- Update examples when adding new features
+- Maintain consistent formatting and style
+- Test documentation examples
+
+## Best Practices
+
+1. **Test-Driven Development**: Write tests before implementing features
+2. **Type Safety**: Use type hints throughout the codebase
+3. **Error Handling**: Implement comprehensive error handling
+4. **Documentation**: Keep documentation up to date
+5. **Code Review**: Review all changes before merging
+6. **Performance**: Consider performance implications of changes
+7. **Backward Compatibility**: Maintain compatibility when possible

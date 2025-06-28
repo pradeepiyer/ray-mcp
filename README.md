@@ -7,8 +7,8 @@ A Model Context Protocol (MCP) server for managing Ray clusters, jobs, and distr
 - **Multi-Node Cluster Management**: Start and manage Ray clusters with head nodes and worker nodes
 - **Job Management**: Submit, monitor, and cancel distributed jobs
 - **Actor Management**: List and manage Ray actors
-- **Monitoring**: Performance metrics, health checks, and optimization
-- **Debugging**: Log retrieval and job debugging tools
+- **Enhanced Logging**: Comprehensive log retrieval with error analysis
+- **LLM-Enhanced Output**: Optional enhanced responses with context and suggestions
 
 ## MCP Server Architecture
 
@@ -31,6 +31,7 @@ ray_mcp/
 ├── main.py              # MCP server with dispatcher pattern
 ├── tool_registry.py     # Centralized tool registry and handlers
 ├── ray_manager.py       # Core Ray cluster management logic
+├── worker_manager.py    # Worker node management
 └── types.py             # Type definitions
 ```
 
@@ -49,7 +50,7 @@ uv sync
 # Install the package
 uv pip install -e .
 
-# activate venv
+# Activate virtual environment
 source .venv/bin/activate
 ```
 
@@ -183,7 +184,7 @@ This approach leverages the LLM's capabilities to provide actionable insights wi
 
 ## Available Tools
 
-The server provides a comprehensive set of tools for Ray management, covering cluster operations, job management, actor management, monitoring, and scheduling:
+The server provides a comprehensive set of tools for Ray management:
 
 ### Cluster Operations
 - `init_ray` - Initialize Ray cluster - start a new cluster or connect to existing one
@@ -202,11 +203,6 @@ The server provides a comprehensive set of tools for Ray management, covering cl
 - `list_actors` - List all actors in the cluster
 - `kill_actor` - Terminate a specific actor
 
-### Enhanced Monitoring
-- `performance_metrics` - Get detailed cluster performance metrics
-- `health_check` - Perform comprehensive cluster health check
-- `optimize_config` - Get cluster optimization recommendations
-
 ## Examples
 
 See the `examples/` directory for working examples:
@@ -217,6 +213,8 @@ See the `examples/` directory for working examples:
 - `data_pipeline.py` - Data processing pipeline
 - `distributed_training.py` - Distributed machine learning
 - `workflow_orchestration.py` - Complex workflow orchestration
+- `connect_existing_cluster.py` - Connect to existing Ray cluster
+- `log_retrieval_example.py` - Log retrieval and analysis examples
 
 ## Configuration
 
@@ -231,12 +229,15 @@ See `docs/config/` for configuration examples and setup instructions.
 uv run pytest
 
 # Run specific test categories
-uv run pytest tests/test_mcp_tools.py
+uv run pytest tests/test_ray_manager.py
 uv run pytest tests/test_multi_node_cluster.py
 uv run pytest tests/test_e2e_integration.py
 
-# Run new parameter validation tests
-uv run pytest tests/test_full_parameter_flow.py
+# Run fast tests (excludes e2e)
+make test-fast
+
+# Run e2e tests with cleanup
+make test-e2e
 ```
 
 ### Test Categories
@@ -246,8 +247,7 @@ The test suite includes comprehensive coverage:
 - **Unit Tests**: Fast, isolated tests for individual components
 - **Integration Tests**: Medium-speed tests with Ray interaction
 - **End-to-End Tests**: Comprehensive tests with full Ray workflows
-- **Parameter Validation Tests**: Tests for tool function parameter handling and filtering
-- **MCP Tool Tests**: Tests for MCP protocol compliance and tool routing
+- **Multi-Node Tests**: Tests for multi-node cluster functionality
 
 ### Code Quality
 

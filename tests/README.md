@@ -1,275 +1,463 @@
-# Ray MCP Server - Test Suite
+# Ray MCP Server Test Suite
 
-This directory contains the comprehensive test suite for the Ray MCP (Model Context Protocol) Server. The test suite ensures reliability, correctness, and maintainability of the Ray cluster management functionality.
+This document provides comprehensive information about the test suite for the Ray MCP Server.
 
-## 📊 Test Coverage Overview
+## Test Organization
 
-**Current Status**: ✅ **Excellent Coverage** (All tests passing)
+The test suite is organized into different categories for optimal development workflow:
 
-| Module | Statements | Missing | Coverage | Status |
-|--------|------------|---------|----------|---------|
-| `ray_mcp/__init__.py` | 3 | 0 | **100%** | ✅ Complete |
-| `ray_mcp/main.py` | 94 | 20 | **79%** | ✅ Good |
-| `ray_mcp/ray_manager.py` | 377 | 46 | **88%** | ✅ Excellent |
-| `ray_mcp/tools.py` | 60 | 0 | **100%** | ✅ Complete |
-| `ray_mcp/types.py` | 140 | 0 | **100%** | ✅ Complete |
-| `ray_mcp/worker_manager.py` | 104 | 76 | **26.92%** | ✅ New Module |
-| **TOTAL** | **674** | **66** | **90.21%** | ✅ **Excellent** |
+### Test Categories
 
-> **🎯 Quality Milestone**: All tests pass consistently with excellent coverage exceeding 90%
+1. **Unit Tests**: Fast, isolated tests for individual components
+2. **Integration Tests**: Medium-speed tests with Ray interaction
+3. **End-to-End Tests**: Comprehensive tests with full Ray workflows
+4. **Multi-Node Tests**: Tests for multi-node cluster functionality
 
-## 🧪 Test Structure
+### Test Files
 
-### Test Files Overview
+- `test_ray_manager.py`: Core Ray management functionality
+- `test_multi_node_cluster.py`: Multi-node cluster features
+- `test_e2e_integration.py`: End-to-end workflow tests
+- `test_main.py`: MCP server functionality
+- `test_worker_manager.py`: Worker node management
+- `test_integration.py`: Integration test scenarios
+- `test_utils.py`: Utility functions and helpers
+- `conftest.py`: Pytest configuration and fixtures
 
-```
-tests/
-├── test_main.py                  # MCP server entry point tests
-├── test_ray_manager.py           # Core Ray manager functionality  
-├── test_ray_manager_methods.py   # Advanced Ray manager methods
-├── test_tools.py                 # Tool function implementations
-├── test_mcp_tools.py             # MCP tool integration tests
-├── test_integration.py           # Integration workflow tests
-├── test_e2e_integration.py       # End-to-end workflow tests
-├── test_multi_node_cluster.py    # Multi-node cluster and WorkerManager tests
-└── README.md                     # This file
-```
-
-## 📋 Detailed Test Breakdown
-
-### `test_main.py` - MCP Server Tests
-Tests the main MCP server functionality and tool dispatching.
-
-**Key Test Areas:**
-- ✅ Tool listing and schema validation
-- ✅ Tool dispatching and parameter handling
-- ✅ Error handling and Ray availability checks
-- ✅ JSON serialization and response formatting
-- ✅ Server lifecycle and asyncio integration
-- ✅ Comprehensive argument validation scenarios
-
-**Coverage**: 79% (20/94 lines missing)
-- Missing: Import error handling, main async server loop, `__main__` block
-
-### `test_ray_manager.py` - Core Ray Manager
-Comprehensive testing of the RayManager class core functionality.
-
-**Key Test Areas:**
-- ✅ Cluster lifecycle (start, stop, connect, status)
-- ✅ Job management (submit, list, status, cancel)
-- ✅ Actor management (list, kill)
-- ✅ Resource and node information retrieval
-- ✅ Error handling for uninitialized Ray and missing clients
-- ✅ Performance metrics and health checks
-- ✅ Edge cases and exception scenarios
-
-**Coverage**: 88% (46/377 lines missing)
-- Missing: Some edge cases in advanced monitoring features
-
-### `test_ray_manager_methods.py` - Advanced Methods
-Tests advanced Ray manager methods and complex workflows.
-
-**Key Test Areas:**
-- ✅ Job monitoring and progress tracking
-- ✅ Job debugging and failure analysis
-- ✅ Job scheduling and workflow orchestration
-- ✅ Cluster optimization recommendations
-- ✅ Comprehensive logging with multiple parameters
-- ✅ Health check scenarios and recommendations
-- ✅ Debug suggestion generation
-- ✅ Default parameter handling
-
-**Coverage**: Contributes to 88% overall ray_manager.py coverage
-
-### `test_tools.py` - Tool Functions
-Tests the individual tool function implementations.
-
-**Key Test Areas:**
-- ✅ All MCP tools (cluster, job, actor, monitoring)
-- ✅ Parameter validation and default values
-- ✅ JSON response formatting and indentation
-- ✅ Error propagation and handling
-
-**Coverage**: 100% (60/60 lines covered)
-
-### `test_mcp_tools.py` - MCP Integration
-Tests the integration between MCP protocol and Ray functionality.
-
-**Key Test Areas:**
-- ✅ MCP tool call integration
-- ✅ Parameter validation and error handling
-- ✅ Ray availability checks
-- ✅ Unknown tool handling
-- ✅ Optional vs required parameter handling
-
-**Coverage**: Contributes to overall integration testing
-
-### `test_integration.py` - Integration Workflows
-Tests complete workflows and integration scenarios.
-
-**Key Test Areas:**
-- ✅ Complete cluster management workflows
-- ✅ Job lifecycle management
-- ✅ Tool schema validation
-- ✅ Error propagation across components
-- ✅ Concurrent tool execution
-- ✅ Complex parameter handling
-
-### `test_e2e_integration.py` - End-to-End Tests
-Comprehensive end-to-end workflow testing with realistic scenarios.
-
-**Key Test Areas:**
-- ✅ Complete Ray cluster workflows
-- ✅ Actor management workflows
-- ✅ Monitoring and health check workflows
-- ✅ Job failure and debugging workflows
-- ✅ Distributed training scenarios
-- ✅ Data pipeline workflows
-- ✅ Workflow orchestration
-- ✅ Standalone example script execution
-
-### `test_multi_node_cluster.py` - Multi-node Cluster and WorkerManager Tests
-Tests the new multi-node cluster functionality and WorkerManager class.
-
-**Key Test Areas:**
-- ✅ Multi-node cluster startup with worker nodes
-- ✅ WorkerManager class functionality and integration
-- ✅ Worker node lifecycle management (start, stop, status)
-- ✅ Worker status reporting and monitoring
-- ✅ Error handling for worker node failures
-- ✅ Integration with RayManager class
-- ✅ Worker node configuration validation
-- ✅ Process management and cleanup
-- ✅ Multi-node cluster status reporting
-
-**Coverage**: Contributes to overall multi-node cluster testing
-
-## 🚀 Running Tests
-
-### Prerequisites
-```bash
-# Install dependencies (development setup)
-uv sync
-
-# Install only runtime dependencies
-uv pip install -e .
-
-# Ensure Ray is available (optional for most tests)
-uv add ray[default]
-```
+## Running Tests
 
 ### Quick Test Commands
 
 ```bash
-# Run all tests with coverage
-make test-full
+# Run all tests
+uv run pytest
 
-# Fast development tests (exclude e2e)
+# Run fast tests (excludes e2e)
 make test-fast
 
-# Minimal smoke tests
-make test-smoke
-
-# End-to-end tests only
+# Run e2e tests with cleanup
 make test-e2e
 
-# Smart test selection based on changes
-make test-smart
+# Run complete test suite
+make test-full
+
+# Run smoke tests
+make test-smoke
 ```
 
 ### Manual Test Execution
 
 ```bash
-# Run all tests
-pytest
+# Run specific test categories
+uv run pytest tests/test_ray_manager.py
+uv run pytest tests/test_multi_node_cluster.py
+uv run pytest tests/test_e2e_integration.py
 
-# Run with coverage report
-pytest --cov=ray_mcp --cov-report=term-missing
+# Run tests with markers
+uv run pytest -m "not e2e"  # Exclude e2e tests
+uv run pytest -m "e2e"      # Only e2e tests
+uv run pytest -m "smoke"    # Only smoke tests
 
-# Run specific test file
-pytest tests/test_main.py
-
-# Run specific test class
-pytest tests/test_ray_manager.py::TestRayManager
-
-# Run specific test method
-pytest tests/test_main.py::TestMain::test_list_tools_complete
+# Run tests with coverage
+uv run pytest --cov=ray_mcp tests/
 ```
 
-### Advanced Test Options
+### Test Configuration
 
-```bash
-# Verbose output
-pytest -v
+The test suite uses pytest with the following configuration:
 
-# Stop on first failure
-pytest -x
-
-# Run tests in parallel (if pytest-xdist installed)
-pytest -n auto
-
-# Generate HTML coverage report
-pytest --cov=ray_mcp --cov-report=html:htmlcov
-
-# Run only fast tests (exclude e2e markers)
-pytest -m "not e2e"
-```
-
-## 🔧 Test Configuration
-
-### pytest.ini Configuration
 ```ini
+# pytest.ini
 [tool:pytest]
 testpaths = tests
 python_files = test_*.py
 python_classes = Test*
 python_functions = test_*
-addopts = --tb=short
-markers = 
-    e2e: End-to-end integration tests
-    smoke: Quick smoke tests
+addopts = 
+    --strict-markers
+    --strict-config
+    --tb=short
+markers =
+    unit: Unit tests
+    integration: Integration tests
+    e2e: End-to-end tests
+    smoke: Smoke tests
 ```
 
-### Coverage Configuration
-- **Target Coverage**: 80% minimum (currently 90.21%)
-- **Report Format**: Terminal + HTML
-- **Coverage Exclusions**: Import error handling, `__main__` blocks
+## Test Categories Details
 
-## 📈 Test Quality Metrics
+### Unit Tests
 
-**Reliability**: ✅ All tests pass consistently
-**Performance**: ⚡ Fast execution (< 70 seconds for full suite)
-**Coverage**: 📊 90.21% line coverage 
-**Integration**: 🔗 Comprehensive workflow testing
-**Examples**: 📝 All 5 example scripts verified
+**Purpose**: Test individual components in isolation.
 
-## 🛠️ Development Workflow
+**Characteristics**:
+- Fast execution (< 1 second per test)
+- No external dependencies
+- Mock external services
+- Test specific functions and methods
 
-1. **Make Changes**: Edit code in `ray_mcp/`
-2. **Run Fast Tests**: `make test-fast` (quick feedback)
-3. **Check Coverage**: Review coverage report
-4. **Run Full Suite**: `make test-full` (before commit)
-5. **Test Examples**: Verify example scripts work
+**Examples**:
+- Parameter validation
+- Data structure operations
+- Utility functions
+- Error handling
 
-## 🔍 Debugging Tests
+**Files**:
+- `test_ray_manager.py` (unit test methods)
+- `test_utils.py`
+- Parts of `test_main.py`
+
+### Integration Tests
+
+**Purpose**: Test component interactions with Ray.
+
+**Characteristics**:
+- Medium speed (1-10 seconds per test)
+- Ray cluster interaction
+- Real Ray operations
+- Component integration
+
+**Examples**:
+- Tool execution
+- Ray manager operations
+- Job submission and monitoring
+- Actor management
+
+**Files**:
+- `test_integration.py`
+- Parts of `test_ray_manager.py`
+- Parts of `test_worker_manager.py`
+
+### End-to-End Tests
+
+**Purpose**: Test complete workflows and user scenarios.
+
+**Characteristics**:
+- Slow execution (10-60 seconds per test)
+- Full Ray cluster lifecycle
+- Complete job workflows
+- Real-world scenarios
+
+**Examples**:
+- Complete cluster startup/shutdown
+- Job submission and monitoring
+- Multi-node cluster operations
+- Error recovery scenarios
+
+**Files**:
+- `test_e2e_integration.py`
+- Parts of `test_multi_node_cluster.py`
+
+### Multi-Node Tests
+
+**Purpose**: Test multi-node cluster functionality.
+
+**Characteristics**:
+- Complex setup with multiple nodes
+- Worker node management
+- Network communication
+- Resource distribution
+
+**Examples**:
+- Worker node startup/shutdown
+- Resource allocation across nodes
+- Node failure scenarios
+- Cluster scaling
+
+**Files**:
+- `test_multi_node_cluster.py`
+- Parts of `test_e2e_integration.py`
+
+## Test Fixtures
+
+### Common Fixtures
+
+```python
+# conftest.py
+@pytest.fixture
+def ray_manager():
+    """Provide a RayManager instance for testing."""
+    return RayManager()
+
+@pytest.fixture
+def tool_registry(ray_manager):
+    """Provide a ToolRegistry instance for testing."""
+    return ToolRegistry(ray_manager)
+
+@pytest.fixture
+async def ray_cluster():
+    """Provide a running Ray cluster for testing."""
+    # Setup cluster
+    yield cluster_info
+    # Cleanup cluster
+```
+
+### Ray Cluster Fixtures
+
+```python
+@pytest.fixture
+async def single_node_cluster():
+    """Single-node Ray cluster for testing."""
+    manager = RayManager()
+    await manager.init_cluster(num_cpus=2)
+    yield manager
+    await manager.stop_cluster()
+
+@pytest.fixture
+async def multi_node_cluster():
+    """Multi-node Ray cluster for testing."""
+    manager = RayManager()
+    await manager.init_cluster(
+        num_cpus=2,
+        worker_nodes=[{"num_cpus": 1, "node_name": "worker-1"}]
+    )
+    yield manager
+    await manager.stop_cluster()
+```
+
+## Test Patterns
+
+### Async Test Pattern
+
+```python
+import pytest
+
+@pytest.mark.asyncio
+async def test_ray_initialization():
+    """Test Ray cluster initialization."""
+    manager = RayManager()
+    result = await manager.init_cluster(num_cpus=4)
+    assert result["status"] == "success"
+    assert manager.is_initialized
+```
+
+### Mock Pattern
+
+```python
+from unittest.mock import patch, AsyncMock
+
+@pytest.mark.asyncio
+async def test_job_submission_with_mock():
+    """Test job submission with mocked Ray client."""
+    with patch('ray.job_submission.JobSubmissionClient') as mock_client:
+        mock_client.return_value.submit_job = AsyncMock(return_value="job_id")
+        
+        manager = RayManager()
+        result = await manager.submit_job("python script.py")
+        
+        assert result["status"] == "success"
+        assert result["job_id"] == "job_id"
+```
+
+### Error Handling Pattern
+
+```python
+@pytest.mark.asyncio
+async def test_error_handling():
+    """Test error handling in tool execution."""
+    manager = RayManager()
+    
+    # Test without Ray initialization
+    result = await manager.get_cluster_info()
+    assert result["status"] == "error"
+    assert "not initialized" in result["message"]
+```
+
+## Test Utilities
+
+### Test Helpers
+
+```python
+# test_utils.py
+def create_test_job_config(entrypoint="python test.py"):
+    """Create a test job configuration."""
+    return {
+        "entrypoint": entrypoint,
+        "runtime_env": {"pip": ["numpy"]}
+    }
+
+def assert_success_response(response):
+    """Assert that a response indicates success."""
+    assert response["status"] == "success"
+
+def assert_error_response(response, expected_message=None):
+    """Assert that a response indicates an error."""
+    assert response["status"] == "error"
+    if expected_message:
+        assert expected_message in response["message"]
+```
+
+### Ray Cleanup Utilities
+
+```python
+def cleanup_ray_processes():
+    """Clean up any running Ray processes."""
+    import subprocess
+    subprocess.run(["./scripts/ray_cleanup.sh"], check=True)
+
+@pytest.fixture(autouse=True)
+def auto_cleanup():
+    """Automatically clean up Ray processes after tests."""
+    yield
+    cleanup_ray_processes()
+```
+
+## Test Data
+
+### Sample Data
+
+```python
+# Test data for various scenarios
+SAMPLE_JOB_CONFIG = {
+    "entrypoint": "python examples/simple_job.py",
+    "runtime_env": {"pip": ["numpy", "pandas"]}
+}
+
+SAMPLE_WORKER_CONFIG = {
+    "num_cpus": 2,
+    "num_gpus": 0,
+    "node_name": "test-worker"
+}
+
+SAMPLE_CLUSTER_CONFIG = {
+    "num_cpus": 4,
+    "num_gpus": 1,
+    "object_store_memory": 1000000000
+}
+```
+
+## Performance Testing
+
+### Load Testing
+
+```python
+@pytest.mark.asyncio
+async def test_concurrent_job_submission():
+    """Test submitting multiple jobs concurrently."""
+    manager = RayManager()
+    await manager.init_cluster(num_cpus=8)
+    
+    # Submit multiple jobs concurrently
+    tasks = [
+        manager.submit_job(f"python job_{i}.py")
+        for i in range(5)
+    ]
+    results = await asyncio.gather(*tasks)
+    
+    # Verify all jobs were submitted successfully
+    for result in results:
+        assert result["status"] == "success"
+```
+
+### Resource Testing
+
+```python
+@pytest.mark.asyncio
+async def test_resource_allocation():
+    """Test resource allocation and limits."""
+    manager = RayManager()
+    await manager.init_cluster(num_cpus=4, object_store_memory=2000000000)
+    
+    # Test resource constraints
+    result = await manager.get_cluster_info()
+    assert result["cluster_info"]["num_cpus"] == 4
+    assert result["cluster_info"]["object_store_memory"] == 2000000000
+```
+
+## Continuous Integration
+
+### CI Configuration
+
+The test suite is configured for CI/CD with:
+
+- **Fast Tests**: Run on every commit
+- **Integration Tests**: Run on pull requests
+- **E2E Tests**: Run on main branch
+- **Coverage Reports**: Generated for all test runs
+
+### Test Commands for CI
+
+```yaml
+# GitHub Actions example
+- name: Run Fast Tests
+  run: make test-fast
+
+- name: Run Integration Tests
+  run: uv run pytest -m "integration"
+
+- name: Run E2E Tests
+  run: make test-e2e
+
+- name: Generate Coverage Report
+  run: uv run pytest --cov=ray_mcp --cov-report=xml
+```
+
+## Best Practices
+
+### Test Writing Guidelines
+
+1. **Descriptive Names**: Use clear, descriptive test names
+2. **Single Responsibility**: Each test should test one thing
+3. **Setup/Teardown**: Properly clean up resources
+4. **Async Support**: Use `@pytest.mark.asyncio` for async tests
+5. **Error Testing**: Test both success and error scenarios
+6. **Mocking**: Mock external dependencies appropriately
+
+### Test Organization
+
+1. **Group Related Tests**: Use test classes for related functionality
+2. **Use Markers**: Mark tests with appropriate categories
+3. **Fixture Reuse**: Create reusable fixtures for common setup
+4. **Test Data**: Use consistent test data across tests
+
+### Performance Considerations
+
+1. **Fast Unit Tests**: Keep unit tests under 1 second
+2. **Efficient Integration**: Minimize Ray cluster startup time
+3. **Parallel Execution**: Use pytest-xdist for parallel test execution
+4. **Resource Cleanup**: Ensure proper cleanup to prevent resource leaks
+
+## Troubleshooting
+
+### Common Test Issues
+
+1. **Ray Process Leaks**: Use cleanup scripts and fixtures
+2. **Port Conflicts**: Use dynamic port allocation in tests
+3. **Async Issues**: Ensure proper async/await usage
+4. **Resource Limits**: Monitor system resources during tests
+
+### Debug Commands
 
 ```bash
-# Run specific failing test with verbose output
-pytest tests/test_main.py::TestMain::test_specific_case -v -s
+# Run tests with verbose output
+uv run pytest -v
 
-# Drop into debugger on failure
-pytest --pdb
+# Run specific test with debug output
+uv run pytest tests/test_specific.py::test_function -v -s
 
-# Show local variables in tracebacks
-pytest --tb=long
+# Run tests with coverage
+uv run pytest --cov=ray_mcp --cov-report=html
 
-# Capture and show print statements
-pytest -s
+# Clean up before running tests
+./scripts/ray_cleanup.sh
 ```
 
-## 🎯 Future Test Improvements
+## Coverage
 
-- **Performance Tests**: Add benchmarking for large clusters
-- **Stress Tests**: High-concurrency scenarios
-- **Mock Improvements**: More sophisticated Ray cluster mocking
-- **Additional E2E**: Real multi-node cluster testing 
+### Coverage Goals
+
+- **Unit Tests**: > 90% line coverage
+- **Integration Tests**: > 80% line coverage
+- **Overall**: > 85% line coverage
+
+### Coverage Reports
+
+```bash
+# Generate coverage report
+uv run pytest --cov=ray_mcp --cov-report=html
+
+# View coverage report
+open htmlcov/index.html
+```
+
+The test suite provides comprehensive coverage of the Ray MCP Server functionality, ensuring reliability and maintainability of the codebase. 

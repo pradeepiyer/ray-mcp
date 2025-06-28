@@ -1,17 +1,49 @@
-# Ray MCP Server Configuration
+# Ray MCP Server Configuration Examples
 
-This directory contains configuration files for setting up the Ray MCP Server with different MCP clients.
-
-> **🚀 UV Native**: Ray MCP Server is now fully migrated to UV for modern, fast Python package management. All installation commands use `uv` for improved reliability and speed.
+This directory contains configuration examples for different MCP clients and deployment scenarios.
 
 ## Configuration Files
 
-### `claude_desktop_config.json`
-Clean configuration file for Claude Desktop. Copy this content to your Claude Desktop configuration file:
+### claude_desktop_config.json
 
-**Location**: 
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+Configuration for Claude Desktop with enhanced output enabled.
+
+**Features**:
+- Enhanced output mode for better LLM integration
+- Local development setup
+- Comprehensive environment variables
+
+**Usage**:
+1. Copy the configuration to your Claude Desktop config
+2. Update the command path to match your installation
+3. Restart Claude Desktop
+
+### mcp_server_config.json
+
+Comprehensive configuration examples for various MCP clients.
+
+**Includes**:
+- Basic configuration
+- Enhanced output configuration
+- Multi-node cluster setup
+- Runtime environment examples
+- Network configuration
+
+## Quick Setup
+
+### 1. Install Ray MCP Server
+
+```bash
+# Clone and install
+git clone <repository-url>
+cd ray-mcp
+uv sync
+uv pip install -e .
+```
+
+### 2. Configure MCP Client
+
+Choose the appropriate configuration file and update the command path:
 
 ```json
 {
@@ -20,114 +52,124 @@ Clean configuration file for Claude Desktop. Copy this content to your Claude De
       "command": "/path/to/your/venv/bin/ray-mcp",
       "env": {
         "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0"
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
       }
     }
   }
 }
 ```
 
-**Note**: Replace `/path/to/your/venv/bin/ray-mcp` with the actual path to your console script. You can find it with `which ray-mcp`.
+### 3. Test Configuration
 
-### `mcp_server_config.json`
-Comprehensive configuration with examples and documentation for different Ray cluster connection scenarios.
+Start your MCP client and test the connection:
 
-## Environment Variables
-
-### `RAY_ADDRESS`
-- **Purpose**: Default Ray cluster address
-- **Default**: Empty (use tool parameters)
-- **Examples**: 
-  - `ray://127.0.0.1:10001`
-  - `ray://production-cluster:10001`
-- **Note**: Leave empty to use `init_ray` tool parameters
-
-### `RAY_DASHBOARD_HOST`
-- **Purpose**: Ray dashboard host binding
-- **Default**: `0.0.0.0`
-- **Production**: Consider restricting to specific IPs for security
-
-### `RAY_DASHBOARD_PORT`
-- **Purpose**: Ray dashboard port
-- **Default**: `8265`
-- **Note**: Only needed if you change Ray's default dashboard port
-
-## Usage Scenarios
-
-### Development Setup
-```json
-{
-  "mcpServers": {
-    "ray-mcp": {
-      "command": "/path/to/your/venv/bin/ray-mcp",
-      "env": {
-        "RAY_ADDRESS": ""
-      }
-    }
-  }
-}
-```
-- Server starts without Ray initialization
-- Use `init_ray` tool to create local clusters (default: 4 CPUs)
-- Full control over cluster resources
-- Clean shutdown with `stop_ray`
-
-### Production Setup
-```json
-{
-  "mcpServers": {
-    "ray-mcp": {
-      "command": "/path/to/your/venv/bin/ray-mcp",
-      "env": {
-        "RAY_ADDRESS": "ray://prod-cluster:10001",
-        "RAY_DASHBOARD_HOST": "127.0.0.1"
-      }
-    }
-  }
-}
-```
-- Server starts without Ray initialization
-- Use `init_ray` tool to connect to persistent clusters
-- `RAY_ADDRESS` environment variable is available for tools but doesn't auto-connect
-- Restrict dashboard host for security
-
-## Ray Initialization Behavior
-
-**Important**: The server does NOT automatically initialize Ray on startup. This provides:
-
-- **Flexibility**: Choose when and how to initialize Ray
-- **Resource Control**: No unnecessary Ray processes
-- **Explicit Control**: Clear distinction between server startup and Ray initialization
-- **Error Prevention**: Avoid connection issues during server startup
-
-**Workflow**:
-1. Start MCP server (Ray not initialized)
-2. Use `init_ray` to initialize Ray
-3. Use other tools that require Ray
-4. Optionally use `stop_ray` to shutdown Ray
-
-## Tool Usage
-
-### Start New Cluster
 ```json
 {
   "tool": "init_ray",
   "arguments": {
-    "num_cpus": 8,
-    "num_gpus": 2,
-    "object_store_memory": 2000000000
+    "num_cpus": 4
   }
 }
 ```
 
-**Note**: If you don't specify `num_cpus`, it defaults to 4 CPUs.
+## Configuration Options
 
-### Connect to Existing Cluster
+### Environment Variables
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `RAY_ADDRESS` | Ray cluster address | `""` | `"ray://127.0.0.1:10001"` |
+| `RAY_DASHBOARD_HOST` | Dashboard host | `"0.0.0.0"` | `"127.0.0.1"` |
+| `RAY_MCP_ENHANCED_OUTPUT` | Enable enhanced output | `"false"` | `"true"` |
+
+### Enhanced Output Mode
+
+Enable enhanced output for better LLM integration:
+
 ```json
 {
-  "tool": "init_ray",
-  "arguments": {
-    "address": "ray://cluster.example.com:10001"
+  "env": {
+    "RAY_MCP_ENHANCED_OUTPUT": "true"
+  }
+}
+```
+
+This provides:
+- Human-readable summaries
+- Context about results
+- Suggested next steps
+- Available commands reference
+
+### Network Configuration
+
+For local development:
+```json
+{
+  "env": {
+    "RAY_DASHBOARD_HOST": "127.0.0.1"
+  }
+}
+```
+
+For network access:
+```json
+{
+  "env": {
+    "RAY_DASHBOARD_HOST": "0.0.0.0"
+  }
+}
+```
+
+## Deployment Scenarios
+
+### Local Development
+
+```json
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/venv/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "127.0.0.1",
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
+      }
+    }
+  }
+}
+```
+
+### Production Deployment
+
+```json
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/usr/local/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "false"
+      }
+    }
+  }
+}
+```
+
+### Multi-Node Cluster
+
+```json
+{
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "/path/to/venv/bin/ray-mcp",
+      "env": {
+        "RAY_ADDRESS": "",
+        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
+      }
+    }
   }
 }
 ```
@@ -136,34 +178,120 @@ Comprehensive configuration with examples and documentation for different Ray cl
 
 ### Common Issues
 
-1. **Console script not found**
-   - Ensure the package is installed: `uv sync` (recommended) or `uv pip install -e .`
-   - Check the script path: `which ray-mcp`
-   - Use full path in configuration
+1. **Command not found**: Update the command path in configuration
+2. **Permission denied**: Ensure the script is executable
+3. **Connection refused**: Check if Ray MCP server is running
+4. **Enhanced output not working**: Verify environment variable is set to "true"
 
-2. **Module not found**
-   - Install the package: `uv sync` (recommended) or `uv pip install -e .`
-   - Check virtual environment activation
+### Debug Configuration
 
-3. **Ray connection issues**
-   - Verify Ray cluster is running
-   - Check network connectivity and firewall settings
-   - Validate address format
+Enable debug logging:
 
-### Debug Mode
-Add debug environment variable:
 ```json
 {
   "env": {
     "RAY_LOG_LEVEL": "DEBUG",
-    "RAY_ADDRESS": ""
+    "RAY_MCP_DEBUG": "true"
   }
 }
 ```
 
-## Security Considerations
+### Verification Commands
 
-- **Dashboard Access**: Restrict `RAY_DASHBOARD_HOST` in production
-- **Network Security**: Use secure networks for cluster communication
-- **Authentication**: Consider Ray's authentication features for production
-- **Firewall**: Ensure appropriate ports are open (default: 10001, 8265) 
+Test the configuration:
+
+```bash
+# Check if ray-mcp is available
+which ray-mcp
+
+# Test server startup
+ray-mcp --help
+
+# Check environment variables
+env | grep RAY
+```
+
+## Best Practices
+
+1. **Use Virtual Environments**: Install in isolated environments
+2. **Test Configurations**: Validate before production use
+3. **Monitor Resources**: Use appropriate cluster configurations
+4. **Enable Enhanced Output**: For better debugging and user experience
+5. **Secure Network Access**: Use appropriate host bindings
+6. **Document Changes**: Keep configuration documentation updated
+
+## Advanced Configuration
+
+### Custom Ray Configuration
+
+```json
+{
+  "env": {
+    "RAY_HEAD_NODE_PORT": "10001",
+    "RAY_DASHBOARD_PORT": "8265",
+    "RAY_HEAD_NODE_HOST": "127.0.0.1"
+  }
+}
+```
+
+### Runtime Environment
+
+```json
+{
+  "env": {
+    "PYTHONPATH": "/path/to/custom/modules",
+    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE": "1"
+  }
+}
+```
+
+### Security Configuration
+
+```json
+{
+  "env": {
+    "RAY_DASHBOARD_HOST": "127.0.0.1",
+    "RAY_HEAD_NODE_HOST": "127.0.0.1"
+  }
+}
+```
+
+## Integration Examples
+
+### Claude Desktop Integration
+
+1. Copy `claude_desktop_config.json` to your Claude Desktop config
+2. Update the command path
+3. Restart Claude Desktop
+4. Test with basic Ray commands
+
+### Other MCP Clients
+
+1. Use `mcp_server_config.json` as a reference
+2. Adapt the configuration to your client's format
+3. Update paths and environment variables
+4. Test the connection
+
+### CI/CD Integration
+
+```yaml
+# Example GitHub Actions configuration
+- name: Install Ray MCP Server
+  run: |
+    uv sync
+    uv pip install -e .
+
+- name: Test Configuration
+  run: |
+    ray-mcp --help
+    python -c "import ray_mcp; print('Import successful')"
+```
+
+## Support
+
+For configuration issues:
+
+1. Check the troubleshooting guide in `docs/TROUBLESHOOTING.md`
+2. Verify environment setup in `docs/DEVELOPMENT.md`
+3. Review configuration options in `docs/CONFIGURATION.md`
+4. Test with basic examples in `docs/EXAMPLES.md` 
