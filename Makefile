@@ -29,8 +29,7 @@ test-full:
 # Tool function specific tests
 test-tool-functions:
 	@echo "🔧 Running tool function tests..."
-	@uv run pytest tests/test_tool_functions.py -v
-	@uv run pytest tests/test_full_parameter_flow.py -v
+	@echo "Note: tool_functions.py has been removed. Use test-full instead."
 
 # Linting - matches CI workflow
 lint:

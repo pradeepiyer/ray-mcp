@@ -196,15 +196,28 @@ class RayManager:
                 }
 
             def find_free_port(start_port=10001, max_tries=50):
+                """Find a free port with retry logic to handle race conditions."""
                 port = start_port
-                for _ in range(max_tries):
+                for attempt in range(max_tries):
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                         try:
                             s.bind(("", port))
-                            return port
+                            # Double-check the port is still available by trying to bind again
+                            s.close()
+                            # Small delay to reduce race condition window
+                            time.sleep(0.01)
+                            with socket.socket(
+                                socket.AF_INET, socket.SOCK_STREAM
+                            ) as s2:
+                                s2.bind(("", port))
+                                s2.close()
+                                return port
                         except OSError:
                             port += 1
-                raise RuntimeError("No free port found.")
+                            continue
+                raise RuntimeError(
+                    f"No free port found in range {start_port}-{start_port + max_tries - 1}"
+                )
 
             def parse_dashboard_url(stdout: str) -> Optional[str]:
                 import re
@@ -386,6 +399,24 @@ class RayManager:
                     logger.error(f"Failed to connect to head node: {e}")
                     logger.error(f"Head node stdout: {stdout}")
                     logger.error(f"Head node stderr: {stderr}")
+
+                    # Clean up the head node process if ray.init() failed
+                    if self._head_node_process is not None:
+                        try:
+                            logger.info(
+                                "Cleaning up head node process after ray.init() failure"
+                            )
+                            self._head_node_process.terminate()
+                            # Wait a bit for graceful shutdown
+                            await asyncio.sleep(1)
+                            if self._head_node_process.poll() is None:
+                                self._head_node_process.kill()
+                            self._head_node_process = None
+                        except Exception as cleanup_error:
+                            logger.error(
+                                f"Failed to cleanup head node process: {cleanup_error}"
+                            )
+
                     return {
                         "status": "error",
                         "message": f"Failed to connect to head node: {str(e)}",
@@ -443,6 +474,24 @@ class RayManager:
 
         except Exception as e:
             logger.error(f"Failed to initialize Ray cluster: {e}")
+
+            # Clean up the head node process if it was started but initialization failed
+            if self._head_node_process is not None:
+                try:
+                    logger.info(
+                        "Cleaning up head node process after initialization failure"
+                    )
+                    self._head_node_process.terminate()
+                    # Wait a bit for graceful shutdown
+                    await asyncio.sleep(1)
+                    if self._head_node_process.poll() is None:
+                        self._head_node_process.kill()
+                    self._head_node_process = None
+                except Exception as cleanup_error:
+                    logger.error(
+                        f"Failed to cleanup head node process: {cleanup_error}"
+                    )
+
             return {
                 "status": "error",
                 "message": f"Failed to initialize Ray cluster: {str(e)}",
@@ -1170,7 +1219,25 @@ class RayManager:
             return {"error_count": 0, "errors": [], "suggestions": []}
 
         logs = str(logs)
+
+        # Limit log size to prevent memory issues (10MB limit)
+        MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
+        if len(logs) > MAX_LOG_SIZE:
+            logs = logs[:MAX_LOG_SIZE]
+            logger.warning(
+                f"Log size exceeded {MAX_LOG_SIZE} bytes, truncating for analysis"
+            )
+
         lines = logs.split("\n")
+
+        # Limit number of lines to process to prevent memory issues
+        MAX_LINES = 10000
+        if len(lines) > MAX_LINES:
+            lines = lines[-MAX_LINES:]  # Keep the most recent lines
+            logger.warning(
+                f"Log has {len(lines)} lines, limiting analysis to last {MAX_LINES} lines"
+            )
+
         error_lines = [
             line
             for line in lines
@@ -1325,6 +1392,8 @@ class RayManager:
                         "runtime_env": job_info.runtime_env or {},
                         "message": job_info.message or "",
                         "inspection_mode": mode,
+                        "logs": None,  # Initialize logs field for consistency
+                        "debug_info": None,  # Initialize debug_info field for consistency
                     }
 
                     # Add logs if requested
@@ -1380,6 +1449,8 @@ class RayManager:
                 "runtime_env": job_info.runtime_env or {},
                 "message": job_info.message or "",
                 "inspection_mode": mode,
+                "logs": None,  # Initialize logs field for consistency
+                "debug_info": None,  # Initialize debug_info field for consistency
             }
 
             # Add logs if requested

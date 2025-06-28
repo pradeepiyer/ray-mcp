@@ -320,6 +320,21 @@ Quick reference of commonly used Ray MCP tools: {', '.join(self.list_tool_names(
 
         try:
             args = arguments or {}
+
+            # Validate required parameters
+            tool_info = self._tools.get(name)
+            if tool_info and "schema" in tool_info:
+                schema = tool_info["schema"]
+                required_params = schema.get("required", [])
+                missing_params = [
+                    param for param in required_params if param not in args
+                ]
+                if missing_params:
+                    return {
+                        "status": "error",
+                        "message": f"Missing required parameters for tool '{name}': {', '.join(missing_params)}",
+                    }
+
             result = await handler(**args)
 
             # Check if enhanced output is enabled

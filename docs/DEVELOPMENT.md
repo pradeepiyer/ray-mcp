@@ -9,7 +9,7 @@ This guide covers setup, testing, and best practices for developing Ray MCP.
 ```bash
 # Clone and install
 git clone https://github.com/pradeepiyer/ray-mcp
-cd mcp
+cd ray-mcp
 uv sync --all-extras --dev
 ```
 

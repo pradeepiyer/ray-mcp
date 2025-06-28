@@ -13,7 +13,7 @@ A fast, standardized server for managing Ray clusters and distributed jobs via t
 ```bash
 # Clone and install
  git clone https://github.com/pradeepiyer/ray-mcp
- cd mcp
+ cd ray-mcp
  uv sync --all-extras --dev
 ```
 

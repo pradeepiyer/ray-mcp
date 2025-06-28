@@ -357,8 +357,8 @@ class WorkerManager:
                         "process_id": process.pid,
                     }
                 )
-                # Remove successfully stopped processes from tracking
-                if status not in ["stopped", "force_stopped"]:
+                # Keep only processes that failed to stop in the remaining list
+                if status == "error":
                     remaining_processes.append(process)
                     remaining_configs.append(self.worker_configs[i])
 

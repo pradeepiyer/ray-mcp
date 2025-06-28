@@ -124,9 +124,10 @@ def main():
     # Get the project root
     project_root = Path(__file__).parent.parent
     
-    # Files to check
+    # Files to check for tool functions
     tool_function_files = [
-        project_root / "ray_mcp" / "tool_functions.py",
+        project_root / "ray_mcp" / "main.py",
+        project_root / "ray_mcp" / "tool_registry.py",
     ]
     
     all_issues = []
