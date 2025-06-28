@@ -97,27 +97,17 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
         return _format_response(result)
 
     @server.call_tool()
-    async def job_status(job_id: str) -> List[TextContent]:
-        """Get the status of a specific job."""
-        result = await tool_registry.execute_tool("job_status", {"job_id": job_id})
+    async def job_inspect(job_id: str, mode: str = "status") -> List[TextContent]:
+        """Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)."""
+        result = await tool_registry.execute_tool(
+            "job_inspect", {"job_id": job_id, "mode": mode}
+        )
         return _format_response(result)
 
     @server.call_tool()
     async def cancel_job(job_id: str) -> List[TextContent]:
         """Cancel a running job."""
         result = await tool_registry.execute_tool("cancel_job", {"job_id": job_id})
-        return _format_response(result)
-
-    @server.call_tool()
-    async def monitor_job(job_id: str) -> List[TextContent]:
-        """Monitor the progress of a specific job."""
-        result = await tool_registry.execute_tool("monitor_job", {"job_id": job_id})
-        return _format_response(result)
-
-    @server.call_tool()
-    async def debug_job(job_id: str) -> List[TextContent]:
-        """Debug a job by analyzing its logs and status."""
-        result = await tool_registry.execute_tool("debug_job", {"job_id": job_id})
         return _format_response(result)
 
     # Actor management tools

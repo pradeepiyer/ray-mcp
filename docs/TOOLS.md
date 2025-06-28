@@ -22,10 +22,8 @@ The Ray MCP Server provides a comprehensive set of tools for Ray cluster managem
 ## Job Operations
 - `submit_job` - Submit a new job to the cluster
 - `list_jobs` - List all jobs (running, completed, failed)
-- `job_status` - Get detailed status of a specific job
+- `job_inspect` - Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
 - `cancel_job` - Cancel a running or queued job
-- `monitor_job` - Monitor job progress
-- `debug_job` - Debug a job with detailed information
 - `get_logs` - Retrieve job logs and outputs
 
 ## Actor Operations
@@ -212,6 +210,88 @@ When connecting to an existing cluster, the following cluster-starting parameter
   }
 }
 ```
+
+### job_inspect
+Inspect a job with different modes to get varying levels of detail.
+
+```json
+{
+  "job_id": "job_123",     // Required: Job ID to inspect
+  "mode": "status"         // Optional: Inspection mode - "status", "logs", or "debug" (default: "status")
+}
+```
+
+**Available modes:**
+- **`status`** (default): Basic job information including status, entrypoint, start/end times, metadata, and runtime environment
+- **`logs`**: All status information plus the complete job logs
+- **`debug`**: All status and logs information plus comprehensive debugging analysis including error logs, recent logs, and debugging suggestions
+
+**Example responses:**
+
+**Status mode:**
+```json
+{
+  "status": "success",
+  "job_id": "job_123",
+  "job_status": "RUNNING",
+  "entrypoint": "python my_script.py",
+  "start_time": 1234567890,
+  "end_time": null,
+  "metadata": {"team": "data-science"},
+  "runtime_env": {"pip": ["requests"]},
+  "message": "Job is running",
+  "inspection_mode": "status"
+}
+```
+
+**Logs mode:**
+```json
+{
+  "status": "success",
+  "job_id": "job_123",
+  "job_status": "RUNNING",
+  "entrypoint": "python my_script.py",
+  "start_time": 1234567890,
+  "end_time": null,
+  "metadata": {},
+  "runtime_env": {},
+  "message": "",
+  "inspection_mode": "logs",
+  "logs": "Starting job...\nProcessing data...\nJob completed successfully!"
+}
+```
+
+**Debug mode:**
+```json
+{
+  "status": "success",
+  "job_id": "job_123",
+  "job_status": "FAILED",
+  "entrypoint": "python my_script.py",
+  "start_time": 1234567890,
+  "end_time": 1234567895,
+  "metadata": {},
+  "runtime_env": {},
+  "message": "Job failed",
+  "inspection_mode": "debug",
+  "logs": "Error: Import failed\nTraceback...",
+  "debug_info": {
+    "error_logs": ["Error: Import failed"],
+    "recent_logs": ["Error: Import failed", "Traceback..."],
+    "debugging_suggestions": [
+      "Job failed. Check error logs for specific error messages.",
+      "Import error detected. Check if all required packages are installed in the runtime environment."
+    ]
+  }
+}
+```
+
+**Notes:**
+- The `job_id` parameter is required
+- The `mode` parameter defaults to "status" if not specified
+- All modes return the same basic job information
+- Logs and debug modes include additional information as specified
+- Works with both Ray Job Submission API and Ray Client mode
 
 ### get_logs
 ```json

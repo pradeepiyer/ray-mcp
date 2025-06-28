@@ -162,16 +162,22 @@ class ToolRegistry:
         )
 
         self._register_tool(
-            name="job_status",
-            description="Get the status of a specific job",
+            name="job_inspect",
+            description="Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)",
             schema={
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string", "description": "Job ID to check"}
+                    "job_id": {"type": "string", "description": "Job ID to inspect"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["status", "logs", "debug"],
+                        "default": "status",
+                        "description": "Inspection mode: 'status' for basic job info, 'logs' to include job logs, 'debug' for comprehensive debugging information",
+                    },
                 },
                 "required": ["job_id"],
             },
-            handler=self._job_status_handler,
+            handler=self._job_inspect_handler,
         )
 
         self._register_tool(
@@ -185,32 +191,6 @@ class ToolRegistry:
                 "required": ["job_id"],
             },
             handler=self._cancel_job_handler,
-        )
-
-        self._register_tool(
-            name="monitor_job",
-            description="Monitor the progress of a specific job",
-            schema={
-                "type": "object",
-                "properties": {
-                    "job_id": {"type": "string", "description": "Job ID to monitor"}
-                },
-                "required": ["job_id"],
-            },
-            handler=self._monitor_job_handler,
-        )
-
-        self._register_tool(
-            name="debug_job",
-            description="Debug a job by analyzing its logs and status",
-            schema={
-                "type": "object",
-                "properties": {
-                    "job_id": {"type": "string", "description": "Job ID to debug"}
-                },
-                "required": ["job_id"],
-            },
-            handler=self._debug_job_handler,
         )
 
         # Actor management
@@ -339,21 +319,15 @@ class ToolRegistry:
         """Handler for list_jobs tool."""
         return await self.ray_manager.list_jobs()
 
-    async def _job_status_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for job_status tool."""
-        return await self.ray_manager.get_job_status(kwargs["job_id"])
+    async def _job_inspect_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for job_inspect tool."""
+        return await self.ray_manager.job_inspect(
+            kwargs["job_id"], kwargs.get("mode", "status")
+        )
 
     async def _cancel_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for cancel_job tool."""
         return await self.ray_manager.cancel_job(kwargs["job_id"])
-
-    async def _monitor_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for monitor_job tool."""
-        return await self.ray_manager.monitor_job_progress(kwargs["job_id"])
-
-    async def _debug_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for debug_job tool."""
-        return await self.ray_manager.debug_job(kwargs["job_id"])
 
     async def _list_actors_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_actors tool."""

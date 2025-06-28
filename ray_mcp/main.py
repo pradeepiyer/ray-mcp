@@ -55,7 +55,7 @@ async def list_tools() -> List[Tool]:
 
     The tools are organized into categories:
     - Basic cluster management: start_ray, connect_ray, stop_ray, cluster_info
-    - Job management: submit_job, list_jobs, job_status, cancel_job, monitor_job, debug_job
+    - Job management: submit_job, list_jobs, job_inspect, cancel_job
     - Actor management: list_actors, kill_actor
     - Logs & debugging: get_logs
 

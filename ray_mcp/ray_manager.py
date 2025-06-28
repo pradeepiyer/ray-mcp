@@ -900,57 +900,7 @@ class RayManager:
             logger.error(f"Failed to list jobs: {e}")
             return {"status": "error", "message": f"Failed to list jobs: {str(e)}"}
 
-    async def get_job_status(self, job_id: str) -> Dict[str, Any]:
-        """Get job status."""
-        try:
-            self._ensure_initialized()
-
-            if not self._job_client:
-                # Use Ray's built-in job status for Ray Client mode
-                try:
-                    import ray.job_submission
-
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    job_details = job_client.get_job_info(job_id)
-
-                    return {
-                        "status": "success",
-                        "job_id": job_id,
-                        "job_status": job_details.status,
-                        "entrypoint": job_details.entrypoint,
-                        "start_time": job_details.start_time,
-                        "end_time": job_details.end_time,
-                        "metadata": job_details.metadata or {},
-                        "runtime_env": job_details.runtime_env or {},
-                        "message": job_details.message or "",
-                    }
-                except Exception as e:
-                    logger.error(
-                        f"Failed to get job status using Ray built-in client: {e}"
-                    )
-                    return {
-                        "status": "error",
-                        "message": f"Job status not available in Ray Client mode: {str(e)}",
-                    }
-
-            job_details = self._job_client.get_job_info(job_id)
-
-            return {
-                "status": "success",
-                "job_id": job_id,
-                "job_status": job_details.status,
-                "entrypoint": job_details.entrypoint,
-                "start_time": job_details.start_time,
-                "end_time": job_details.end_time,
-                "metadata": job_details.metadata or {},
-                "runtime_env": job_details.runtime_env or {},
-                "message": job_details.message or "",
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to get job status: {e}")
-            return {"status": "error", "message": f"Failed to get job status: {str(e)}"}
+    # Note: get_job_status functionality is now part of job_inspect method
 
     async def cancel_job(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job."""
@@ -1151,39 +1101,7 @@ class RayManager:
 
     # ===== ENHANCED MONITORING =====
 
-    async def monitor_job_progress(self, job_id: str) -> Dict[str, Any]:
-        """Get real-time progress monitoring for a job."""
-        try:
-            self._ensure_initialized()
-
-            if not self._job_client:
-                return {
-                    "status": "error",
-                    "message": "Job submission client not available",
-                }
-
-            job_info = self._job_client.get_job_info(job_id)
-            job_logs = self._job_client.get_job_logs(job_id)
-
-            progress_info = {
-                "job_id": job_id,
-                "status": job_info.status,
-                "start_time": job_info.start_time,
-                "end_time": job_info.end_time,
-                "runtime_env": job_info.runtime_env,
-                "entrypoint": job_info.entrypoint,
-                "logs_tail": job_logs.split("\n")[-10:] if job_logs else [],
-                "timestamp": time.time(),
-            }
-
-            return {"status": "success", "progress": progress_info}
-
-        except Exception as e:
-            logger.error(f"Failed to monitor job progress: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to monitor job progress: {str(e)}",
-            }
+    # Note: monitor_job_progress functionality is now part of job_inspect method
 
     def _generate_health_recommendations(
         self, health_checks: Dict[str, bool]
@@ -1217,53 +1135,7 @@ class RayManager:
 
     # ===== LOGS & DEBUGGING =====
 
-    async def debug_job(self, job_id: str) -> Dict[str, Any]:
-        """Interactive debugging tools for jobs."""
-        try:
-            self._ensure_initialized()
-
-            if self._job_client:
-                # Use job client if available
-                job_info = self._job_client.get_job_info(job_id)
-                job_logs = self._job_client.get_job_logs(job_id)
-            else:
-                # Use Ray's built-in job debugging for Ray Client mode
-                try:
-                    import ray.job_submission
-
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    job_info = job_client.get_job_info(job_id)
-                    job_logs = job_client.get_job_logs(job_id)
-                except Exception as e:
-                    logger.error(f"Failed to debug job using Ray built-in client: {e}")
-                    return {
-                        "status": "error",
-                        "message": f"Job debugging not available in Ray Client mode: {str(e)}",
-                    }
-
-            # Extract debugging information
-            debug_info = {
-                "job_id": job_id,
-                "status": job_info.status,
-                "runtime_env": job_info.runtime_env,
-                "entrypoint": job_info.entrypoint,
-                "error_logs": [
-                    line
-                    for line in job_logs.split("\n")
-                    if "error" in line.lower() or "exception" in line.lower()
-                ],
-                "recent_logs": job_logs.split("\n")[-20:] if job_logs else [],
-                "debugging_suggestions": self._generate_debug_suggestions(
-                    job_info, job_logs
-                ),
-            }
-
-            return {"status": "success", "debug_info": debug_info}
-
-        except Exception as e:
-            logger.error(f"Failed to debug job: {e}")
-            return {"status": "error", "message": f"Failed to debug job: {str(e)}"}
+    # Note: debug_job functionality is now part of job_inspect method
 
     def _generate_debug_suggestions(self, job_info, job_logs: str) -> List[str]:
         """Generate debugging suggestions based on job info and logs."""
@@ -1295,3 +1167,127 @@ class RayManager:
             )
 
         return suggestions
+
+    async def job_inspect(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
+        """
+        Inspect a job with different modes: 'status', 'logs', or 'debug'.
+
+        Args:
+            job_id: The job ID to inspect
+            mode: Inspection mode - 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)
+
+        Returns:
+            Dictionary containing job information based on the specified mode
+        """
+        try:
+            self._ensure_initialized()
+
+            if not self._job_client:
+                # Use Ray's built-in job inspection for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    job_info = job_client.get_job_info(job_id)
+
+                    # Base response with job status
+                    response = {
+                        "status": "success",
+                        "job_id": job_id,
+                        "job_status": job_info.status,
+                        "entrypoint": job_info.entrypoint,
+                        "start_time": job_info.start_time,
+                        "end_time": job_info.end_time,
+                        "metadata": job_info.metadata or {},
+                        "runtime_env": job_info.runtime_env or {},
+                        "message": job_info.message or "",
+                        "inspection_mode": mode,
+                    }
+
+                    # Add logs if requested
+                    if mode in ["logs", "debug"]:
+                        try:
+                            job_logs = job_client.get_job_logs(job_id)
+                            response["logs"] = job_logs
+                        except Exception as e:
+                            response["logs"] = f"Failed to retrieve logs: {str(e)}"
+
+                    # Add debugging information if requested
+                    if mode == "debug":
+                        response["debug_info"] = {
+                            "error_logs": [
+                                line
+                                for line in response.get("logs", "").split("\n")
+                                if "error" in line.lower()
+                                or "exception" in line.lower()
+                            ],
+                            "recent_logs": (
+                                response.get("logs", "").split("\n")[-20:]
+                                if response.get("logs")
+                                else []
+                            ),
+                            "debugging_suggestions": self._generate_debug_suggestions(
+                                job_info, response.get("logs", "")
+                            ),
+                        }
+
+                    return response
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to inspect job using Ray built-in client: {e}"
+                    )
+                    return {
+                        "status": "error",
+                        "message": f"Job inspection not available in Ray Client mode: {str(e)}",
+                    }
+
+            # Use job client if available
+            job_info = self._job_client.get_job_info(job_id)
+
+            # Base response with job status
+            response = {
+                "status": "success",
+                "job_id": job_id,
+                "job_status": job_info.status,
+                "entrypoint": job_info.entrypoint,
+                "start_time": job_info.start_time,
+                "end_time": job_info.end_time,
+                "metadata": job_info.metadata or {},
+                "runtime_env": job_info.runtime_env or {},
+                "message": job_info.message or "",
+                "inspection_mode": mode,
+            }
+
+            # Add logs if requested
+            if mode in ["logs", "debug"]:
+                try:
+                    job_logs = self._job_client.get_job_logs(job_id)
+                    response["logs"] = job_logs
+                except Exception as e:
+                    response["logs"] = f"Failed to retrieve logs: {str(e)}"
+
+            # Add debugging information if requested
+            if mode == "debug":
+                response["debug_info"] = {
+                    "error_logs": [
+                        line
+                        for line in response.get("logs", "").split("\n")
+                        if "error" in line.lower() or "exception" in line.lower()
+                    ],
+                    "recent_logs": (
+                        response.get("logs", "").split("\n")[-20:]
+                        if response.get("logs")
+                        else []
+                    ),
+                    "debugging_suggestions": self._generate_debug_suggestions(
+                        job_info, response.get("logs", "")
+                    ),
+                }
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Failed to inspect job: {e}")
+            return {"status": "error", "message": f"Failed to inspect job: {str(e)}"}

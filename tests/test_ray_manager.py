@@ -449,6 +449,7 @@ class TestRayManager:
                 assert "Shutdown failed" in result["message"]
 
     # ===== JOB MANAGEMENT ERROR CASES =====
+    # Note: job_status, monitor_job, and debug_job tests are replaced by job_inspect tests above
 
     @pytest.mark.asyncio
     async def test_submit_job_exception(self, initialized_manager):
@@ -494,28 +495,6 @@ class TestRayManager:
                         "Job listing not available in Ray Client mode"
                         in result["message"]
                     )
-
-    @pytest.mark.asyncio
-    async def test_get_job_status_not_initialized(self, manager):
-        """Test get job status when not initialized."""
-        result = await manager.get_job_status("test_job")
-        assert result["status"] == "error"
-        assert "Ray is not initialized" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_get_job_status_no_client(self, initialized_manager):
-        """Test get job status when job client is not available."""
-        initialized_manager._job_client = None
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-
-                result = await initialized_manager.get_job_status("test_job")
-                assert result["status"] == "error"
-                assert (
-                    "Job status not available in Ray Client mode" in result["message"]
-                )
 
     @pytest.mark.asyncio
     async def test_cancel_job_not_initialized(self, manager):
@@ -1385,39 +1364,6 @@ class TestRayManager:
         assert any("memory" in suggestion.lower() for suggestion in suggestions)
 
     @pytest.mark.asyncio
-    async def test_monitor_job_progress_no_client(self, manager):
-        """Test monitor job progress when job client is not available."""
-        manager._is_initialized = True
-        manager._job_client = None
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-
-                result = await manager.monitor_job_progress("job_123")
-
-                assert result["status"] == "error"
-                assert "Job submission client not available" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_debug_job_no_client(self, manager):
-        """Test debug job when job client is not available."""
-        manager._is_initialized = True
-        manager._job_client = None
-
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-
-                result = await manager.debug_job("job_123")
-
-                assert result["status"] == "error"
-                assert (
-                    "Job debugging not available in Ray Client mode"
-                    in result["message"]
-                )
-
-    @pytest.mark.asyncio
     async def test_start_cluster_with_address_no_workers(self, manager):
         """Test that connecting to existing cluster with address does not start default workers."""
         mock_context = Mock()
@@ -1492,6 +1438,155 @@ class TestRayManager:
                     mock_worker_instance.start_worker_nodes.assert_called_once_with(
                         custom_workers, "ray://remote:10001"
                     )
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_not_initialized(self, manager):
+        """Test job_inspect when not initialized."""
+        result = await manager.job_inspect("test_job")
+        assert result["status"] == "error"
+        assert "Ray is not initialized" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_no_client(self, initialized_manager):
+        """Test job_inspect when job client is not available."""
+        initialized_manager._job_client = None
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                # Patch the actual ray.job_submission.JobSubmissionClient used in the fallback
+                with patch(
+                    "ray.job_submission.JobSubmissionClient"
+                ) as mock_job_submission:
+                    mock_job_submission.side_effect = Exception(
+                        "Could not find any running Ray instance"
+                    )
+
+                    result = await initialized_manager.job_inspect("test_job")
+                    assert result["status"] == "error"
+                    assert (
+                        "Job inspection not available in Ray Client mode"
+                        in result["message"]
+                    )
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_status_mode(self, initialized_manager):
+        """Test job_inspect with status mode."""
+        mock_job_info = Mock()
+        mock_job_info.status = "RUNNING"
+        mock_job_info.entrypoint = "python test.py"
+        mock_job_info.start_time = 1234567890
+        mock_job_info.end_time = None
+        mock_job_info.metadata = {"team": "test"}
+        mock_job_info.runtime_env = {"pip": ["requests"]}
+        mock_job_info.message = "Job is running"
+
+        initialized_manager._job_client.get_job_info.return_value = mock_job_info
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await initialized_manager.job_inspect("test_job", "status")
+
+                assert result["status"] == "success"
+                assert result["job_id"] == "test_job"
+                assert result["job_status"] == "RUNNING"
+                assert result["entrypoint"] == "python test.py"
+                assert result["inspection_mode"] == "status"
+                assert "logs" not in result
+                assert "debug_info" not in result
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_logs_mode(self, initialized_manager):
+        """Test job_inspect with logs mode."""
+        mock_job_info = Mock()
+        mock_job_info.status = "RUNNING"
+        mock_job_info.entrypoint = "python test.py"
+        mock_job_info.start_time = 1234567890
+        mock_job_info.end_time = None
+        mock_job_info.metadata = {}
+        mock_job_info.runtime_env = {}
+        mock_job_info.message = ""
+
+        initialized_manager._job_client.get_job_info.return_value = mock_job_info
+        initialized_manager._job_client.get_job_logs.return_value = (
+            "Log line 1\nLog line 2"
+        )
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await initialized_manager.job_inspect("test_job", "logs")
+
+                assert result["status"] == "success"
+                assert result["job_id"] == "test_job"
+                assert result["job_status"] == "RUNNING"
+                assert result["inspection_mode"] == "logs"
+                assert result["logs"] == "Log line 1\nLog line 2"
+                assert "debug_info" not in result
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_debug_mode(self, initialized_manager):
+        """Test job_inspect with debug mode."""
+        mock_job_info = Mock()
+        mock_job_info.status = "FAILED"
+        mock_job_info.entrypoint = "python test.py"
+        mock_job_info.start_time = 1234567890
+        mock_job_info.end_time = 1234567895
+        mock_job_info.metadata = {}
+        mock_job_info.runtime_env = {}
+        mock_job_info.message = "Job failed"
+
+        initialized_manager._job_client.get_job_info.return_value = mock_job_info
+        initialized_manager._job_client.get_job_logs.return_value = (
+            "Error: Import failed\nTraceback..."
+        )
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await initialized_manager.job_inspect("test_job", "debug")
+
+                assert result["status"] == "success"
+                assert result["job_id"] == "test_job"
+                assert result["job_status"] == "FAILED"
+                assert result["inspection_mode"] == "debug"
+                assert result["logs"] == "Error: Import failed\nTraceback..."
+                assert "debug_info" in result
+                assert "error_logs" in result["debug_info"]
+                assert "recent_logs" in result["debug_info"]
+                assert "debugging_suggestions" in result["debug_info"]
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_logs_failure(self, initialized_manager):
+        """Test job_inspect when log retrieval fails."""
+        mock_job_info = Mock()
+        mock_job_info.status = "RUNNING"
+        mock_job_info.entrypoint = "python test.py"
+        mock_job_info.start_time = 1234567890
+        mock_job_info.end_time = None
+        mock_job_info.metadata = {}
+        mock_job_info.runtime_env = {}
+        mock_job_info.message = ""
+
+        initialized_manager._job_client.get_job_info.return_value = mock_job_info
+        initialized_manager._job_client.get_job_logs.side_effect = Exception(
+            "Log retrieval failed"
+        )
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await initialized_manager.job_inspect("test_job", "logs")
+
+                assert result["status"] == "success"
+                assert result["job_id"] == "test_job"
+                assert result["inspection_mode"] == "logs"
+                assert "Failed to retrieve logs" in result["logs"]
 
 
 if __name__ == "__main__":

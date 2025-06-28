@@ -73,10 +73,8 @@ class TestMCPIntegration:
             "cluster_info",
             "submit_job",
             "list_jobs",
-            "job_status",
+            "job_inspect",
             "cancel_job",
-            "monitor_job",
-            "debug_job",
             "list_actors",
             "kill_actor",
             "get_logs",
@@ -148,8 +146,10 @@ class TestMCPIntegration:
         )
         submit_job_mock.__signature__ = inspect.signature(RayManager.submit_job)
 
-        get_job_status_mock = AsyncMock(return_value={"status": "running"})
-        get_job_status_mock.__signature__ = inspect.signature(RayManager.get_job_status)
+        job_inspect_mock = AsyncMock(
+            return_value={"status": "success", "job_status": "RUNNING"}
+        )
+        job_inspect_mock.__signature__ = inspect.signature(RayManager.job_inspect)
 
         list_jobs_mock = AsyncMock(return_value={"jobs": [{"job_id": "job123"}]})
         list_jobs_mock.__signature__ = inspect.signature(RayManager.list_jobs)
@@ -159,7 +159,7 @@ class TestMCPIntegration:
 
         with patch.object(RayManager, "start_cluster", start_cluster_mock):
             with patch.object(RayManager, "submit_job", submit_job_mock):
-                with patch.object(RayManager, "get_job_status", get_job_status_mock):
+                with patch.object(RayManager, "job_inspect", job_inspect_mock):
                     with patch.object(RayManager, "list_jobs", list_jobs_mock):
                         with patch.object(RayManager, "cancel_job", cancel_job_mock):
 
@@ -183,9 +183,10 @@ class TestMCPIntegration:
 
                             # Check job status
                             result = await registry.execute_tool(
-                                "job_status", {"job_id": "job123"}
+                                "job_inspect", {"job_id": "job123"}
                             )
-                            assert result["status"] == "running"
+                            assert result["status"] == "success"
+                            assert result["job_status"] == "RUNNING"
 
                             # List jobs
                             result = await registry.execute_tool("list_jobs", {})
@@ -228,20 +229,17 @@ class TestMCPIntegration:
         start_cluster_mock = AsyncMock(return_value={"status": "started"})
         start_cluster_mock.__signature__ = inspect.signature(RayManager.start_cluster)
 
-        get_job_status_mock = AsyncMock(
+        job_inspect_mock = AsyncMock(
             return_value={"status": "success", "job_status": "RUNNING"}
         )
-        get_job_status_mock.__signature__ = inspect.signature(RayManager.get_job_status)
+        job_inspect_mock.__signature__ = inspect.signature(RayManager.job_inspect)
 
         with (
             patch.object(ray_manager, "start_cluster", start_cluster_mock),
-            patch.object(ray_manager, "get_job_status", get_job_status_mock),
+            patch.object(ray_manager, "job_inspect", job_inspect_mock),
         ):
             with patch("ray_mcp.main.RAY_AVAILABLE", True):
-                result = await call_tool("job_status", {})  # Missing job_id
-                response_data = json.loads(get_text_content(result))
-                assert response_data["status"] == "error"
-                result = await call_tool("job_status", {"job_id": "test_job"})
+                result = await call_tool("job_inspect", {"job_id": "test_job"})
                 response_data = json.loads(get_text_content(result))
                 assert response_data["status"] == "success"
 
@@ -368,53 +366,6 @@ class TestMCPIntegration:
                 assert call_args["job_id"] == "complex_job_123"
 
     # ===== UNIQUE TESTS FROM test_mcp_tools.py =====
-
-    @pytest.mark.asyncio
-    async def test_monitor_job_tool(self):
-        """Test monitor_job tool."""
-        registry = ToolRegistry(RayManager())
-
-        # Mock RayManager method
-        monitor_job_mock = AsyncMock(
-            return_value={
-                "status": "success",
-                "job_id": "job_123",
-                "progress": "75%",
-                "estimated_time_remaining": "5 minutes",
-            }
-        )
-        monitor_job_mock.__signature__ = inspect.signature(
-            RayManager.monitor_job_progress
-        )
-
-        with patch.object(RayManager, "monitor_job_progress", monitor_job_mock):
-            result = await registry.execute_tool("monitor_job", {"job_id": "job_123"})
-
-            assert isinstance(result, dict)
-            assert "progress" in result
-            monitor_job_mock.assert_called_once_with("job_123")
-
-    @pytest.mark.asyncio
-    async def test_debug_job_tool(self):
-        """Test debug_job tool."""
-        registry = ToolRegistry(RayManager())
-
-        # Mock RayManager method
-        debug_job_mock = AsyncMock(
-            return_value={
-                "status": "success",
-                "job_id": "job_123",
-                "debug_info": "Job is running normally",
-            }
-        )
-        debug_job_mock.__signature__ = inspect.signature(RayManager.debug_job)
-
-        with patch.object(RayManager, "debug_job", debug_job_mock):
-            result = await registry.execute_tool("debug_job", {"job_id": "job_123"})
-
-            assert isinstance(result, dict)
-            assert "debug_info" in result
-            debug_job_mock.assert_called_once_with("job_123")
 
     @pytest.mark.asyncio
     async def test_list_actors_tool_with_filters(self):
@@ -681,6 +632,54 @@ class TestMCPIntegration:
                     # Verify error is properly handled and returned
                     assert result["status"] == "error"
                     assert "Test error" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_job_inspect_tool(self):
+        """Test job_inspect tool with different modes."""
+        registry = ToolRegistry(RayManager())
+
+        # Mock RayManager method
+        job_inspect_mock = AsyncMock(
+            return_value={
+                "status": "success",
+                "job_id": "job_123",
+                "job_status": "RUNNING",
+                "entrypoint": "python test.py",
+                "inspection_mode": "status",
+            }
+        )
+        job_inspect_mock.__signature__ = inspect.signature(RayManager.job_inspect)
+
+        with patch.object(RayManager, "job_inspect", job_inspect_mock):
+            # Test status mode (default)
+            result = await registry.execute_tool("job_inspect", {"job_id": "job_123"})
+            assert isinstance(result, dict)
+            assert result["job_status"] == "RUNNING"
+            assert result["inspection_mode"] == "status"
+            job_inspect_mock.assert_called_with("job_123", "status")
+
+            # Test logs mode
+            job_inspect_mock.return_value["inspection_mode"] = "logs"
+            job_inspect_mock.return_value["logs"] = "Job log line 1\nJob log line 2"
+            result = await registry.execute_tool(
+                "job_inspect", {"job_id": "job_123", "mode": "logs"}
+            )
+            assert "logs" in result
+            assert result["inspection_mode"] == "logs"
+            job_inspect_mock.assert_called_with("job_123", "logs")
+
+            # Test debug mode
+            job_inspect_mock.return_value["inspection_mode"] = "debug"
+            job_inspect_mock.return_value["debug_info"] = {
+                "error_logs": [],
+                "debugging_suggestions": [],
+            }
+            result = await registry.execute_tool(
+                "job_inspect", {"job_id": "job_123", "mode": "debug"}
+            )
+            assert "debug_info" in result
+            assert result["inspection_mode"] == "debug"
+            job_inspect_mock.assert_called_with("job_123", "debug")
 
 
 @pytest.mark.integration

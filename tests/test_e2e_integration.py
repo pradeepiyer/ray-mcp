@@ -133,7 +133,7 @@ class TestE2EIntegration:
         print("Testing job status...")
         max_wait = 30
         for i in range(max_wait):
-            status_result = await call_tool("job_status", {"job_id": job_id})
+            status_result = await call_tool("job_inspect", {"job_id": job_id})
             status_content = get_text_content(status_result)
             status_data = json.loads(status_content)
             job_status = status_data.get("job_status", "UNKNOWN")
@@ -257,7 +257,7 @@ if __name__ == "__main__":
             print("Polling actor job status...")
             max_wait = 30
             for i in range(max_wait):
-                status_result = await call_tool("job_status", {"job_id": actor_job_id})
+                status_result = await call_tool("job_inspect", {"job_id": actor_job_id})
                 status_content = get_text_content(status_result)
                 status_data = json.loads(status_content)
                 job_status = status_data.get("job_status", "UNKNOWN")
@@ -365,7 +365,7 @@ sys.exit(1)  # Intentional failure
 
             # Step 3: Test job status
             print("Testing job status...")
-            status_result = await call_tool("job_status", {"job_id": fail_job_id})
+            status_result = await call_tool("job_inspect", {"job_id": fail_job_id})
             status_content = get_text_content(status_result)
             status_data = json.loads(status_content)
             assert status_data["status"] == "success"
@@ -382,7 +382,9 @@ sys.exit(1)  # Intentional failure
 
             # Step 5: Debug the failed job
             print("Debugging the failed job...")
-            debug_result = await call_tool("debug_job", {"job_id": fail_job_id})
+            debug_result = await call_tool(
+                "job_inspect", {"job_id": fail_job_id, "mode": "debug"}
+            )
             debug_content = get_text_content(debug_result)
             debug_data = json.loads(debug_content)
 
@@ -421,7 +423,7 @@ print("Job completed!")
                 max_wait = 30
                 for i in range(max_wait):
                     status_result = await call_tool(
-                        "job_status", {"job_id": success_job_id}
+                        "job_inspect", {"job_id": success_job_id}
                     )
                     status_content = get_text_content(status_result)
                     status_data = json.loads(status_content)
@@ -484,23 +486,21 @@ print("Job completed!")
         tools = await list_tools()
         assert isinstance(tools, list)
         tool_names = {tool.name for tool in tools}
-        required_tools = {
+        expected_tools = {
             "start_ray",
             "connect_ray",
             "stop_ray",
             "cluster_info",
             "submit_job",
             "list_jobs",
-            "job_status",
+            "job_inspect",
             "cancel_job",
-            "monitor_job",
-            "debug_job",
             "list_actors",
             "kill_actor",
             "get_logs",
         }
         # All required tools must be present
-        assert required_tools.issubset(tool_names)
+        assert expected_tools.issubset(tool_names)
         # Check that all tools are Tool instances
         from mcp.types import Tool
 
