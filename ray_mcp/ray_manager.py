@@ -1,6 +1,7 @@
 """Ray cluster management functionality."""
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -160,6 +161,22 @@ class RayManager:
 
         return filtered_kwargs
 
+    def _sanitize_init_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove ``None`` values and any keys not accepted by ``ray.init``."""
+
+        cleaned = {k: v for k, v in kwargs.items() if v is not None}
+
+        try:
+            if ray is not None:
+                valid_params = set(inspect.signature(ray.init).parameters.keys())
+            else:
+                raise ValueError
+        except Exception:
+            # If ray or its signature isn't available, return without extra filtering
+            return cleaned
+
+        return {k: v for k, v in cleaned.items() if k in valid_params}
+
     async def init_cluster(
         self,
         address: Optional[str] = None,
@@ -226,6 +243,7 @@ class RayManager:
                     **kwargs,
                 }
                 filtered_kwargs = self._filter_cluster_starting_parameters(all_kwargs)
+                filtered_kwargs = self._sanitize_init_kwargs(filtered_kwargs)
 
                 init_kwargs: Dict[str, Any] = {
                     "address": address,
@@ -361,7 +379,7 @@ class RayManager:
                     "address": ray_address,
                     "ignore_reinit_error": True,
                 }
-                init_kwargs.update(kwargs)
+                init_kwargs.update(self._sanitize_init_kwargs(kwargs))
                 try:
                     ray_context = ray.init(**init_kwargs)
                     self._is_initialized = True

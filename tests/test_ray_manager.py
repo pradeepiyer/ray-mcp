@@ -507,6 +507,37 @@ class TestRayManager:
                 assert "Failed to get resources" in result["message"]
 
     @pytest.mark.asyncio
+    async def test_init_cluster_filters_none_values(self):
+        """Ensure None values and invalid params are removed before ray.init."""
+        manager = RayManager()
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+
+                def dummy_init(
+                    *, address=None, ignore_reinit_error=True, namespace=None
+                ):
+                    return Mock(
+                        address_info={"address": address or "ray://127.0.0.1:10001"},
+                        dashboard_url="http://127.0.0.1:8265",
+                    )
+
+                mock_ray.init.side_effect = dummy_init
+                mock_ray.init.__signature__ = inspect.signature(dummy_init)
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "node_123"
+                )
+
+                await manager.init_cluster(
+                    address="ray://127.0.0.1:10001", namespace=None, invalid_param=1
+                )
+
+                call_kwargs = mock_ray.init.call_args.kwargs
+                assert "namespace" not in call_kwargs
+                assert "invalid_param" not in call_kwargs
+
+    @pytest.mark.asyncio
     async def test_filter_cluster_starting_parameters_method(self):
         """Test the _filter_cluster_starting_parameters method."""
         manager = RayManager()
