@@ -61,11 +61,13 @@ cleanup_ray_dirs() {
         "/tmp/ray_cluster_*"
     )
     
-    for dir_pattern in "${ray_dirs[@]}"; do
-        if [ -d "$dir_pattern" ] 2>/dev/null; then
-            echo "🗑️  Removing Ray directory: $dir_pattern"
-            rm -rf "$dir_pattern" 2>/dev/null || true
-        fi
+    for pattern in "${ray_dirs[@]}"; do
+        for dir in $pattern; do
+            if [ -d "$dir" ] 2>/dev/null; then
+                echo "🗑️  Removing Ray directory: $dir"
+                rm -rf "$dir" 2>/dev/null || true
+            fi
+        done
     done
     
     # Also clean up any ray-related files in /tmp
