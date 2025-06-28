@@ -80,11 +80,16 @@ class RayManager:
             logger.error("JobSubmissionClient is not available")
             return None
 
+        loop = asyncio.get_running_loop()
+
         for attempt in range(max_retries):
             try:
-                job_client = JobSubmissionClient(address)
-                # Test the connection by doing a simple operation that requires the agent
-                job_client.list_jobs()
+                # Create the JobSubmissionClient in a thread to avoid blocking the event loop
+                job_client = await loop.run_in_executor(
+                    None, JobSubmissionClient, address
+                )
+                # Test the connection by calling list_jobs in the executor
+                await loop.run_in_executor(None, job_client.list_jobs)
                 logger.info(
                     f"Job client initialized successfully on attempt {attempt + 1}"
                 )

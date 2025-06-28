@@ -5,7 +5,7 @@ import asyncio
 import inspect
 import subprocess
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch, call
 
 import pytest
 
@@ -568,6 +568,43 @@ class TestRayManager:
         assert "custom_param" in filtered
         assert filtered["address"] == "ray://127.0.0.1:10001"
         assert filtered["custom_param"] == "should_be_passed"
+
+    def test_initialize_job_client_with_retry_is_async(self):
+        """Ensure the helper is defined as an async function."""
+        assert inspect.iscoroutinefunction(
+            RayManager._initialize_job_client_with_retry
+        )
+
+    @pytest.mark.asyncio
+    async def test_initialize_job_client_with_retry_executor(self, manager):
+        """Verify JobSubmissionClient creation and listing run in executor."""
+        mock_job_client = MagicMock()
+        mock_job_client.list_jobs.return_value = []
+
+        with patch(
+            "ray_mcp.ray_manager.JobSubmissionClient",
+            return_value=mock_job_client,
+        ) as mock_cls:
+            loop_mock = MagicMock()
+
+            async def run_in_executor(executor, func, *args):
+                return func(*args)
+
+            loop_mock.run_in_executor = AsyncMock(side_effect=run_in_executor)
+
+            with patch("asyncio.get_running_loop", return_value=loop_mock):
+                result = await manager._initialize_job_client_with_retry(
+                    "http://host:8265", max_retries=1, delay=0
+                )
+
+                assert result == mock_job_client
+                assert loop_mock.run_in_executor.call_count == 2
+                loop_mock.run_in_executor.assert_has_calls(
+                    [
+                        call(None, mock_cls, "http://host:8265"),
+                        call(None, mock_job_client.list_jobs),
+                    ]
+                )
 
 
 if __name__ == "__main__":
