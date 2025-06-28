@@ -190,3 +190,86 @@ class TestWorkerManager:
         assert result[0]["status"] == "stopped"
         assert result[0]["node_name"] == "worker-1"
         assert "stopped gracefully" in result[0]["message"]
+
+    @pytest.mark.asyncio
+    async def test_stop_all_workers_timeout_and_force_kill(self, worker_manager):
+        """Test stopping worker nodes with timeout and force kill."""
+        # Mock worker process that times out during graceful shutdown
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_process.poll.return_value = None  # Process is running
+        mock_process.terminate.return_value = None
+        # First wait call times out, second wait call succeeds
+        mock_process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="ray start", timeout=5),
+            None,  # Force kill wait succeeds
+        ]
+
+        worker_manager.worker_processes = [mock_process]
+        worker_manager.worker_configs = [{"node_name": "worker-1"}]
+
+        result = await worker_manager.stop_all_workers()
+
+        assert len(result) == 1
+        assert result[0]["status"] == "force_stopped"
+        assert result[0]["node_name"] == "worker-1"
+        assert "force stopped" in result[0]["message"]
+        assert result[0]["process_id"] == 12345
+
+        # Verify terminate was called, then kill was called
+        mock_process.terminate.assert_called_once()
+        mock_process.kill.assert_called_once()
+        # Verify wait was called twice (once for graceful, once for force kill)
+        assert mock_process.wait.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_stop_all_workers_async_wait_behavior(self, worker_manager):
+        """Test that stop_all_workers uses async wait and doesn't block the event loop."""
+        # Mock worker process
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_process.poll.return_value = None  # Process is running
+        mock_process.terminate.return_value = None
+        mock_process.wait.return_value = None  # Process stops gracefully
+
+        worker_manager.worker_processes = [mock_process]
+        worker_manager.worker_configs = [{"node_name": "worker-1"}]
+
+        # Track when the operation starts and ends to verify it's non-blocking
+        start_time = asyncio.get_event_loop().time()
+
+        # Run the stop operation
+        result = await worker_manager.stop_all_workers()
+
+        end_time = asyncio.get_event_loop().time()
+
+        # The operation should complete quickly (not block for 5 seconds)
+        # Even with the async wait, it should complete in much less than 5 seconds
+        assert end_time - start_time < 1.0  # Should complete in under 1 second
+
+        assert len(result) == 1
+        assert result[0]["status"] == "stopped"
+        assert result[0]["node_name"] == "worker-1"
+
+    @pytest.mark.asyncio
+    async def test_stop_all_workers_error_handling(self, worker_manager):
+        """Test error handling in stop_all_workers."""
+        # Mock worker process that raises an exception during termination
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_process.poll.return_value = None  # Process is running
+        mock_process.terminate.side_effect = Exception("Termination failed")
+
+        worker_manager.worker_processes = [mock_process]
+        worker_manager.worker_configs = [{"node_name": "worker-1"}]
+
+        result = await worker_manager.stop_all_workers()
+
+        assert len(result) == 1
+        assert result[0]["status"] == "error"
+        assert result[0]["node_name"] == "worker-1"
+        assert "Failed to stop worker" in result[0]["message"]
+
+        # Verify lists are still cleared even on error
+        assert len(worker_manager.worker_processes) == 0
+        assert len(worker_manager.worker_configs) == 0

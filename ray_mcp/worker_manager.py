@@ -314,7 +314,7 @@ class WorkerManager:
         The shutdown process:
             - Iterates through all tracked worker processes
             - Sends SIGTERM (terminate signal) to each process
-            - Waits up to 5 seconds for graceful shutdown
+            - Waits up to 5 seconds for graceful shutdown using non-blocking async wait
             - Sends SIGKILL (force kill) if graceful shutdown fails
             - Clears process tracking lists after all workers are stopped
 
@@ -333,15 +333,17 @@ class WorkerManager:
                 # Terminate the process
                 process.terminate()
 
-                # Wait for graceful shutdown
+                # Wait for graceful shutdown using non-blocking async wait
                 try:
-                    process.wait(timeout=5)
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, lambda: process.wait(timeout=5))
                     status = "stopped"
                     message = f"Worker node '{node_name}' stopped gracefully"
                 except subprocess.TimeoutExpired:
                     # Force kill if it doesn't stop gracefully
                     process.kill()
-                    process.wait()
+                    # Wait for force kill to complete (no timeout needed for kill)
+                    await loop.run_in_executor(None, process.wait)
                     status = "force_stopped"
                     message = f"Worker node '{node_name}' force stopped"
 
