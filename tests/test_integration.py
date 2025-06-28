@@ -76,6 +76,7 @@ class TestMCPIntegration:
             "cancel_job",
             "list_actors",
             "kill_actor",
+            "retrieve_logs",
             "get_logs",
         ]
 
@@ -331,8 +332,41 @@ class TestMCPIntegration:
                 kill_actor_mock.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_retrieve_logs_tool(self):
+        """Test retrieve_logs tool functionality."""
+        registry = ToolRegistry(RayManager())
+        # Mock the ray manager to return success
+        start_cluster_mock = AsyncMock(return_value={"status": "started"})
+        start_cluster_mock.__signature__ = inspect.signature(RayManager.init_cluster)
+
+        with patch.object(RayManager, "init_cluster", start_cluster_mock):
+            # First initialize the cluster
+            result = await registry.execute_tool("init_ray", {"num_cpus": 4})
+            assert result["status"] == "started"
+
+            # Then test retrieve_logs
+            retrieve_logs_mock = AsyncMock(
+                return_value={
+                    "status": "success",
+                    "logs": "test logs",
+                    "log_type": "job",
+                }
+            )
+            retrieve_logs_mock.__signature__ = inspect.signature(
+                RayManager.retrieve_logs
+            )
+
+            with patch.object(RayManager, "retrieve_logs", retrieve_logs_mock):
+                result = await registry.execute_tool(
+                    "retrieve_logs",
+                    {"identifier": "job_123", "log_type": "job", "num_lines": 50},
+                )
+                assert result["status"] == "success"
+                retrieve_logs_mock.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_get_logs_tool(self):
-        """Test get_logs tool functionality."""
+        """Test get_logs tool functionality (legacy)."""
         registry = ToolRegistry(RayManager())
         # Mock the ray manager to return success
         start_cluster_mock = AsyncMock(return_value={"status": "started"})
@@ -380,7 +414,9 @@ class TestMCPIntegration:
                         "status": "success",
                         "logs": "Sample log output...",
                     }
-                    result = await registry.execute_tool("get_logs", {"job_id": "test_job_123"})
+                    result = await registry.execute_tool(
+                        "get_logs", {"job_id": "test_job_123"}
+                    )
                     assert result["status"] == "success"
                     assert "logs" in result
 

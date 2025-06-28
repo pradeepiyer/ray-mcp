@@ -243,7 +243,101 @@ Inspect a job with different modes to get varying levels of detail.
 - Logs and debug modes include additional information as specified
 - Works with both Ray Job Submission API and Ray Client mode
 
-### get_logs
+### retrieve_logs
+Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis.
+
+```json
+{
+  "identifier": "job_123",     // Required: Job ID, actor ID/name, or node ID
+  "log_type": "job",           // Optional: Type of logs - "job", "actor", or "node" (default: "job")
+  "num_lines": 100,            // Optional: Number of log lines to retrieve (default: 100, 0 for all)
+  "include_errors": false      // Optional: Whether to include error analysis for job logs (default: false)
+}
+```
+
+**Supported log types:**
+- **`job`**: Retrieve job logs (fully supported)
+- **`actor`**: Retrieve actor logs (limited - provides actor info and suggestions)
+- **`node`**: Retrieve node logs (limited - provides node info and suggestions)
+
+**Example responses:**
+
+**Job logs (success):**
+```json
+{
+  "status": "success",
+  "log_type": "job",
+  "identifier": "job_123",
+  "logs": "Job started...\nProcessing data...\nJob completed successfully!"
+}
+```
+
+**Job logs with error analysis:**
+```json
+{
+  "status": "success",
+  "log_type": "job",
+  "identifier": "job_123",
+  "logs": "Error: Import failed\nTraceback...",
+  "error_analysis": {
+    "error_count": 1,
+    "errors": ["Error: Import failed"],
+    "suggestions": [
+      "Import error detected. Check if all required packages are installed in the runtime environment."
+    ]
+  }
+}
+```
+
+**Actor logs (limited support):**
+```json
+{
+  "status": "partial",
+  "log_type": "actor",
+  "identifier": "my_actor",
+  "message": "Actor logs are not directly accessible through Ray Python API",
+  "actor_info": {
+    "actor_id": "abc123...",
+    "state": "ALIVE"
+  },
+  "suggestions": [
+    "Check Ray dashboard for actor logs",
+    "Use Ray CLI: ray logs --actor-id <actor_id>",
+    "Monitor actor through dashboard at http://localhost:8265"
+  ]
+}
+```
+
+**Node logs (limited support):**
+```json
+{
+  "status": "partial",
+  "log_type": "node",
+  "identifier": "node_123",
+  "message": "Node logs are not directly accessible through Ray Python API",
+  "node_info": {
+    "node_id": "node_123",
+    "alive": true,
+    "node_name": "worker-1",
+    "node_manager_address": "127.0.0.1:12345"
+  },
+  "suggestions": [
+    "Check Ray dashboard for node logs",
+    "Use Ray CLI: ray logs --node-id <node_id>",
+    "Check log files at /tmp/ray/session_*/logs/",
+    "Monitor node through dashboard at http://localhost:8265"
+  ]
+}
+```
+
+**Notes:**
+- The `identifier` parameter is required and should be a job ID, actor ID/name, or node ID
+- Job logs are fully supported and provide comprehensive logging
+- Actor and node logs have limited support due to Ray API limitations but provide helpful information and suggestions
+- Error analysis is only available for job logs when `include_errors` is true
+- Works with both Ray Job Submission API and Ray Client mode
+
+### get_logs (Legacy)
 ```json
 {
   "job_id": "job_123",     // Required: Job ID to get logs for
@@ -262,7 +356,8 @@ Inspect a job with different modes to get varying levels of detail.
 ```
 
 **Notes:**
-- Only job logs are currently supported (actor and node logs are not implemented)
+- **Legacy tool** - Use `retrieve_logs` for more comprehensive logging capabilities
+- Only job logs are supported (actor and node logs are not implemented)
 - The `job_id` parameter is required
 - Logs are returned as the last N lines where N is the `num_lines` parameter
 - If no `num_lines` is specified, defaults to 100 lines

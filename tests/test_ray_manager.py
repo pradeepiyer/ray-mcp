@@ -102,7 +102,9 @@ class TestRayManager:
                     dashboard_url="http://127.0.0.1:8265",
                     session_name="test_session",
                 )
-                mock_ray.get_runtime_context.return_value.get_node_id.return_value = "node_123"
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "node_123"
+                )
 
                 result = await ray_manager.init_cluster(address="ray://127.0.0.1:10001")
 
@@ -161,7 +163,9 @@ class TestRayManager:
                     mock_run.return_value.stderr = ""
 
                     # Mock worker manager
-                    with patch.object(ray_manager._worker_manager, "stop_all_workers") as mock_stop_workers:
+                    with patch.object(
+                        ray_manager._worker_manager, "stop_all_workers"
+                    ) as mock_stop_workers:
                         mock_stop_workers.return_value = []
 
                         result = await ray_manager.stop_cluster()
@@ -258,13 +262,11 @@ class TestRayManager:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
-                
+
                 # Mock the _ensure_initialized method to not raise an exception
                 with patch.object(ray_manager, "_ensure_initialized"):
                     # Mock ray.util.list_named_actors
-                    mock_named_actors = [
-                        {"name": "test_actor", "namespace": "default"}
-                    ]
+                    mock_named_actors = [{"name": "test_actor", "namespace": "default"}]
                     mock_ray.util.list_named_actors.return_value = mock_named_actors
 
                     # Mock actor handle
@@ -297,8 +299,117 @@ class TestRayManager:
                 assert result["actor_id"] == "actor123"
 
     @pytest.mark.asyncio
+    async def test_retrieve_logs_job_success(self, initialized_manager):
+        """Test successful job logs retrieval with retrieve_logs."""
+        mock_logs = "Job started\nProcessing data\nJob completed"
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                initialized_manager._job_client.get_job_logs.return_value = mock_logs
+
+                result = await initialized_manager.retrieve_logs(
+                    "job_123", "job", 100, False
+                )
+
+                assert result["status"] == "success"
+                assert result["log_type"] == "job"
+                assert result["identifier"] == "job_123"
+                assert result["logs"] == mock_logs
+                assert "error_analysis" not in result
+                initialized_manager._job_client.get_job_logs.assert_called_once_with(
+                    "job_123"
+                )
+
+    @pytest.mark.asyncio
+    async def test_retrieve_logs_job_with_errors(self, initialized_manager):
+        """Test job logs retrieval with error analysis."""
+        mock_logs = "Job started\nError: Import failed\nTraceback..."
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                initialized_manager._job_client.get_job_logs.return_value = mock_logs
+
+                result = await initialized_manager.retrieve_logs(
+                    "job_123", "job", 100, True
+                )
+
+                assert result["status"] == "success"
+                assert result["log_type"] == "job"
+                assert result["identifier"] == "job_123"
+                assert result["logs"] == mock_logs
+                assert "error_analysis" in result
+                assert result["error_analysis"]["error_count"] > 0
+                assert "suggestions" in result["error_analysis"]
+
+    @pytest.mark.asyncio
+    async def test_retrieve_logs_actor_limited(self, initialized_manager):
+        """Test actor logs retrieval (limited support)."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_actor = MagicMock()
+                mock_actor._actor_id.hex.return_value = "abc123"
+                mock_ray.get_actor.return_value = mock_actor
+
+                result = await initialized_manager.retrieve_logs(
+                    "my_actor", "actor", 100
+                )
+
+                assert result["status"] == "partial"
+                assert result["log_type"] == "actor"
+                assert result["identifier"] == "my_actor"
+                assert "Actor logs are not directly accessible" in result["message"]
+                assert "suggestions" in result
+
+    @pytest.mark.asyncio
+    async def test_retrieve_logs_node_limited(self, initialized_manager):
+        """Test node logs retrieval (limited support)."""
+        mock_nodes = [
+            {
+                "NodeID": "node_123",
+                "Alive": True,
+                "NodeName": "worker-1",
+                "NodeManagerAddress": "127.0.0.1:12345",
+            }
+        ]
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_ray.nodes.return_value = mock_nodes
+
+                result = await initialized_manager.retrieve_logs(
+                    "node_123", "node", 100
+                )
+
+                assert result["status"] == "partial"
+                assert result["log_type"] == "node"
+                assert result["identifier"] == "node_123"
+                assert "Node logs are not directly accessible" in result["message"]
+                assert "node_info" in result
+                assert "suggestions" in result
+
+    @pytest.mark.asyncio
+    async def test_retrieve_logs_unsupported_type(self, initialized_manager):
+        """Test retrieve_logs with unsupported log type."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+
+                result = await initialized_manager.retrieve_logs(
+                    "test", "unsupported", 100
+                )
+
+                assert result["status"] == "error"
+                assert "Unsupported log type" in result["message"]
+
+    @pytest.mark.asyncio
     async def test_get_logs_job_success(self, initialized_manager):
-        """Test successful job logs retrieval."""
+        """Test successful job logs retrieval with legacy get_logs method."""
         mock_logs = "Job started\nProcessing data\nJob completed"
 
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
@@ -314,6 +425,15 @@ class TestRayManager:
                 initialized_manager._job_client.get_job_logs.assert_called_once_with(
                     "job_123"
                 )
+
+    @pytest.mark.asyncio
+    async def test_get_logs_no_job_id(self, initialized_manager):
+        """Test get_logs without job_id parameter."""
+        result = await initialized_manager.get_logs()
+
+        assert result["status"] == "error"
+        assert "job_id parameter is required" in result["message"]
+        assert "Use retrieve_logs tool" in result["suggestion"]
 
     def test_generate_health_recommendations(self, manager):
         """Test health recommendation generation."""

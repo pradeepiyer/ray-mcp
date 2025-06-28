@@ -225,8 +225,41 @@ class ToolRegistry:
 
         # Logs & debugging
         self._register_tool(
+            name="retrieve_logs",
+            description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis",
+            schema={
+                "type": "object",
+                "properties": {
+                    "identifier": {
+                        "type": "string",
+                        "description": "Job ID, actor ID/name, or node ID to get logs for (required)",
+                    },
+                    "log_type": {
+                        "type": "string",
+                        "enum": ["job", "actor", "node"],
+                        "default": "job",
+                        "description": "Type of logs to retrieve: 'job' for job logs, 'actor' for actor logs, 'node' for node logs",
+                    },
+                    "num_lines": {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Number of log lines to retrieve (0 for all lines)",
+                    },
+                    "include_errors": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Whether to include error analysis for job logs",
+                    },
+                },
+                "required": ["identifier"],
+            },
+            handler=self._retrieve_logs_handler,
+        )
+
+        # Legacy get_logs tool for backward compatibility
+        self._register_tool(
             name="get_logs",
-            description="Get logs from a specific job",
+            description="Get logs from a specific job (legacy - use retrieve_logs for more features)",
             schema={
                 "type": "object",
                 "properties": {
@@ -322,6 +355,10 @@ class ToolRegistry:
         bound_args = sig.bind_partial(**kwargs)
         bound_args.apply_defaults()
         return await self.ray_manager.kill_actor(**bound_args.arguments)
+
+    async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for retrieve_logs tool."""
+        return await self.ray_manager.retrieve_logs(**kwargs)
 
     async def _get_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_logs tool."""

@@ -151,7 +151,9 @@ class TestMultiNodeCluster:
                     dashboard_url="http://127.0.0.1:8265",
                     session_name="test_session",
                 )
-                mock_ray.get_runtime_context.return_value.get_node_id.return_value = "node_123"
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "node_123"
+                )
 
                 # Mock subprocess for head node startup
                 with patch("subprocess.Popen") as mock_popen:
@@ -164,8 +166,12 @@ class TestMultiNodeCluster:
                     mock_popen.return_value = mock_process
 
                     # Mock worker manager methods
-                    with patch.object(ray_manager._worker_manager, "start_worker_nodes") as mock_start_workers:
-                        with patch.object(ray_manager._worker_manager, "stop_all_workers") as mock_stop_workers:
+                    with patch.object(
+                        ray_manager._worker_manager, "start_worker_nodes"
+                    ) as mock_start_workers:
+                        with patch.object(
+                            ray_manager._worker_manager, "stop_all_workers"
+                        ) as mock_stop_workers:
                             mock_start_workers.return_value = [
                                 {"status": "started", "node_name": "worker-1"},
                                 {"status": "started", "node_name": "worker-2"},

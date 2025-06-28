@@ -496,6 +496,7 @@ print("Job completed!")
             "cancel_job",
             "list_actors",
             "kill_actor",
+            "retrieve_logs",
             "get_logs",
         }
         # All required tools must be present

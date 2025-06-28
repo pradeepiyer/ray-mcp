@@ -1009,64 +1009,278 @@ class RayManager:
             logger.error(f"Failed to kill actor: {e}")
             return {"status": "error", "message": f"Failed to kill actor: {str(e)}"}
 
+    async def retrieve_logs(
+        self,
+        identifier: str,
+        log_type: str = "job",
+        num_lines: int = 100,
+        include_errors: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve logs from Ray cluster for jobs, actors, or nodes.
+
+        Args:
+            identifier: Job ID, actor ID/name, or node ID
+            log_type: Type of logs to retrieve - 'job', 'actor', or 'node'
+            num_lines: Number of log lines to retrieve (0 for all)
+            include_errors: Whether to include error analysis for jobs
+
+        Returns:
+            Dictionary containing logs and metadata
+        """
+        try:
+            self._ensure_initialized()
+
+            if log_type == "job":
+                return await self._retrieve_job_logs(
+                    identifier, num_lines, include_errors
+                )
+            elif log_type == "actor":
+                return await self._retrieve_actor_logs(identifier, num_lines)
+            elif log_type == "node":
+                return await self._retrieve_node_logs(identifier, num_lines)
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Unsupported log type: {log_type}",
+                    "suggestion": "Supported types: 'job', 'actor', 'node'",
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve logs: {e}")
+            return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
+
+    async def _retrieve_job_logs(
+        self, job_id: str, num_lines: int = 100, include_errors: bool = False
+    ) -> Dict[str, Any]:
+        """Retrieve logs for a specific job."""
+        try:
+            if self._job_client:
+                # Get job logs using job client
+                logs = self._job_client.get_job_logs(job_id)
+                if num_lines > 0:
+                    logs = "\n".join(logs.split("\n")[-num_lines:])
+
+                response: Dict[str, Any] = {
+                    "status": "success",
+                    "log_type": "job",
+                    "identifier": job_id,
+                    "logs": logs,
+                }
+
+                if include_errors:
+                    response["error_analysis"] = self._analyze_job_logs(logs)
+
+                return response
+            else:
+                # Use Ray's built-in job log functionality for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    logs = job_client.get_job_logs(job_id)
+                    if num_lines > 0:
+                        logs = "\n".join(logs.split("\n")[-num_lines:])
+
+                    response: Dict[str, Any] = {
+                        "status": "success",
+                        "log_type": "job",
+                        "identifier": job_id,
+                        "logs": logs,
+                    }
+
+                    if include_errors:
+                        response["error_analysis"] = self._analyze_job_logs(logs)
+
+                    return response
+                except Exception as e:
+                    logger.error(
+                        f"Failed to get job logs using Ray built-in client: {e}"
+                    )
+                    return {
+                        "status": "partial",
+                        "message": f"Job log retrieval not available in Ray Client mode: {str(e)}",
+                        "suggestion": "Check Ray dashboard for comprehensive log viewing",
+                    }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve job logs: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve job logs: {str(e)}",
+            }
+
+    async def _retrieve_actor_logs(
+        self, actor_identifier: str, num_lines: int = 100
+    ) -> Dict[str, Any]:
+        """Retrieve logs for a specific actor."""
+        try:
+            # Note: Ray doesn't provide direct actor log access through Python API
+            # This is a placeholder for future implementation
+            # For now, we can try to get actor information and suggest alternatives
+
+            if not RAY_AVAILABLE or ray is None:
+                return {"status": "error", "message": "Ray is not available"}
+
+            # Try to get actor information
+            try:
+                if len(actor_identifier) == 32:  # Assume it's an actor ID
+                    actor_handle = ray.get_actor(actor_identifier)
+                else:
+                    # Assume it's an actor name
+                    actor_handle = ray.get_actor(actor_identifier)
+
+                # Get actor info
+                actor_info = {
+                    "actor_id": actor_handle._actor_id.hex(),
+                    "state": "ALIVE",
+                }
+
+                return {
+                    "status": "partial",
+                    "log_type": "actor",
+                    "identifier": actor_identifier,
+                    "message": "Actor logs are not directly accessible through Ray Python API",
+                    "actor_info": actor_info,
+                    "suggestions": [
+                        "Check Ray dashboard for actor logs",
+                        "Use Ray CLI: ray logs --actor-id <actor_id>",
+                        "Monitor actor through dashboard at http://localhost:8265",
+                    ],
+                }
+
+            except ValueError:
+                return {
+                    "status": "error",
+                    "message": f"Actor {actor_identifier} not found",
+                    "suggestion": "Use list_actors tool to see available actors",
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve actor logs: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve actor logs: {str(e)}",
+            }
+
+    async def _retrieve_node_logs(
+        self, node_id: str, num_lines: int = 100
+    ) -> Dict[str, Any]:
+        """Retrieve logs for a specific node."""
+        try:
+            if not RAY_AVAILABLE or ray is None:
+                return {"status": "error", "message": "Ray is not available"}
+
+            # Get node information
+            nodes = ray.nodes()
+            target_node = None
+
+            for node in nodes:
+                if node["NodeID"] == node_id:
+                    target_node = node
+                    break
+
+            if not target_node:
+                return {
+                    "status": "error",
+                    "message": f"Node {node_id} not found",
+                    "suggestion": "Use cluster_info tool to see available nodes",
+                }
+
+            # Note: Ray doesn't provide direct node log access through Python API
+            # This is a placeholder for future implementation
+            return {
+                "status": "partial",
+                "log_type": "node",
+                "identifier": node_id,
+                "message": "Node logs are not directly accessible through Ray Python API",
+                "node_info": {
+                    "node_id": target_node["NodeID"],
+                    "alive": target_node["Alive"],
+                    "node_name": target_node.get("NodeName", ""),
+                    "node_manager_address": target_node.get("NodeManagerAddress", ""),
+                },
+                "suggestions": [
+                    "Check Ray dashboard for node logs",
+                    "Use Ray CLI: ray logs --node-id <node_id>",
+                    "Check log files at /tmp/ray/session_*/logs/",
+                    "Monitor node through dashboard at http://localhost:8265",
+                ],
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve node logs: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve node logs: {str(e)}",
+            }
+
+    def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
+        """Analyze job logs for errors and provide debugging suggestions."""
+        if not logs:
+            return {"error_count": 0, "errors": [], "suggestions": []}
+
+        lines = logs.split("\n")
+        error_lines = [
+            line
+            for line in lines
+            if "error" in line.lower()
+            or "exception" in line.lower()
+            or "traceback" in line.lower()
+        ]
+
+        suggestions = []
+        if error_lines:
+            if any(
+                "import" in line.lower() and "error" in line.lower()
+                for line in error_lines
+            ):
+                suggestions.append(
+                    "Import error detected. Check if all required packages are installed in the runtime environment."
+                )
+
+            if any(
+                "memory" in line.lower() and "error" in line.lower()
+                for line in error_lines
+            ):
+                suggestions.append(
+                    "Memory error detected. Consider increasing object store memory or optimizing data usage."
+                )
+
+            if any("timeout" in line.lower() for line in error_lines):
+                suggestions.append(
+                    "Timeout detected. Check if the job is taking longer than expected or increase timeout limits."
+                )
+
+            if not suggestions:
+                suggestions.append(
+                    "Errors detected in logs. Check the complete logs for specific error messages."
+                )
+        else:
+            suggestions.append("No obvious errors detected in the logs.")
+
+        return {
+            "error_count": len(error_lines),
+            "errors": error_lines[-10:] if error_lines else [],  # Last 10 errors
+            "suggestions": suggestions,
+        }
+
+    # Legacy method for backward compatibility
     async def get_logs(
         self,
         job_id: Optional[str] = None,
         num_lines: int = 100,
     ) -> Dict[str, Any]:
-        """Get logs from Ray cluster."""
-        try:
-            self._ensure_initialized()
+        """Get logs from Ray cluster (legacy method - use retrieve_logs instead)."""
+        if not job_id:
+            return {
+                "status": "error",
+                "message": "job_id parameter is required for log retrieval",
+                "suggestion": "Use retrieve_logs tool for more comprehensive logging capabilities",
+            }
 
-            if job_id:
-                if self._job_client:
-                    # Get job logs using job client
-                    logs = self._job_client.get_job_logs(job_id)
-                    if num_lines > 0:
-                        logs = "\n".join(logs.split("\n")[-num_lines:])
-                    return {
-                        "status": "success",
-                        "log_type": "job",
-                        "job_id": job_id,
-                        "logs": logs,
-                    }
-                else:
-                    # Use Ray's built-in job log functionality for Ray Client mode
-                    try:
-                        import ray.job_submission
-
-                        # Create a job submission client using the current Ray context
-                        job_client = ray.job_submission.JobSubmissionClient()
-                        logs = job_client.get_job_logs(job_id)
-                        if num_lines > 0:
-                            logs = "\n".join(logs.split("\n")[-num_lines:])
-
-                        return {
-                            "status": "success",
-                            "log_type": "job",
-                            "job_id": job_id,
-                            "logs": logs,
-                        }
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to get job logs using Ray built-in client: {e}"
-                        )
-                        return {
-                            "status": "partial",
-                            "message": f"Job log retrieval not available in Ray Client mode: {str(e)}",
-                            "suggestion": "Check Ray dashboard for comprehensive log viewing",
-                        }
-            else:
-                # No job_id provided
-                return {
-                    "status": "error",
-                    "message": "job_id parameter is required for log retrieval",
-                    "suggestion": "Provide a job_id to retrieve logs for a specific job",
-                }
-
-        except Exception as e:
-            logger.error(f"Failed to get logs: {e}")
-            return {"status": "error", "message": f"Failed to get logs: {str(e)}"}
+        return await self.retrieve_logs(job_id, "job", num_lines, False)
 
     # ===== ENHANCED MONITORING =====
 

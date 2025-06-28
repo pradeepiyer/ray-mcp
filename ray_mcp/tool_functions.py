@@ -123,8 +123,27 @@ def create_tool_functions(server, tool_registry: ToolRegistry):
 
     # Enhanced monitoring tools
     @server.call_tool()
+    async def retrieve_logs(
+        identifier: str,
+        log_type: str = "job",
+        num_lines: int = 100,
+        include_errors: bool = False,
+    ) -> List[TextContent]:
+        """Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis."""
+        result = await tool_registry.execute_tool(
+            "retrieve_logs",
+            {
+                "identifier": identifier,
+                "log_type": log_type,
+                "num_lines": num_lines,
+                "include_errors": include_errors,
+            },
+        )
+        return _format_response(result)
+
+    @server.call_tool()
     async def get_logs(job_id: str, num_lines: int = 100) -> List[TextContent]:
-        """Get logs from a specific job."""
+        """Get logs from a specific job (legacy - use retrieve_logs for more features)."""
         result = await tool_registry.execute_tool(
             "get_logs", {"job_id": job_id, "num_lines": num_lines}
         )

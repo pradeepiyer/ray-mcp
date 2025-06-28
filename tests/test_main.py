@@ -13,8 +13,8 @@ from mcp.types import TextContent
 import pytest
 
 from ray_mcp.main import list_tools, run_server
-from ray_mcp.tool_registry import ToolRegistry
 from ray_mcp.ray_manager import RayManager
+from ray_mcp.tool_registry import ToolRegistry
 
 
 @pytest.mark.fast

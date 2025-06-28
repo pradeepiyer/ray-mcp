@@ -276,6 +276,30 @@ The `examples/` directory contains six comprehensive Ray applications demonstrat
 - Workflow state management
 - Parallel workflow processing
 
+### 7. Log Retrieval (`examples/log_retrieval_example.py`)
+**Purpose**: Demonstrates the new consolidated log retrieval functionality for jobs, actors, and nodes.
+
+**Features**:
+- Comprehensive log retrieval for jobs, actors, and nodes
+- Error analysis and debugging suggestions for job logs
+- Backward compatibility with legacy `get_logs` tool
+- Limited support for actor and node logs with helpful suggestions
+- Error handling for unsupported log types
+
+**Key Concepts**:
+- `retrieve_logs` tool with unified interface
+- Job log retrieval with optional error analysis
+- Actor and node log retrieval (limited support)
+- Legacy `get_logs` tool for backward compatibility
+- Error handling and suggestions for different log types
+
+**Log Types Supported**:
+- **Job Logs**: Fully supported with comprehensive logging and error analysis
+- **Actor Logs**: Limited support - provides actor info and suggestions for external tools
+- **Node Logs**: Limited support - provides node info and suggestions for external tools
+
+**New Feature**: This example showcases the consolidated logging functionality that replaces the overlapping `get_logs`, `debug_job`, and parts of `monitor_job` tools with a single, comprehensive `retrieve_logs` tool.
+
 ## Example Complexity Levels
 
 ### Beginner (`simple_job.py`)
