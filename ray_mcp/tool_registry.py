@@ -215,15 +215,6 @@ class ToolRegistry:
             handler=self._kill_actor_handler,
         )
 
-        # Enhanced monitoring
-        self._register_tool(
-            name="cluster_info",
-            description="Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations",
-            schema={"type": "object", "properties": {}},
-            handler=self._cluster_info_handler,
-        )
-
-        # Logs & debugging
         self._register_tool(
             name="retrieve_logs",
             description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis",
