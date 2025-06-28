@@ -28,4 +28,4 @@ This guide covers common issues and quick solutions.
 
 ---
 
-For more, see [EXAMPLES.md](EXAMPLES.md) and [TOOLS.md](TOOLS.md). 
+For more, see [EXAMPLES.md](EXAMPLES.md) and [TOOLS.md](TOOLS.md).

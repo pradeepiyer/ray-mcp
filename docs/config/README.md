@@ -294,4 +294,4 @@ For configuration issues:
 1. Check the troubleshooting guide in `docs/TROUBLESHOOTING.md`
 2. Verify environment setup in `docs/DEVELOPMENT.md`
 3. Review configuration options in `docs/CONFIGURATION.md`
-4. Test with basic examples in `docs/EXAMPLES.md` 
+4. Test with basic examples in `docs/EXAMPLES.md`
