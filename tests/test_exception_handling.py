@@ -244,7 +244,9 @@ class TestExceptionHandling:
         original_property = self._patch_is_initialized(ray_manager)
         try:
             # Mock the job client to raise RuntimeError
-            ray_manager._job_client.submit_job.side_effect = RuntimeError("Runtime error")
+            ray_manager._job_client.submit_job.side_effect = RuntimeError(
+                "Runtime error"
+            )
 
             result = await ray_manager.submit_job("test_script.py")
             assert result["status"] == "error"
@@ -258,7 +260,9 @@ class TestExceptionHandling:
         original_property = self._patch_is_initialized(ray_manager)
         try:
             # Mock the job client to raise RuntimeError
-            ray_manager._job_client.list_jobs.side_effect = RuntimeError("Runtime error")
+            ray_manager._job_client.list_jobs.side_effect = RuntimeError(
+                "Runtime error"
+            )
 
             result = await ray_manager.list_jobs()
             assert result["status"] == "error"
@@ -286,7 +290,9 @@ class TestExceptionHandling:
         original_property = self._patch_is_initialized(ray_manager)
         try:
             # Mock the job client to raise an unexpected error
-            ray_manager._job_client.submit_job.side_effect = Exception("Unexpected error")
+            ray_manager._job_client.submit_job.side_effect = Exception(
+                "Unexpected error"
+            )
 
             result = await ray_manager.submit_job("test_script.py")
             assert result["status"] == "error"
@@ -300,7 +306,9 @@ class TestExceptionHandling:
         original_property = self._patch_is_initialized(ray_manager)
         try:
             # Mock the job client to raise an unexpected error
-            ray_manager._job_client.list_jobs.side_effect = Exception("Unexpected error")
+            ray_manager._job_client.list_jobs.side_effect = Exception(
+                "Unexpected error"
+            )
 
             result = await ray_manager.list_jobs()
             assert result["status"] == "error"
