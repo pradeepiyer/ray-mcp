@@ -201,6 +201,34 @@ class RayManager:
 
         If address is provided, connects to existing cluster; otherwise starts a new cluster.
         This method unifies the functionality of starting and connecting to Ray clusters.
+
+        Args:
+            address: Ray cluster address to connect to. If provided, connects to existing cluster.
+            num_cpus: Number of CPUs for head node (only for new clusters).
+            num_gpus: Number of GPUs for head node (only for new clusters).
+            object_store_memory: Object store memory in bytes for head node (only for new clusters).
+            worker_nodes: Worker node configuration. CRITICAL BEHAVIOR:
+                - None (default): Uses default worker configuration (2 workers)
+                - [] (empty array): Starts NO worker nodes (head-node-only cluster)
+                - [config1, config2, ...]: Uses specified worker configurations
+                Use empty array [] when user requests "only head node" or "no worker nodes".
+            head_node_port: Port for head node (only for new clusters).
+            dashboard_port: Port for Ray dashboard (only for new clusters).
+            head_node_host: Host address for head node (only for new clusters).
+            **kwargs: Additional Ray initialization parameters.
+
+        Returns:
+            Dict containing cluster status, address, dashboard URL, and worker results.
+
+        Examples:
+            # Head-node-only cluster (no workers)
+            await init_cluster(worker_nodes=[])
+
+            # Default cluster (2 workers)
+            await init_cluster()  # or worker_nodes=None
+
+            # Custom worker configuration
+            await init_cluster(worker_nodes=[{"num_cpus": 2}, {"num_cpus": 1}])
         """
         try:
             if not RAY_AVAILABLE or ray is None:
@@ -446,8 +474,11 @@ class RayManager:
             # Set default worker nodes if none specified and not connecting to existing cluster
             if worker_nodes is None and address is None:
                 worker_nodes = self._get_default_worker_config()
-            # If worker_nodes is an empty list, keep it empty (no workers)
-            # If worker_nodes is a non-empty list, use the provided workers
+            # CRITICAL: worker_nodes behavior for LLM understanding:
+            # - worker_nodes=None: Uses default workers (2 workers) - happens above
+            # - worker_nodes=[]: Empty list, condition 'if worker_nodes' is False, so NO workers started
+            # - worker_nodes=[...]: Has content, condition 'if worker_nodes' is True, so workers started
+            # When user says "only head node" or "no worker nodes", LLM should pass worker_nodes=[]
 
             # Start worker nodes if specified
             worker_results = []
@@ -802,12 +833,8 @@ class RayManager:
                 try:
                     import ray.job_submission
 
-                    # Create a job submission client using the stored dashboard URL if available
-                    if self._dashboard_url and JobSubmissionClient is not None:
-                        job_client = JobSubmissionClient(self._dashboard_url)
-                    else:
-                        # Fallback to Ray's built-in job submission client
-                        job_client = ray.job_submission.JobSubmissionClient()
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
 
                     # Prepare submit arguments
                     submit_kwargs: Dict[str, Any] = {
@@ -881,12 +908,8 @@ class RayManager:
                 try:
                     import ray.job_submission
 
-                    # Create a job submission client using the stored dashboard URL if available
-                    if self._dashboard_url and JobSubmissionClient is not None:
-                        job_client = JobSubmissionClient(self._dashboard_url)
-                    else:
-                        # Fallback to Ray's built-in job submission client
-                        job_client = ray.job_submission.JobSubmissionClient()
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
                     jobs = job_client.list_jobs()
 
                     return {
@@ -945,12 +968,8 @@ class RayManager:
                 try:
                     import ray.job_submission
 
-                    # Create a job submission client using the stored dashboard URL if available
-                    if self._dashboard_url and JobSubmissionClient is not None:
-                        job_client = JobSubmissionClient(self._dashboard_url)
-                    else:
-                        # Fallback to Ray's built-in job submission client
-                        job_client = ray.job_submission.JobSubmissionClient()
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
                     success = job_client.stop_job(job_id)
 
                     if success:
@@ -1059,12 +1078,8 @@ class RayManager:
                 try:
                     import ray.job_submission
 
-                    # Create a job submission client using the stored dashboard URL if available
-                    if self._dashboard_url and JobSubmissionClient is not None:
-                        job_client = JobSubmissionClient(self._dashboard_url)
-                    else:
-                        # Fallback to Ray's built-in job submission client
-                        job_client = ray.job_submission.JobSubmissionClient()
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
                     logs = job_client.get_job_logs(job_id)
                     if num_lines > 0:
                         logs = "\n".join(logs.split("\n")[-num_lines:])
@@ -1363,12 +1378,8 @@ class RayManager:
                 try:
                     import ray.job_submission
 
-                    # Create a job submission client using the stored dashboard URL if available
-                    if self._dashboard_url and JobSubmissionClient is not None:
-                        job_client = JobSubmissionClient(self._dashboard_url)
-                    else:
-                        # Fallback to Ray's built-in job submission client
-                        job_client = ray.job_submission.JobSubmissionClient()
+                    # Create a job submission client using the current Ray context
+                    job_client = ray.job_submission.JobSubmissionClient()
                     job_info = job_client.get_job_info(job_id)
 
                     # Base response with job status
