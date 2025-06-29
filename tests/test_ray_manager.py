@@ -109,7 +109,7 @@ class TestRayManager:
                 result = await ray_manager.init_cluster(address="ray://127.0.0.1:10001")
 
                 assert result["status"] == "connected"
-                assert "address" in result
+                assert "cluster_address" in result
                 assert result["dashboard_url"] == "http://127.0.0.1:8265"
                 assert result["node_id"] == "node_123"
                 assert result["session_name"] == "test_session"
