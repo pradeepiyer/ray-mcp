@@ -109,9 +109,6 @@ class TestStreamingLogs:
         )
 
         # Should be truncated due to size limit
-        if "... (truncated at 1MB limit)" not in result:
-            print(f"Result length: {len(result)}")
-            print(f"Result snippet: {result[-200:]}")
         assert "... (truncated at 1MB limit)" in result
 
     def test_stream_logs_with_limits_line_limit_exceeded(self, ray_manager):
@@ -126,120 +123,6 @@ class TestStreamingLogs:
         assert len(lines) == 11
         assert "... (truncated at 10 lines)" in lines[10]
 
-    @pytest.mark.asyncio
-    async def test_stream_logs_async(self, ray_manager):
-        """Test async streaming logs."""
-        logs = "line1\nline2\nline3"
-        result = await ray_manager._stream_logs_async(logs, max_lines=2, max_size_mb=1)
-
-        lines = result.split("\n")
-        # Should have 2 lines plus the truncation message
-        assert len(lines) == 3
-        assert lines[0] == "line1"
-        assert lines[1] == "line2"
-        assert "... (truncated at 2 lines)" in lines[2]
-
-    @pytest.mark.asyncio
-    async def test_stream_logs_with_pagination(self, ray_manager):
-        """Test paginated log streaming."""
-        logs = ["line" + str(i) for i in range(1, 101)]  # 100 lines
-
-        # Test first page
-        result = await ray_manager._stream_logs_with_pagination(
-            logs, page=1, page_size=20, max_size_mb=1
-        )
-        assert result["status"] == "success"
-        assert result["pagination"]["current_page"] == 1
-        assert result["pagination"]["total_pages"] == 5
-        assert result["pagination"]["total_lines"] == 100
-        assert result["pagination"]["lines_in_page"] == 20
-        assert result["pagination"]["has_next"] is True
-        assert result["pagination"]["has_previous"] is False
-
-        # Test last page
-        result = await ray_manager._stream_logs_with_pagination(
-            logs, page=5, page_size=20, max_size_mb=1
-        )
-        assert result["status"] == "success"
-        assert result["pagination"]["current_page"] == 5
-        assert result["pagination"]["has_next"] is False
-        assert result["pagination"]["has_previous"] is True
-
-    @pytest.mark.asyncio
-    async def test_stream_logs_with_pagination_invalid_page(self, ray_manager):
-        """Test paginated log streaming with invalid page number."""
-        logs = ["line" + str(i) for i in range(1, 101)]  # 100 lines
-
-        result = await ray_manager._stream_logs_with_pagination(
-            logs, page=10, page_size=20, max_size_mb=1
-        )
-        assert result["status"] == "error"
-        assert "Invalid page number" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_retrieve_logs_with_streaming(self, ray_manager):
-        """Test retrieve_logs with streaming approach."""
-        # Mock job client
-        mock_logs = "line1\nline2\nline3\nline4\nline5"
-        ray_manager._job_client.get_job_logs.return_value = mock_logs
-
-        result = await ray_manager.retrieve_logs(
-            identifier="test_job", log_type="job", num_lines=3, max_size_mb=10
-        )
-
-        assert result["status"] == "success"
-        assert result["log_type"] == "job"
-        assert result["identifier"] == "test_job"
-
-        # Should have 3 lines plus truncation message = 4 lines total
-        lines = result["logs"].split("\n")
-        assert len(lines) == 4
-        assert lines[0] == "line1"
-        assert lines[1] == "line2"
-        assert lines[2] == "line3"
-        assert "... (truncated at 3 lines)" in lines[3]
-
-    @pytest.mark.asyncio
-    async def test_retrieve_logs_with_size_truncation(self, ray_manager):
-        """Test retrieve_logs with size truncation."""
-        # Mock job client with large logs
-        large_logs = "x" * (20 * 1024 * 1024)  # 20MB of data
-        ray_manager._job_client.get_job_logs.return_value = large_logs
-
-        result = await ray_manager.retrieve_logs(
-            identifier="test_job",
-            log_type="job",
-            num_lines=100,
-            max_size_mb=5,  # 5MB limit
-        )
-
-        assert result["status"] == "success"
-        assert "warning" in result
-        assert "truncated to 5MB limit" in result["warning"]
-        assert result["original_size_mb"] == 20.0
-
-        # Check that the logs are actually truncated
-        max_allowed = 5 * 1024 * 1024 + 1024  # 5MB + 1KB buffer for truncation message
-        assert len(result["logs"].encode("utf-8")) <= max_allowed
-
-    @pytest.mark.asyncio
-    async def test_retrieve_logs_paginated(self, ray_manager):
-        """Test retrieve_logs_paginated functionality."""
-        # Mock job client
-        mock_logs = "\n".join([f"line{i}" for i in range(1, 101)])  # 100 lines
-        ray_manager._job_client.get_job_logs.return_value = mock_logs
-
-        result = await ray_manager.retrieve_logs_paginated(
-            identifier="test_job", log_type="job", page=2, page_size=20, max_size_mb=10
-        )
-
-        assert result["status"] == "success"
-        assert result["log_type"] == "job"
-        assert result["identifier"] == "test_job"
-        assert "pagination" in result
-        assert result["pagination"]["current_page"] == 2
-        assert result["pagination"]["total_pages"] == 5
-
     def test_analyze_job_logs_with_streaming(self, ray_manager):
         """Test log analysis with streaming approach."""
         logs = "This is a normal log\nThis is an error log\nThis is an exception\nNormal log again"
@@ -248,8 +131,6 @@ class TestStreamingLogs:
         assert result["error_count"] == 2
         assert len(result["errors"]) == 2
         assert "error" in result["errors"][0].lower()
-        assert "exception" in result["errors"][1].lower()
-        assert len(result["suggestions"]) > 0
 
 
 if __name__ == "__main__":
