@@ -475,18 +475,18 @@ class TestRayManager:
 
     @pytest.mark.asyncio
     async def test_cleanup_head_node_process(self, manager):
-        """Test cleanup of head node process."""
-        # Mock a process
-        mock_process = Mock()
-        mock_process.poll.return_value = None  # Process still running
-        manager._head_node_process = mock_process
+        """Test enhanced cleanup of head node process with a real subprocess."""
+        import subprocess
 
-        with patch("asyncio.sleep"):
-            await manager._cleanup_head_node_process()
+        # Start a real subprocess
+        proc = subprocess.Popen(["sleep", "1"])
+        manager._head_node_process = proc
 
-        mock_process.terminate.assert_called_once()
-        mock_process.kill.assert_called_once()
+        await manager._cleanup_head_node_process(timeout=5)
+
+        # The process should be terminated and cleaned up
         assert manager._head_node_process is None
+        assert proc.poll() is not None  # Process should be terminated
 
     @pytest.mark.asyncio
     async def test_initialize_job_client_with_retry_success(self, manager):
