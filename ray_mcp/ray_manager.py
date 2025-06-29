@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import socket
+import threading
 import time
 from typing import (
     TYPE_CHECKING,
@@ -76,46 +77,165 @@ class JobClientError(JobSubmissionError):
     pass
 
 
+class RayStateManager:
+    """Manages Ray state with recovery mechanisms."""
+
+    def __init__(self):
+        self._state = {
+            "initialized": False,
+            "cluster_address": None,
+            "gcs_address": None,
+            "dashboard_url": None,
+            "job_client": None,
+            "last_validated": 0.0,
+        }
+        self._lock = threading.Lock()
+        self._validation_interval = 1.0
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get current state with validation."""
+        with self._lock:
+            current_time = time.time()
+            # Only validate if not in initial state
+            if (
+                current_time - self._state["last_validated"]
+            ) > self._validation_interval and (
+                self._state["cluster_address"] is not None or self._state["initialized"]
+            ):
+                self._validate_and_update_state()
+            return self._state.copy()
+
+    def _validate_and_update_state(self) -> None:
+        """Validate and update state atomically."""
+        try:
+            # Perform validation
+            is_valid = self._validate_ray_state()
+
+            # Update state
+            self._state["initialized"] = is_valid
+            self._state["last_validated"] = time.time()
+
+            if not is_valid:
+                # Clear invalid state
+                self._state.update(
+                    {
+                        "cluster_address": None,
+                        "gcs_address": None,
+                        "dashboard_url": None,
+                        "job_client": None,
+                    }
+                )
+
+        except Exception as e:
+            logger.error(f"State validation failed: {e}")
+            self._state["initialized"] = False
+
+    def _validate_ray_state(self) -> bool:
+        """Validate the actual Ray state against internal state."""
+        try:
+            # Check basic availability
+            if not RAY_AVAILABLE or ray is None:
+                return False
+
+            # Check if Ray is actually initialized
+            if not ray.is_initialized():
+                return False
+
+            # Check if we have valid cluster information
+            if not self._state.get("cluster_address"):
+                return False
+
+            # Verify cluster is still accessible
+            try:
+                # Try to get runtime context to verify connection
+                runtime_context = ray.get_runtime_context()
+                if not runtime_context:
+                    return False
+
+                # Check if we can access cluster info
+                node_id = runtime_context.get_node_id()
+                if not node_id:
+                    return False
+
+            except Exception as e:
+                logger.warning(f"Failed to validate Ray runtime context: {e}")
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error validating Ray state: {e}")
+            return False
+
+    def update_state(self, **kwargs) -> None:
+        """Update state atomically."""
+        with self._lock:
+            self._state.update(kwargs)
+            # Only update last_validated if we're not resetting
+            if "initialized" not in kwargs or kwargs["initialized"]:
+                self._state["last_validated"] = time.time()
+
+    def reset_state(self) -> None:
+        """Reset state to initial values."""
+        with self._lock:
+            self._state.update(
+                {
+                    "initialized": False,
+                    "cluster_address": None,
+                    "gcs_address": None,
+                    "dashboard_url": None,
+                    "job_client": None,
+                    "last_validated": 0.0,  # Reset to 0.0
+                }
+            )
+
+    def is_initialized(self) -> bool:
+        """Check if Ray is initialized with proper state validation."""
+        return self.get_state()["initialized"]
+
+
 class RayManager:
-    """Manages Ray cluster operations."""
+    """Manages Ray cluster operations with robust state management."""
 
     def __init__(self) -> None:
-        self.__is_initialized = False
-        self._cluster_address: Optional[str] = None
-        self._gcs_address: Optional[str] = None  # Store GCS address for worker nodes
-        self._dashboard_url: Optional[str] = (
-            None  # Store dashboard URL for job client operations
-        )
-        self._job_client: Optional[Any] = (
-            None  # Use Any to avoid type issues with conditional imports
-        )
+        self._state_manager = RayStateManager()
         self._worker_manager = WorkerManager()
-        self._head_node_process: Optional[Any] = None  # Track head node process
+        self._head_node_process: Optional[Any] = None
+        self._state_lock = threading.Lock()  # Thread safety
+        self._last_state_check = 0.0
+        self._state_cache_duration = 1.0  # Cache state for 1 second
 
     @property
     def is_initialized(self) -> bool:
-        """Check if Ray is initialized."""
-        return (
-            self.__is_initialized
-            and RAY_AVAILABLE
-            and ray is not None
-            and ray.is_initialized()
-        )
+        """Check if Ray is initialized with proper state validation."""
+        return self._state_manager.is_initialized()
 
     @property
     def _is_initialized(self) -> bool:
-        """Get the _is_initialized flag."""
-        return self.__is_initialized
+        """Get the _is_initialized flag for backward compatibility."""
+        return self.is_initialized
 
     @_is_initialized.setter
     def _is_initialized(self, value: bool) -> None:
-        """Set the _is_initialized flag."""
-        self.__is_initialized = value
+        """Set the _is_initialized flag for backward compatibility."""
+        self._state_manager.update_state(initialized=value)
 
     def _ensure_initialized(self) -> None:
-        """Ensure Ray is initialized."""
+        """Ensure Ray is initialized with proper error handling."""
         if not self.is_initialized:
-            raise RuntimeError("Ray is not initialized. Please start Ray first.")
+            # Try to refresh state before failing
+            state = self._state_manager.get_state()
+            if not state["initialized"]:
+                raise RuntimeError(
+                    "Ray is not initialized. Please start Ray first. "
+                    f"Internal state: {state['initialized']}, "
+                    f"RAY_AVAILABLE: {RAY_AVAILABLE}, "
+                    f"ray.is_initialized(): {ray.is_initialized() if ray else False}"
+                )
+
+    def _update_state(self, initialized: bool, **kwargs) -> None:
+        """Update internal state atomically."""
+        self._state_manager.update_state(initialized=initialized, **kwargs)
 
     def _validate_log_parameters(
         self, num_lines: int, max_size_mb: int
@@ -595,28 +715,30 @@ class RayManager:
                 }
                 init_kwargs.update(filtered_kwargs)
                 ray_context = ray.init(**init_kwargs)
-                self._is_initialized = True
-                self._cluster_address = ray_context.address_info["address"]
-                dashboard_url = ray_context.dashboard_url
-                self._dashboard_url = (
-                    dashboard_url  # Store dashboard URL for subsequent operations
+                self._update_state(initialized=True)
+                self._state_manager.update_state(
+                    cluster_address=ray_context.address_info["address"],
+                    dashboard_url=ray_context.dashboard_url,
+                    gcs_address=address,
                 )
-
-                # Store GCS address for worker nodes (direct address format)
-                self._gcs_address = address
 
                 # Initialize job client with retry logic - this must complete before returning success
                 job_client_status = "ready"
-                if JobSubmissionClient is not None and self._cluster_address:
+                if (
+                    JobSubmissionClient is not None
+                    and self._state_manager.get_state()["cluster_address"]
+                ):
                     # Use the stored dashboard URL for job client
-                    if self._dashboard_url:
+                    if self._state_manager.get_state()["dashboard_url"]:
                         logger.info(
-                            f"Initializing job client with dashboard URL: {self._dashboard_url}"
+                            f"Initializing job client with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
                         )
-                        self._job_client = await self._initialize_job_client_with_retry(
-                            self._dashboard_url
+                        self._state_manager.update_state(
+                            job_client=await self._initialize_job_client_with_retry(
+                                self._state_manager.get_state()["dashboard_url"]
+                            )
                         )
-                        if self._job_client is None:
+                        if self._state_manager.get_state()["job_client"] is None:
                             job_client_status = "unavailable"
                             logger.warning(
                                 "Job client initialization failed after retries"
@@ -632,7 +754,7 @@ class RayManager:
                     if JobSubmissionClient is None:
                         logger.warning("JobSubmissionClient not available")
                         job_client_status = "unavailable"
-                    elif not self._cluster_address:
+                    elif not self._state_manager.get_state()["cluster_address"]:
                         logger.warning(
                             "Cluster address not available for job client initialization"
                         )
@@ -641,7 +763,9 @@ class RayManager:
                 return {
                     "status": "connected",
                     "message": f"Successfully connected to Ray cluster at {address}",
-                    "cluster_address": self._cluster_address,
+                    "cluster_address": self._state_manager.get_state()[
+                        "cluster_address"
+                    ],
                     "dashboard_url": ray_context.dashboard_url,
                     "node_id": (
                         ray.get_runtime_context().get_node_id()
@@ -733,16 +857,21 @@ class RayManager:
                         "message": f"Could not parse GCS address from head node output. stdout: {stdout}, stderr: {stderr}",
                     }
                 # Store GCS address for worker nodes
-                self._gcs_address = gcs_address
+                self._state_manager.update_state(gcs_address=gcs_address)
                 # Store dashboard URL for job client operations
-                self._dashboard_url = dashboard_url
+                self._state_manager.update_state(dashboard_url=dashboard_url)
 
                 # Fallback: If dashboard URL parsing failed, construct it from the known port
-                if not self._dashboard_url and dashboard_port:
+                if (
+                    not self._state_manager.get_state()["dashboard_url"]
+                    and dashboard_port
+                ):
                     # Use localhost for dashboard URL since Ray dashboard typically binds to localhost
-                    self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
+                    self._state_manager.update_state(
+                        dashboard_url=f"http://127.0.0.1:{dashboard_port}"
+                    )
                     logger.info(
-                        f"Constructed dashboard URL from fallback: {self._dashboard_url}"
+                        f"Constructed dashboard URL from fallback: {self._state_manager.get_state()['dashboard_url']}"
                     )
 
                 # Use direct connection to head node for better job submission support
@@ -754,8 +883,10 @@ class RayManager:
                 init_kwargs.update(self._sanitize_init_kwargs(kwargs))
                 try:
                     ray_context = ray.init(**init_kwargs)
-                    self._is_initialized = True
-                    self._cluster_address = gcs_address  # Store the direct address
+                    self._update_state(initialized=True)
+                    self._state_manager.update_state(
+                        cluster_address=gcs_address,  # Store the direct address
+                    )
                 except Exception as e:
                     logger.error(f"Failed to connect to head node: {e}")
                     logger.error(f"Head node stdout: {stdout}")
@@ -771,16 +902,21 @@ class RayManager:
 
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
-            if JobSubmissionClient is not None and self._cluster_address:
+            if (
+                JobSubmissionClient is not None
+                and self._state_manager.get_state()["cluster_address"]
+            ):
                 # Use the stored dashboard URL for job client
-                if self._dashboard_url:
+                if self._state_manager.get_state()["dashboard_url"]:
                     logger.info(
-                        f"Initializing job client with dashboard URL: {self._dashboard_url}"
+                        f"Initializing job client with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
                     )
-                    self._job_client = await self._initialize_job_client_with_retry(
-                        self._dashboard_url
+                    self._state_manager.update_state(
+                        job_client=await self._initialize_job_client_with_retry(
+                            self._state_manager.get_state()["dashboard_url"]
+                        )
                     )
-                    if self._job_client is None:
+                    if self._state_manager.get_state()["job_client"] is None:
                         job_client_status = "unavailable"
                         logger.warning("Job client initialization failed after retries")
                     else:
@@ -794,7 +930,7 @@ class RayManager:
                 if JobSubmissionClient is None:
                     logger.warning("JobSubmissionClient not available")
                     job_client_status = "unavailable"
-                elif not self._cluster_address:
+                elif not self._state_manager.get_state()["cluster_address"]:
                     logger.warning(
                         "Cluster address not available for job client initialization"
                     )
@@ -813,7 +949,7 @@ class RayManager:
             worker_results = []
             if worker_nodes and address is None:  # Only start workers for new clusters
                 worker_results = await self._worker_manager.start_worker_nodes(
-                    worker_nodes, self._gcs_address
+                    worker_nodes, self._state_manager.get_state()["gcs_address"]
                 )
 
             # Determine status based on whether we connected or started
@@ -827,8 +963,8 @@ class RayManager:
             return {
                 "status": status,
                 "message": message,
-                "cluster_address": self._cluster_address,
-                "dashboard_url": self._dashboard_url,
+                "cluster_address": self._state_manager.get_state()["cluster_address"],
+                "dashboard_url": self._state_manager.get_state()["dashboard_url"],
                 "node_id": (
                     ray.get_runtime_context().get_node_id() if ray is not None else None
                 ),
@@ -902,11 +1038,7 @@ class RayManager:
                 finally:
                     self._head_node_process = None
 
-            self.__is_initialized = False
-            self._cluster_address = None
-            self._gcs_address = None
-            self._dashboard_url = None  # Reset dashboard URL when shutting down
-            self._job_client = None
+            self._state_manager.reset_state()
 
             return {
                 "status": "stopped",
@@ -1084,7 +1216,7 @@ class RayManager:
                 "timestamp": time.time(),
                 "cluster_overview": {
                     "status": "running",
-                    "address": self._cluster_address,
+                    "address": self._state_manager.get_state()["cluster_address"],
                     "total_nodes": len(nodes),
                     "alive_nodes": len([n for n in nodes if n["Alive"]]),
                     "total_workers": total_workers,
@@ -1160,14 +1292,16 @@ class RayManager:
             if not entrypoint or not entrypoint.strip():
                 raise JobValidationError("Entrypoint cannot be empty")
 
-            if not self._job_client:
+            if not self._state_manager.get_state()["job_client"]:
                 # Try to create a job submission client using the dashboard URL
-                if self._dashboard_url:
+                if self._state_manager.get_state()["dashboard_url"]:
                     try:
                         logger.info(
-                            f"Creating job submission client with dashboard URL: {self._dashboard_url}"
+                            f"Creating job submission client with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
                         )
-                        job_client = JobSubmissionClient(self._dashboard_url)
+                        job_client = JobSubmissionClient(
+                            self._state_manager.get_state()["dashboard_url"]
+                        )
 
                         # Prepare submit arguments
                         submit_kwargs: Dict[str, Any] = {
@@ -1187,9 +1321,11 @@ class RayManager:
                                 submit_kwargs[key] = value
 
                         # Submit the job
-                        if self._job_client is None:
+                        if self._state_manager.get_state()["job_client"] is None:
                             raise JobClientError("Job client is not initialized.")
-                        submitted_job_id = self._job_client.submit_job(**submit_kwargs)
+                        submitted_job_id = self._state_manager.get_state()[
+                            "job_client"
+                        ].submit_job(**submit_kwargs)
                         return {
                             "status": "submitted",
                             "job_id": submitted_job_id,
@@ -1252,9 +1388,11 @@ class RayManager:
                     submit_kwargs[key] = value
 
             # Submit the job
-            if self._job_client is None:
+            if self._state_manager.get_state()["job_client"] is None:
                 raise JobClientError("Job client is not initialized.")
-            submitted_job_id = self._job_client.submit_job(**submit_kwargs)
+            submitted_job_id = self._state_manager.get_state()["job_client"].submit_job(
+                **submit_kwargs
+            )
             return {
                 "status": "submitted",
                 "job_id": submitted_job_id,
@@ -1287,14 +1425,16 @@ class RayManager:
         try:
             self._ensure_initialized()
 
-            if not self._job_client:
+            if not self._state_manager.get_state()["job_client"]:
                 # Try to create a job submission client using the dashboard URL
-                if self._dashboard_url:
+                if self._state_manager.get_state()["dashboard_url"]:
                     try:
                         logger.info(
-                            f"Creating job submission client for listing jobs with dashboard URL: {self._dashboard_url}"
+                            f"Creating job submission client for listing jobs with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
                         )
-                        job_client = JobSubmissionClient(self._dashboard_url)
+                        job_client = JobSubmissionClient(
+                            self._state_manager.get_state()["dashboard_url"]
+                        )
                         jobs = job_client.list_jobs()
 
                         return {
@@ -1349,9 +1489,9 @@ class RayManager:
                         "status": "error",
                         "message": "Job listing not available: No dashboard URL available",
                     }
-            if self._job_client is None:
+            if self._state_manager.get_state()["job_client"] is None:
                 raise JobClientError("Job client is not initialized.")
-            jobs = self._job_client.list_jobs()
+            jobs = self._state_manager.get_state()["job_client"].list_jobs()
             return {
                 "status": "success",
                 "jobs": [
@@ -1398,14 +1538,16 @@ class RayManager:
             if not job_id or not job_id.strip():
                 raise JobValidationError("Job ID cannot be empty")
 
-            if not self._job_client:
+            if not self._state_manager.get_state()["job_client"]:
                 # Try to create a job submission client using the dashboard URL
-                if self._dashboard_url:
+                if self._state_manager.get_state()["dashboard_url"]:
                     try:
                         logger.info(
-                            f"Creating job submission client for cancelling job with dashboard URL: {self._dashboard_url}"
+                            f"Creating job submission client for cancelling job with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
                         )
-                        job_client = JobSubmissionClient(self._dashboard_url)
+                        job_client = JobSubmissionClient(
+                            self._state_manager.get_state()["dashboard_url"]
+                        )
                         success = job_client.stop_job(job_id)
 
                         if success:
@@ -1458,9 +1600,9 @@ class RayManager:
                         "status": "error",
                         "message": "Job cancellation not available: No dashboard URL available",
                     }
-            if self._job_client is None:
+            if self._state_manager.get_state()["job_client"] is None:
                 raise JobClientError("Job client is not initialized.")
-            success = self._job_client.stop_job(job_id)
+            success = self._state_manager.get_state()["job_client"].stop_job(job_id)
             if success:
                 return {
                     "status": "cancelled",
@@ -1558,9 +1700,11 @@ class RayManager:
     ) -> Dict[str, Any]:
         """Retrieve logs for a specific job with streaming and memory protection."""
         try:
-            if self._job_client:
+            if self._state_manager.get_state()["job_client"]:
                 # Get job logs using job client with streaming
-                logs = self._job_client.get_job_logs(job_id)
+                logs = self._state_manager.get_state()["job_client"].get_job_logs(
+                    job_id
+                )
 
                 # Check size before processing
                 if logs and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024:
@@ -1913,14 +2057,16 @@ class RayManager:
         try:
             self._ensure_initialized()
 
-            if not self._job_client:
+            if not self._state_manager.get_state()["job_client"]:
                 # Try to create a job submission client using the dashboard URL
-                if self._dashboard_url:
+                if self._state_manager.get_state()["dashboard_url"]:
                     try:
                         logger.info(
-                            f"Creating job submission client for inspection with dashboard URL: {self._dashboard_url}"
+                            f"Creating job submission client for inspection with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
                         )
-                        job_client = JobSubmissionClient(self._dashboard_url)
+                        job_client = JobSubmissionClient(
+                            self._state_manager.get_state()["dashboard_url"]
+                        )
                         job_info = job_client.get_job_info(job_id)
 
                         # Base response with job status
@@ -1983,9 +2129,11 @@ class RayManager:
                     }
 
             # Use job client if available
-            if self._job_client is None:
+            if self._state_manager.get_state()["job_client"] is None:
                 return {"status": "error", "message": "Job client is not initialized."}
-            job_info = self._job_client.get_job_info(job_id)
+            job_info = self._state_manager.get_state()["job_client"].get_job_info(
+                job_id
+            )
 
             # Base response with job status
             response = {
@@ -2006,7 +2154,9 @@ class RayManager:
             # Add logs if requested
             if mode in ["logs", "debug"]:
                 try:
-                    job_logs = self._job_client.get_job_logs(job_id)
+                    job_logs = self._state_manager.get_state()[
+                        "job_client"
+                    ].get_job_logs(job_id)
                     response["logs"] = job_logs
                 except Exception as e:
                     response["logs"] = f"Failed to retrieve logs: {str(e)}"
@@ -2106,9 +2256,11 @@ class RayManager:
     ) -> Dict[str, Any]:
         """Retrieve job logs with pagination support."""
         try:
-            if self._job_client:
+            if self._state_manager.get_state()["job_client"]:
                 # Get job logs using job client
-                logs = self._job_client.get_job_logs(job_id)
+                logs = self._state_manager.get_state()["job_client"].get_job_logs(
+                    job_id
+                )
 
                 # Use paginated streaming
                 result = await self._stream_logs_with_pagination(
