@@ -334,7 +334,7 @@ class RayManager:
                 return {
                     "status": "connected",
                     "message": f"Successfully connected to Ray cluster at {address}",
-                    "address": self._cluster_address,
+                    "cluster_address": self._cluster_address,
                     "dashboard_url": ray_context.dashboard_url,
                     "node_id": (
                         ray.get_runtime_context().get_node_id()
