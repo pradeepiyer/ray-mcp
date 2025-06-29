@@ -2,13 +2,23 @@
 
 import asyncio
 import inspect
+import io
 import json
 import logging
 import os
 import socket
 import time
-import io
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast, Iterator, AsyncIterator
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Union,
+    cast,
+)
 
 # Import psutil for enhanced process management
 try:
@@ -81,80 +91,80 @@ class RayManager:
     ) -> Optional[Dict[str, Any]]:
         """Validate log retrieval parameters and return error if invalid."""
         if num_lines <= 0:
-            return {
-                "status": "error",
-                "message": "num_lines must be positive"
-            }
+            return {"status": "error", "message": "num_lines must be positive"}
         if num_lines > 10000:  # Reasonable upper limit
-            return {
-                "status": "error", 
-                "message": "num_lines cannot exceed 10000"
-            }
+            return {"status": "error", "message": "num_lines cannot exceed 10000"}
         if max_size_mb <= 0 or max_size_mb > 100:  # 100MB max
             return {
                 "status": "error",
-                "message": "max_size_mb must be between 1 and 100"
+                "message": "max_size_mb must be between 1 and 100",
             }
         return None
 
     def _truncate_logs_to_size(self, logs: str, max_size_mb: int) -> str:
         """Truncate logs to specified size limit while preserving line boundaries."""
         max_bytes = max_size_mb * 1024 * 1024
-        logs_bytes = logs.encode('utf-8')
-        
+        logs_bytes = logs.encode("utf-8")
+
         if len(logs_bytes) <= max_bytes:
             return logs
-        
+
         # Truncate to size limit, trying to break at line boundaries
         truncated_bytes = logs_bytes[:max_bytes]
-        truncated_text = truncated_bytes.decode('utf-8', errors='ignore')
-        
+        truncated_text = truncated_bytes.decode("utf-8", errors="ignore")
+
         # Try to break at a line boundary
-        last_newline = truncated_text.rfind('\n')
+        last_newline = truncated_text.rfind("\n")
         if last_newline > 0:
             truncated_text = truncated_text[:last_newline]
-        
+
         return truncated_text + f"\n... (truncated at {max_size_mb}MB limit)"
 
     def _stream_logs_with_limits(
-        self, log_source: Union[str, List[str]], max_lines: int = 100, max_size_mb: int = 10
+        self,
+        log_source: Union[str, List[str]],
+        max_lines: int = 100,
+        max_size_mb: int = 10,
     ) -> str:
         """Stream logs with line and size limits to prevent memory exhaustion."""
         lines = []
         current_size = 0
         max_size_bytes = max_size_mb * 1024 * 1024
-        
+
         try:
             # Handle both string and list inputs
             if isinstance(log_source, str):
-                log_lines = log_source.split('\n')
+                log_lines = log_source.split("\n")
             else:
                 log_lines = log_source
-            
+
             for line in log_lines:
-                line_bytes = line.encode('utf-8')
-                
+                line_bytes = line.encode("utf-8")
+
                 # Check size limit
                 if current_size + len(line_bytes) > max_size_bytes:
                     lines.append(f"... (truncated at {max_size_mb}MB limit)")
                     break
-                    
+
                 # Check line limit
                 if len(lines) >= max_lines:
                     lines.append(f"... (truncated at {max_lines} lines)")
                     break
-                    
+
                 lines.append(line.rstrip())
                 current_size += len(line_bytes)
-                
+
         except Exception as e:
             logger.error(f"Error streaming logs: {e}")
             lines.append(f"Error reading logs: {str(e)}")
-        
+
         return "\n".join(lines)
 
     async def _stream_logs_async(
-        self, log_source: Union[str, List[str]], max_lines: int = 100, max_size_mb: int = 10
+        self,
+        log_source: Union[str, List[str]],
+        max_lines: int = 100,
+        max_size_mb: int = 10,
     ) -> str:
         """Async version of log streaming for better performance with large logs."""
         return await asyncio.get_event_loop().run_in_executor(
@@ -162,48 +172,52 @@ class RayManager:
         )
 
     async def _stream_logs_with_pagination(
-        self, log_source: Union[str, List[str]], page: int = 1, page_size: int = 100, max_size_mb: int = 10
+        self,
+        log_source: Union[str, List[str]],
+        page: int = 1,
+        page_size: int = 100,
+        max_size_mb: int = 10,
     ) -> Dict[str, Any]:
         """Stream logs with pagination support for large log files."""
         try:
             # Handle both string and list inputs
             if isinstance(log_source, str):
-                log_lines = log_source.split('\n')
+                log_lines = log_source.split("\n")
             else:
                 log_lines = log_source
-            
+
             total_lines = len(log_lines)
             total_pages = (total_lines + page_size - 1) // page_size
-            
+
             # Validate page number
             if page < 1 or page > total_pages:
                 return {
                     "status": "error",
                     "message": f"Invalid page number. Available pages: 1-{total_pages}",
                     "total_pages": total_pages,
-                    "total_lines": total_lines
+                    "total_lines": total_lines,
                 }
-            
+
             # Calculate start and end indices
             start_idx = (page - 1) * page_size
             end_idx = min(start_idx + page_size, total_lines)
-            
+
             # Extract page lines
             page_lines = log_lines[start_idx:end_idx]
-            
+
             # Apply size limit to the page
             current_size = 0
             max_size_bytes = max_size_mb * 1024 * 1024
             limited_lines = []
-            
+
             for line in page_lines:
-                line_bytes = line.encode('utf-8')
+                line_bytes = line.encode("utf-8")
                 if current_size + len(line_bytes) > max_size_bytes:
                     limited_lines.append(f"... (truncated at {max_size_mb}MB limit)")
                     break
                 limited_lines.append(line.rstrip())
                 current_size += len(line_bytes)
-            
+
             return {
                 "status": "success",
                 "logs": "\n".join(limited_lines),
@@ -214,19 +228,19 @@ class RayManager:
                     "total_lines": total_lines,
                     "lines_in_page": len(limited_lines),
                     "has_next": page < total_pages,
-                    "has_previous": page > 1
+                    "has_previous": page > 1,
                 },
                 "size_info": {
                     "current_size_mb": current_size / (1024 * 1024),
-                    "max_size_mb": max_size_mb
-                }
+                    "max_size_mb": max_size_mb,
+                },
             }
-            
+
         except Exception as e:
             logger.error(f"Error in paginated log streaming: {e}")
             return {
                 "status": "error",
-                "message": f"Error streaming logs with pagination: {str(e)}"
+                "message": f"Error streaming logs with pagination: {str(e)}",
             }
 
     async def _initialize_job_client_with_retry(
@@ -1332,7 +1346,7 @@ class RayManager:
         """
         try:
             self._ensure_initialized()
-            
+
             # Validate parameters
             validation_error = self._validate_log_parameters(num_lines, max_size_mb)
             if validation_error:
@@ -1362,16 +1376,20 @@ class RayManager:
             return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
 
     async def _retrieve_job_logs(
-        self, job_id: str, num_lines: int = 100, include_errors: bool = False, max_size_mb: int = 10
+        self,
+        job_id: str,
+        num_lines: int = 100,
+        include_errors: bool = False,
+        max_size_mb: int = 10,
     ) -> Dict[str, Any]:
         """Retrieve logs for a specific job with streaming and memory protection."""
         try:
             if self._job_client:
                 # Get job logs using job client with streaming
                 logs = self._job_client.get_job_logs(job_id)
-                
+
                 # Check size before processing
-                if logs and len(logs.encode('utf-8')) > max_size_mb * 1024 * 1024:
+                if logs and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024:
                     # Truncate logs to size limit
                     truncated_logs = self._truncate_logs_to_size(logs, max_size_mb)
                     response = {
@@ -1380,14 +1398,16 @@ class RayManager:
                         "identifier": job_id,
                         "logs": truncated_logs,
                         "warning": f"Logs truncated to {max_size_mb}MB limit",
-                        "original_size_mb": len(logs.encode('utf-8')) / (1024 * 1024),
+                        "original_size_mb": len(logs.encode("utf-8")) / (1024 * 1024),
                     }
-                    
+
                     if include_errors:
-                        response["error_analysis"] = self._analyze_job_logs(truncated_logs)
-                    
+                        response["error_analysis"] = self._analyze_job_logs(
+                            truncated_logs
+                        )
+
                     return response
-                
+
                 # Apply line limit if specified
                 if num_lines > 0:
                     logs = await self._stream_logs_async(logs, num_lines, max_size_mb)
@@ -1411,13 +1431,18 @@ class RayManager:
                     # Create a job submission client using the current Ray context
                     job_client = ray.job_submission.JobSubmissionClient()
                     logs = job_client.get_job_logs(job_id)
-                    
+
                     # Apply streaming with limits
                     if num_lines > 0:
-                        logs = await self._stream_logs_async(logs, num_lines, max_size_mb)
+                        logs = await self._stream_logs_async(
+                            logs, num_lines, max_size_mb
+                        )
                     else:
                         # Check size limit for full logs
-                        if logs and len(logs.encode('utf-8')) > max_size_mb * 1024 * 1024:
+                        if (
+                            logs
+                            and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024
+                        ):
                             logs = self._truncate_logs_to_size(logs, max_size_mb)
 
                     response: Dict[str, Any] = {
@@ -1442,7 +1467,10 @@ class RayManager:
 
         except Exception as e:
             logger.error(f"Failed to retrieve job logs: {e}")
-            return {"status": "error", "message": f"Failed to retrieve job logs: {str(e)}"}
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve job logs: {str(e)}",
+            }
 
     async def _retrieve_actor_logs(
         self, actor_identifier: str, num_lines: int = 100, max_size_mb: int = 10
@@ -1858,17 +1886,14 @@ class RayManager:
         """
         try:
             self._ensure_initialized()
-            
+
             # Validate parameters
             if page < 1:
-                return {
-                    "status": "error",
-                    "message": "page must be positive"
-                }
+                return {"status": "error", "message": "page must be positive"}
             if page_size <= 0 or page_size > 1000:
                 return {
                     "status": "error",
-                    "message": "page_size must be between 1 and 1000"
+                    "message": "page_size must be between 1 and 1000",
                 }
             validation_error = self._validate_log_parameters(page_size, max_size_mb)
             if validation_error:
@@ -1898,17 +1923,24 @@ class RayManager:
             return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
 
     async def _retrieve_job_logs_paginated(
-        self, job_id: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10, include_errors: bool = False
+        self,
+        job_id: str,
+        page: int = 1,
+        page_size: int = 100,
+        max_size_mb: int = 10,
+        include_errors: bool = False,
     ) -> Dict[str, Any]:
         """Retrieve job logs with pagination support."""
         try:
             if self._job_client:
                 # Get job logs using job client
                 logs = self._job_client.get_job_logs(job_id)
-                
+
                 # Use paginated streaming
-                result = await self._stream_logs_with_pagination(logs, page, page_size, max_size_mb)
-                
+                result = await self._stream_logs_with_pagination(
+                    logs, page, page_size, max_size_mb
+                )
+
                 if result["status"] == "success":
                     response = {
                         "status": "success",
@@ -1918,10 +1950,12 @@ class RayManager:
                         "pagination": result["pagination"],
                         "size_info": result["size_info"],
                     }
-                    
+
                     if include_errors:
-                        response["error_analysis"] = self._analyze_job_logs(result["logs"])
-                    
+                        response["error_analysis"] = self._analyze_job_logs(
+                            result["logs"]
+                        )
+
                     return response
                 else:
                     return result
@@ -1932,10 +1966,12 @@ class RayManager:
 
                     job_client = ray.job_submission.JobSubmissionClient()
                     logs = job_client.get_job_logs(job_id)
-                    
+
                     # Use paginated streaming
-                    result = await self._stream_logs_with_pagination(logs, page, page_size, max_size_mb)
-                    
+                    result = await self._stream_logs_with_pagination(
+                        logs, page, page_size, max_size_mb
+                    )
+
                     if result["status"] == "success":
                         response = {
                             "status": "success",
@@ -1945,10 +1981,12 @@ class RayManager:
                             "pagination": result["pagination"],
                             "size_info": result["size_info"],
                         }
-                        
+
                         if include_errors:
-                            response["error_analysis"] = self._analyze_job_logs(result["logs"])
-                        
+                            response["error_analysis"] = self._analyze_job_logs(
+                                result["logs"]
+                            )
+
                         return response
                     else:
                         return result
@@ -1963,10 +2001,17 @@ class RayManager:
 
         except Exception as e:
             logger.error(f"Failed to retrieve job logs with pagination: {e}")
-            return {"status": "error", "message": f"Failed to retrieve job logs: {str(e)}"}
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve job logs: {str(e)}",
+            }
 
     async def _retrieve_actor_logs_paginated(
-        self, actor_identifier: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10
+        self,
+        actor_identifier: str,
+        page: int = 1,
+        page_size: int = 100,
+        max_size_mb: int = 10,
     ) -> Dict[str, Any]:
         """Retrieve actor logs with pagination support (placeholder)."""
         try:
@@ -1987,7 +2032,7 @@ class RayManager:
                     "total_lines": 0,
                     "lines_in_page": 0,
                     "has_next": False,
-                    "has_previous": False
+                    "has_previous": False,
                 },
                 "suggestions": [
                     "Check Ray dashboard for actor logs",
@@ -2047,7 +2092,7 @@ class RayManager:
                     "total_lines": 0,
                     "lines_in_page": 0,
                     "has_next": False,
-                    "has_previous": False
+                    "has_previous": False,
                 },
                 "suggestions": [
                     "Check Ray dashboard for node logs",
