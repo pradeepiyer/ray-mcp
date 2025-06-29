@@ -237,7 +237,7 @@ class RayManager:
                     "message": "Ray is not available. Please install Ray.",
                 }
 
-            def find_free_port(start_port=10001, max_tries=50):
+            async def find_free_port(start_port=10001, max_tries=50):
                 """Find a free port with retry logic to handle race conditions."""
                 port = start_port
                 for attempt in range(max_tries):
@@ -247,7 +247,7 @@ class RayManager:
                             # Double-check the port is still available by trying to bind again
                             s.close()
                             # Small delay to reduce race condition window
-                            time.sleep(0.01)
+                            await asyncio.sleep(0.01)
                             with socket.socket(
                                 socket.AF_INET, socket.SOCK_STREAM
                             ) as s2:
@@ -264,11 +264,56 @@ class RayManager:
             def parse_dashboard_url(stdout: str) -> Optional[str]:
                 import re
 
-                # Updated pattern to handle URLs with or without quotes
-                # Match: View the Ray dashboard at http://... or View the Ray dashboard at 'http://...' or View the Ray dashboard at "http://..."
-                pattern = r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?"
-                match = re.search(pattern, stdout)
-                return match.group(1) if match else None
+                # Log the stdout for debugging
+                logger.debug(f"Parsing dashboard URL from stdout: {stdout}")
+
+                # Multiple patterns to handle different Ray output formats
+                patterns = [
+                    # Original pattern: "View the Ray dashboard at http://..."
+                    r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?",
+                    # Alternative pattern: "Ray dashboard at http://..."
+                    r"Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?",
+                    # Pattern for newer Ray versions: "Dashboard URL: http://..."
+                    r"Dashboard URL: ['\"]?(http://[^\s\"']+)['\"]?",
+                    # Pattern for dashboard port info: "dashboard port: XXXX"
+                    r"dashboard port: (\d+)",
+                ]
+
+                for pattern in patterns:
+                    match = re.search(pattern, stdout, re.IGNORECASE)
+                    if match:
+                        if "port" in pattern:
+                            # If we found a port, construct the URL
+                            port = match.group(1)
+                            # Try to extract IP from GCS address or use default
+                            gcs_match = re.search(
+                                r"--address=['\"]?([\d\.]+):\d+['\"]?", stdout
+                            )
+                            ip = gcs_match.group(1) if gcs_match else "127.0.0.1"
+                            return f"http://{ip}:{port}"
+                        else:
+                            # Direct URL found
+                            return match.group(1)
+
+                # If no pattern matches, try to construct URL from dashboard port in command
+                # Look for --dashboard-port in the command output
+                dashboard_port_match = re.search(r"--dashboard-port (\d+)", stdout)
+                if dashboard_port_match:
+                    port = dashboard_port_match.group(1)
+                    # Try to extract IP from GCS address or use default
+                    gcs_match = re.search(
+                        r"--address=['\"]?([\d\.]+):\d+['\"]?", stdout
+                    )
+                    ip = gcs_match.group(1) if gcs_match else "127.0.0.1"
+                    logger.info(
+                        f"Constructed dashboard URL from port: http://{ip}:{port}"
+                    )
+                    return f"http://{ip}:{port}"
+
+                logger.warning(
+                    f"Could not parse dashboard URL from stdout: {stdout[:500]}..."
+                )
+                return None
 
             def parse_gcs_address(stdout: str) -> Optional[str]:
                 import re
@@ -320,14 +365,31 @@ class RayManager:
                 if JobSubmissionClient is not None and self._cluster_address:
                     # Use the stored dashboard URL for job client
                     if self._dashboard_url:
+                        logger.info(
+                            f"Initializing job client with dashboard URL: {self._dashboard_url}"
+                        )
                         self._job_client = await self._initialize_job_client_with_retry(
                             self._dashboard_url
                         )
                         if self._job_client is None:
                             job_client_status = "unavailable"
+                            logger.warning(
+                                "Job client initialization failed after retries"
+                            )
+                        else:
+                            logger.info("Job client initialized successfully")
                     else:
                         logger.warning(
                             "Dashboard URL not available for job client initialization"
+                        )
+                        job_client_status = "unavailable"
+                else:
+                    if JobSubmissionClient is None:
+                        logger.warning("JobSubmissionClient not available")
+                        job_client_status = "unavailable"
+                    elif not self._cluster_address:
+                        logger.warning(
+                            "Cluster address not available for job client initialization"
                         )
                         job_client_status = "unavailable"
 
@@ -350,14 +412,14 @@ class RayManager:
 
                 # Use specified ports or find free ports
                 if head_node_port is None:
-                    head_node_port = find_free_port(
+                    head_node_port = await find_free_port(
                         20000
                     )  # Start from 20000 to avoid conflicts with worker ports
                 if dashboard_port is None:
-                    dashboard_port = find_free_port(8265)
+                    dashboard_port = await find_free_port(8265)
 
                 # Find a free port for the Ray Client server (start from a different range to avoid conflicts)
-                ray_client_port = find_free_port(
+                ray_client_port = await find_free_port(
                     30000
                 )  # Start from 30000 to ensure it's different from head_node_port
 
@@ -430,18 +492,26 @@ class RayManager:
                 self._gcs_address = gcs_address
                 # Store dashboard URL for job client operations
                 self._dashboard_url = dashboard_url
-                # Use the Ray Client server port and the head node IP for ray://
-                head_ip = gcs_address.split(":")[0]
-                ray_address = f"ray://{head_ip}:{ray_client_port}"
+
+                # Fallback: If dashboard URL parsing failed, construct it from the known port
+                if not self._dashboard_url and dashboard_port:
+                    # Use localhost for dashboard URL since Ray dashboard typically binds to localhost
+                    self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
+                    logger.info(
+                        f"Constructed dashboard URL from fallback: {self._dashboard_url}"
+                    )
+
+                # Use direct connection to head node instead of Ray Client for better job submission support
+                # The GCS address is in format IP:PORT, we'll use it directly
                 init_kwargs: Dict[str, Any] = {
-                    "address": ray_address,
+                    "address": gcs_address,  # Direct connection to head node
                     "ignore_reinit_error": True,
                 }
                 init_kwargs.update(self._sanitize_init_kwargs(kwargs))
                 try:
                     ray_context = ray.init(**init_kwargs)
                     self._is_initialized = True
-                    self._cluster_address = ray_address
+                    self._cluster_address = gcs_address  # Store the direct address
                 except Exception as e:
                     logger.error(f"Failed to connect to head node: {e}")
                     logger.error(f"Head node stdout: {stdout}")
@@ -460,14 +530,29 @@ class RayManager:
             if JobSubmissionClient is not None and self._cluster_address:
                 # Use the stored dashboard URL for job client
                 if self._dashboard_url:
+                    logger.info(
+                        f"Initializing job client with dashboard URL: {self._dashboard_url}"
+                    )
                     self._job_client = await self._initialize_job_client_with_retry(
                         self._dashboard_url
                     )
                     if self._job_client is None:
                         job_client_status = "unavailable"
+                        logger.warning("Job client initialization failed after retries")
+                    else:
+                        logger.info("Job client initialized successfully")
                 else:
                     logger.warning(
                         "Dashboard URL not available for job client initialization"
+                    )
+                    job_client_status = "unavailable"
+            else:
+                if JobSubmissionClient is None:
+                    logger.warning("JobSubmissionClient not available")
+                    job_client_status = "unavailable"
+                elif not self._cluster_address:
+                    logger.warning(
+                        "Cluster address not available for job client initialization"
                     )
                     job_client_status = "unavailable"
 
@@ -829,43 +914,53 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                # Use Ray's built-in job submission for Ray Client mode
-                try:
-                    import ray.job_submission
+                # Try to create a job submission client using the dashboard URL
+                if self._dashboard_url:
+                    try:
+                        logger.info(
+                            f"Creating job submission client with dashboard URL: {self._dashboard_url}"
+                        )
+                        job_client = JobSubmissionClient(self._dashboard_url)
 
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
+                        # Prepare submit arguments
+                        submit_kwargs: Dict[str, Any] = {
+                            "entrypoint": entrypoint,
+                        }
 
-                    # Prepare submit arguments
-                    submit_kwargs: Dict[str, Any] = {
-                        "entrypoint": entrypoint,
-                    }
+                        if runtime_env is not None:
+                            submit_kwargs["runtime_env"] = runtime_env
+                        if job_id is not None:
+                            submit_kwargs["job_id"] = job_id
+                        if metadata is not None:
+                            submit_kwargs["metadata"] = metadata
 
-                    if runtime_env is not None:
-                        submit_kwargs["runtime_env"] = runtime_env
-                    if job_id is not None:
-                        submit_kwargs["job_id"] = job_id
-                    if metadata is not None:
-                        submit_kwargs["metadata"] = metadata
+                        # Add any additional kwargs
+                        for key, value in kwargs.items():
+                            if key not in submit_kwargs and value is not None:
+                                submit_kwargs[key] = value
 
-                    # Add any additional kwargs
-                    for key, value in kwargs.items():
-                        if key not in submit_kwargs and value is not None:
-                            submit_kwargs[key] = value
-
-                    # Submit the job
-                    submitted_job_id = job_client.submit_job(**submit_kwargs)
-
-                    return {
-                        "status": "submitted",
-                        "job_id": submitted_job_id,
-                        "message": f"Job {submitted_job_id} submitted successfully",
-                    }
-                except Exception as e:
-                    logger.error(f"Failed to submit job using Ray built-in client: {e}")
+                        # Submit the job
+                        if self._job_client is None:
+                            return {
+                                "status": "error",
+                                "message": "Job client is not initialized.",
+                            }
+                        submitted_job_id = self._job_client.submit_job(**submit_kwargs)
+                        return {
+                            "status": "submitted",
+                            "job_id": submitted_job_id,
+                            "message": f"Job {submitted_job_id} submitted successfully using dashboard URL",
+                        }
+                    except Exception as e:
+                        logger.error(f"Failed to submit job using dashboard URL: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Job submission failed: {str(e)}",
+                        }
+                else:
                     return {
                         "status": "error",
-                        "message": f"Job submission not available in Ray Client mode: {str(e)}",
+                        "message": "Job submission not available: No dashboard URL available",
                     }
 
             # Type the submit_kwargs properly to avoid pyright errors
@@ -886,8 +981,9 @@ class RayManager:
                     submit_kwargs[key] = value
 
             # Submit the job
+            if self._job_client is None:
+                return {"status": "error", "message": "Job client is not initialized."}
             submitted_job_id = self._job_client.submit_job(**submit_kwargs)
-
             return {
                 "status": "submitted",
                 "job_id": submitted_job_id,
@@ -904,38 +1000,44 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                # Use Ray's built-in job listing for Ray Client mode
-                try:
-                    import ray.job_submission
+                # Try to create a job submission client using the dashboard URL
+                if self._dashboard_url:
+                    try:
+                        logger.info(
+                            f"Creating job submission client for listing jobs with dashboard URL: {self._dashboard_url}"
+                        )
+                        job_client = JobSubmissionClient(self._dashboard_url)
+                        jobs = job_client.list_jobs()
 
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    jobs = job_client.list_jobs()
-
-                    return {
-                        "status": "success",
-                        "jobs": [
-                            {
-                                "job_id": job.job_id,
-                                "status": job.status,
-                                "entrypoint": job.entrypoint,
-                                "start_time": job.start_time,
-                                "end_time": job.end_time,
-                                "metadata": job.metadata or {},
-                                "runtime_env": job.runtime_env or {},
-                            }
-                            for job in jobs
-                        ],
-                    }
-                except Exception as e:
-                    logger.error(f"Failed to list jobs using Ray built-in client: {e}")
+                        return {
+                            "status": "success",
+                            "jobs": [
+                                {
+                                    "job_id": job.job_id,
+                                    "status": job.status,
+                                    "entrypoint": job.entrypoint,
+                                    "start_time": job.start_time,
+                                    "end_time": job.end_time,
+                                    "metadata": job.metadata or {},
+                                    "runtime_env": job.runtime_env or {},
+                                }
+                                for job in jobs
+                            ],
+                        }
+                    except Exception as e:
+                        logger.error(f"Failed to list jobs using dashboard URL: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Job listing failed: {str(e)}",
+                        }
+                else:
                     return {
                         "status": "error",
-                        "message": f"Job listing not available in Ray Client mode: {str(e)}",
+                        "message": "Job listing not available: No dashboard URL available",
                     }
-
+            if self._job_client is None:
+                return {"status": "error", "message": "Job client is not initialized."}
             jobs = self._job_client.list_jobs()
-
             return {
                 "status": "success",
                 "jobs": [
@@ -964,35 +1066,41 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                # Use Ray's built-in job cancellation for Ray Client mode
-                try:
-                    import ray.job_submission
+                # Try to create a job submission client using the dashboard URL
+                if self._dashboard_url:
+                    try:
+                        logger.info(
+                            f"Creating job submission client for cancelling job with dashboard URL: {self._dashboard_url}"
+                        )
+                        job_client = JobSubmissionClient(self._dashboard_url)
+                        success = job_client.stop_job(job_id)
 
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    success = job_client.stop_job(job_id)
-
-                    if success:
-                        return {
-                            "status": "cancelled",
-                            "job_id": job_id,
-                            "message": f"Job {job_id} cancelled successfully",
-                        }
-                    else:
+                        if success:
+                            return {
+                                "status": "cancelled",
+                                "job_id": job_id,
+                                "message": f"Job {job_id} cancelled successfully using dashboard URL",
+                            }
+                        else:
+                            return {
+                                "status": "error",
+                                "job_id": job_id,
+                                "message": f"Failed to cancel job {job_id}",
+                            }
+                    except Exception as e:
+                        logger.error(f"Failed to cancel job using dashboard URL: {e}")
                         return {
                             "status": "error",
-                            "job_id": job_id,
-                            "message": f"Failed to cancel job {job_id}",
+                            "message": f"Job cancellation failed: {str(e)}",
                         }
-                except Exception as e:
-                    logger.error(f"Failed to cancel job using Ray built-in client: {e}")
+                else:
                     return {
                         "status": "error",
-                        "message": f"Job cancellation not available in Ray Client mode: {str(e)}",
+                        "message": "Job cancellation not available: No dashboard URL available",
                     }
-
+            if self._job_client is None:
+                return {"status": "error", "message": "Job client is not initialized."}
             success = self._job_client.stop_job(job_id)
-
             if success:
                 return {
                     "status": "cancelled",
