@@ -45,6 +45,37 @@ from .worker_manager import WorkerManager
 logger = logging.getLogger(__name__)
 
 
+# Custom exception classes for better error handling
+class JobSubmissionError(Exception):
+    """Base exception for job submission errors."""
+
+    pass
+
+
+class JobConnectionError(JobSubmissionError):
+    """Connection-related errors during job operations."""
+
+    pass
+
+
+class JobValidationError(JobSubmissionError):
+    """Parameter validation errors for job operations."""
+
+    pass
+
+
+class JobRuntimeError(JobSubmissionError):
+    """Runtime errors during job operations."""
+
+    pass
+
+
+class JobClientError(JobSubmissionError):
+    """Job client initialization or operation errors."""
+
+    pass
+
+
 class RayManager:
     """Manages Ray cluster operations."""
 
@@ -677,7 +708,9 @@ class RayManager:
 
                 # Consume output asynchronously to prevent deadlocks
                 try:
-                    stdout, stderr = await self._communicate_with_timeout(head_process, timeout=30)
+                    stdout, stderr = await self._communicate_with_timeout(
+                        head_process, timeout=30
+                    )
                     exit_code = head_process.poll()
                     if exit_code != 0 or "Ray runtime started" not in stdout:
                         await self._cleanup_head_node_process()
@@ -1123,6 +1156,10 @@ class RayManager:
         try:
             self._ensure_initialized()
 
+            # Validate parameters
+            if not entrypoint or not entrypoint.strip():
+                raise JobValidationError("Entrypoint cannot be empty")
+
             if not self._job_client:
                 # Try to create a job submission client using the dashboard URL
                 if self._dashboard_url:
@@ -1151,21 +1188,45 @@ class RayManager:
 
                         # Submit the job
                         if self._job_client is None:
-                            return {
-                                "status": "error",
-                                "message": "Job client is not initialized.",
-                            }
+                            raise JobClientError("Job client is not initialized.")
                         submitted_job_id = self._job_client.submit_job(**submit_kwargs)
                         return {
                             "status": "submitted",
                             "job_id": submitted_job_id,
                             "message": f"Job {submitted_job_id} submitted successfully using dashboard URL",
                         }
-                    except Exception as e:
-                        logger.error(f"Failed to submit job using dashboard URL: {e}")
+                    except (ImportError, AttributeError) as e:
+                        logger.error(f"Job submission not available: {e}")
                         return {
                             "status": "error",
-                            "message": f"Job submission failed: {str(e)}",
+                            "message": f"Job submission not available: {str(e)}",
+                        }
+                    except (ConnectionError, TimeoutError) as e:
+                        logger.error(f"Connection error during job submission: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Connection error: {str(e)}",
+                        }
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Invalid parameters for job submission: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Invalid parameters: {str(e)}",
+                        }
+                    except RuntimeError as e:
+                        logger.error(f"Runtime error during job submission: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Runtime error: {str(e)}",
+                        }
+                    except Exception as e:
+                        logger.error(
+                            f"Unexpected error during job submission: {e}",
+                            exc_info=True,
+                        )
+                        return {
+                            "status": "error",
+                            "message": f"Unexpected error: {str(e)}",
                         }
                 else:
                     return {
@@ -1192,7 +1253,7 @@ class RayManager:
 
             # Submit the job
             if self._job_client is None:
-                return {"status": "error", "message": "Job client is not initialized."}
+                raise JobClientError("Job client is not initialized.")
             submitted_job_id = self._job_client.submit_job(**submit_kwargs)
             return {
                 "status": "submitted",
@@ -1200,9 +1261,26 @@ class RayManager:
                 "message": f"Job {submitted_job_id} submitted successfully",
             }
 
+        except (KeyboardInterrupt, SystemExit):
+            # Re-raise shutdown signals
+            raise
+        except JobSubmissionError as e:
+            # Handle known job submission errors
+            logger.error(f"Job submission error: {e}")
+            return {"status": "error", "message": str(e)}
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Connection error during job submission: {e}")
+            return {"status": "error", "message": f"Connection error: {str(e)}"}
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid parameters for job submission: {e}")
+            return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
+        except RuntimeError as e:
+            logger.error(f"Runtime error during job submission: {e}")
+            return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
-            logger.error(f"Failed to submit job: {e}")
-            return {"status": "error", "message": f"Failed to submit job: {str(e)}"}
+            # Log unexpected errors but don't mask them
+            logger.error(f"Unexpected error during job submission: {e}", exc_info=True)
+            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
     async def list_jobs(self) -> Dict[str, Any]:
         """List all jobs."""
@@ -1234,11 +1312,37 @@ class RayManager:
                                 for job in jobs
                             ],
                         }
-                    except Exception as e:
-                        logger.error(f"Failed to list jobs using dashboard URL: {e}")
+                    except (ImportError, AttributeError) as e:
+                        logger.error(f"Job listing not available: {e}")
                         return {
                             "status": "error",
-                            "message": f"Job listing failed: {str(e)}",
+                            "message": f"Job listing not available: {str(e)}",
+                        }
+                    except (ConnectionError, TimeoutError) as e:
+                        logger.error(f"Connection error during job listing: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Connection error: {str(e)}",
+                        }
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Invalid parameters for job listing: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Invalid parameters: {str(e)}",
+                        }
+                    except RuntimeError as e:
+                        logger.error(f"Runtime error during job listing: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Runtime error: {str(e)}",
+                        }
+                    except Exception as e:
+                        logger.error(
+                            f"Unexpected error during job listing: {e}", exc_info=True
+                        )
+                        return {
+                            "status": "error",
+                            "message": f"Unexpected error: {str(e)}",
                         }
                 else:
                     return {
@@ -1246,7 +1350,7 @@ class RayManager:
                         "message": "Job listing not available: No dashboard URL available",
                     }
             if self._job_client is None:
-                return {"status": "error", "message": "Job client is not initialized."}
+                raise JobClientError("Job client is not initialized.")
             jobs = self._job_client.list_jobs()
             return {
                 "status": "success",
@@ -1264,16 +1368,35 @@ class RayManager:
                 ],
             }
 
+        except (KeyboardInterrupt, SystemExit):
+            # Re-raise shutdown signals
+            raise
+        except JobSubmissionError as e:
+            # Handle known job submission errors
+            logger.error(f"Job listing error: {e}")
+            return {"status": "error", "message": str(e)}
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Connection error during job listing: {e}")
+            return {"status": "error", "message": f"Connection error: {str(e)}"}
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid parameters for job listing: {e}")
+            return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
+        except RuntimeError as e:
+            logger.error(f"Runtime error during job listing: {e}")
+            return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
-            logger.error(f"Failed to list jobs: {e}")
-            return {"status": "error", "message": f"Failed to list jobs: {str(e)}"}
-
-    # Note: get_job_status functionality is now part of inspect_job method
+            # Log unexpected errors but don't mask them
+            logger.error(f"Unexpected error during job listing: {e}", exc_info=True)
+            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
     async def cancel_job(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job."""
         try:
             self._ensure_initialized()
+
+            # Validate parameters
+            if not job_id or not job_id.strip():
+                raise JobValidationError("Job ID cannot be empty")
 
             if not self._job_client:
                 # Try to create a job submission client using the dashboard URL
@@ -1297,11 +1420,38 @@ class RayManager:
                                 "job_id": job_id,
                                 "message": f"Failed to cancel job {job_id}",
                             }
-                    except Exception as e:
-                        logger.error(f"Failed to cancel job using dashboard URL: {e}")
+                    except (ImportError, AttributeError) as e:
+                        logger.error(f"Job cancellation not available: {e}")
                         return {
                             "status": "error",
-                            "message": f"Job cancellation failed: {str(e)}",
+                            "message": f"Job cancellation not available: {str(e)}",
+                        }
+                    except (ConnectionError, TimeoutError) as e:
+                        logger.error(f"Connection error during job cancellation: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Connection error: {str(e)}",
+                        }
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Invalid parameters for job cancellation: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Invalid parameters: {str(e)}",
+                        }
+                    except RuntimeError as e:
+                        logger.error(f"Runtime error during job cancellation: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Runtime error: {str(e)}",
+                        }
+                    except Exception as e:
+                        logger.error(
+                            f"Unexpected error during job cancellation: {e}",
+                            exc_info=True,
+                        )
+                        return {
+                            "status": "error",
+                            "message": f"Unexpected error: {str(e)}",
                         }
                 else:
                     return {
@@ -1309,7 +1459,7 @@ class RayManager:
                         "message": "Job cancellation not available: No dashboard URL available",
                     }
             if self._job_client is None:
-                return {"status": "error", "message": "Job client is not initialized."}
+                raise JobClientError("Job client is not initialized.")
             success = self._job_client.stop_job(job_id)
             if success:
                 return {
@@ -1324,9 +1474,28 @@ class RayManager:
                     "message": f"Failed to cancel job {job_id}",
                 }
 
+        except (KeyboardInterrupt, SystemExit):
+            # Re-raise shutdown signals
+            raise
+        except JobSubmissionError as e:
+            # Handle known job submission errors
+            logger.error(f"Job cancellation error: {e}")
+            return {"status": "error", "message": str(e)}
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Connection error during job cancellation: {e}")
+            return {"status": "error", "message": f"Connection error: {str(e)}"}
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid parameters for job cancellation: {e}")
+            return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
+        except RuntimeError as e:
+            logger.error(f"Runtime error during job cancellation: {e}")
+            return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
-            logger.error(f"Failed to cancel job: {e}")
-            return {"status": "error", "message": f"Failed to cancel job: {str(e)}"}
+            # Log unexpected errors but don't mask them
+            logger.error(
+                f"Unexpected error during job cancellation: {e}", exc_info=True
+            )
+            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
     async def retrieve_logs(
         self,
@@ -2119,15 +2288,15 @@ class RayManager:
         self, process, timeout: int = 30, max_output_size: int = 1024 * 1024
     ) -> tuple[str, str]:
         """Communicate with process with timeout and memory limits.
-        
+
         Args:
             process: The subprocess to communicate with
             timeout: Timeout in seconds for the communication
             max_output_size: Maximum output size in bytes before truncation
-            
+
         Returns:
             Tuple of (stdout, stderr) strings
-            
+
         Raises:
             RuntimeError: If process communication times out
         """
@@ -2135,15 +2304,15 @@ class RayManager:
             # Use asyncio.wait_for with timeout
             stdout, stderr = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(None, process.communicate),
-                timeout=timeout
+                timeout=timeout,
             )
-            
+
             # Limit output size to prevent memory issues
             if stdout and len(stdout) > max_output_size:
                 stdout = stdout[:max_output_size] + "\n... (truncated)"
             if stderr and len(stderr) > max_output_size:
                 stderr = stderr[:max_output_size] + "\n... (truncated)"
-                
+
             return stdout, stderr
         except asyncio.TimeoutError:
             # Kill process if it hangs
@@ -2151,27 +2320,29 @@ class RayManager:
                 process.kill()
             except Exception:
                 pass  # Process might already be dead
-            raise RuntimeError(f"Process communication timed out after {timeout} seconds")
+            raise RuntimeError(
+                f"Process communication timed out after {timeout} seconds"
+            )
 
     async def _stream_process_output(
         self, process, timeout: int = 30, max_lines: int = 1000
     ) -> tuple[str, str]:
         """Stream process output to avoid memory issues.
-        
+
         Args:
             process: The subprocess to stream output from
             timeout: Timeout in seconds for the streaming
             max_lines: Maximum number of lines to collect
-            
+
         Returns:
             Tuple of (stdout, stderr) strings
-            
+
         Raises:
             RuntimeError: If process startup times out
         """
         stdout_lines = []
         stderr_lines = []
-        
+
         async def _stream_output():
             while process.poll() is None:
                 if process.stdout and process.stdout.readable():
@@ -2182,7 +2353,7 @@ class RayManager:
                         stdout_lines.append(line.decode().strip())
                         if len(stdout_lines) >= max_lines:
                             break
-                            
+
                 if process.stderr and process.stderr.readable():
                     line = await asyncio.get_event_loop().run_in_executor(
                         None, process.stderr.readline
@@ -2191,13 +2362,13 @@ class RayManager:
                         stderr_lines.append(line.decode().strip())
                         if len(stderr_lines) >= max_lines:
                             break
-                            
+
                 await asyncio.sleep(0.1)
-        
+
         try:
             await asyncio.wait_for(_stream_output(), timeout=timeout)
         except asyncio.TimeoutError:
             process.kill()
             raise RuntimeError(f"Process startup timed out after {timeout} seconds")
-            
+
         return "\n".join(stdout_lines), "\n".join(stderr_lines)
