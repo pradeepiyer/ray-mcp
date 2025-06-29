@@ -7,7 +7,8 @@ import logging
 import os
 import socket
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
+import io
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast, Iterator, AsyncIterator
 
 # Import psutil for enhanced process management
 try:
@@ -74,6 +75,159 @@ class RayManager:
         """Ensure Ray is initialized."""
         if not self.is_initialized:
             raise RuntimeError("Ray is not initialized. Please start Ray first.")
+
+    def _validate_log_parameters(
+        self, num_lines: int, max_size_mb: int
+    ) -> Optional[Dict[str, Any]]:
+        """Validate log retrieval parameters and return error if invalid."""
+        if num_lines <= 0:
+            return {
+                "status": "error",
+                "message": "num_lines must be positive"
+            }
+        if num_lines > 10000:  # Reasonable upper limit
+            return {
+                "status": "error", 
+                "message": "num_lines cannot exceed 10000"
+            }
+        if max_size_mb <= 0 or max_size_mb > 100:  # 100MB max
+            return {
+                "status": "error",
+                "message": "max_size_mb must be between 1 and 100"
+            }
+        return None
+
+    def _truncate_logs_to_size(self, logs: str, max_size_mb: int) -> str:
+        """Truncate logs to specified size limit while preserving line boundaries."""
+        max_bytes = max_size_mb * 1024 * 1024
+        logs_bytes = logs.encode('utf-8')
+        
+        if len(logs_bytes) <= max_bytes:
+            return logs
+        
+        # Truncate to size limit, trying to break at line boundaries
+        truncated_bytes = logs_bytes[:max_bytes]
+        truncated_text = truncated_bytes.decode('utf-8', errors='ignore')
+        
+        # Try to break at a line boundary
+        last_newline = truncated_text.rfind('\n')
+        if last_newline > 0:
+            truncated_text = truncated_text[:last_newline]
+        
+        return truncated_text + f"\n... (truncated at {max_size_mb}MB limit)"
+
+    def _stream_logs_with_limits(
+        self, log_source: Union[str, List[str]], max_lines: int = 100, max_size_mb: int = 10
+    ) -> str:
+        """Stream logs with line and size limits to prevent memory exhaustion."""
+        lines = []
+        current_size = 0
+        max_size_bytes = max_size_mb * 1024 * 1024
+        
+        try:
+            # Handle both string and list inputs
+            if isinstance(log_source, str):
+                log_lines = log_source.split('\n')
+            else:
+                log_lines = log_source
+            
+            for line in log_lines:
+                line_bytes = line.encode('utf-8')
+                
+                # Check size limit
+                if current_size + len(line_bytes) > max_size_bytes:
+                    lines.append(f"... (truncated at {max_size_mb}MB limit)")
+                    break
+                    
+                # Check line limit
+                if len(lines) >= max_lines:
+                    lines.append(f"... (truncated at {max_lines} lines)")
+                    break
+                    
+                lines.append(line.rstrip())
+                current_size += len(line_bytes)
+                
+        except Exception as e:
+            logger.error(f"Error streaming logs: {e}")
+            lines.append(f"Error reading logs: {str(e)}")
+        
+        return "\n".join(lines)
+
+    async def _stream_logs_async(
+        self, log_source: Union[str, List[str]], max_lines: int = 100, max_size_mb: int = 10
+    ) -> str:
+        """Async version of log streaming for better performance with large logs."""
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self._stream_logs_with_limits, log_source, max_lines, max_size_mb
+        )
+
+    async def _stream_logs_with_pagination(
+        self, log_source: Union[str, List[str]], page: int = 1, page_size: int = 100, max_size_mb: int = 10
+    ) -> Dict[str, Any]:
+        """Stream logs with pagination support for large log files."""
+        try:
+            # Handle both string and list inputs
+            if isinstance(log_source, str):
+                log_lines = log_source.split('\n')
+            else:
+                log_lines = log_source
+            
+            total_lines = len(log_lines)
+            total_pages = (total_lines + page_size - 1) // page_size
+            
+            # Validate page number
+            if page < 1 or page > total_pages:
+                return {
+                    "status": "error",
+                    "message": f"Invalid page number. Available pages: 1-{total_pages}",
+                    "total_pages": total_pages,
+                    "total_lines": total_lines
+                }
+            
+            # Calculate start and end indices
+            start_idx = (page - 1) * page_size
+            end_idx = min(start_idx + page_size, total_lines)
+            
+            # Extract page lines
+            page_lines = log_lines[start_idx:end_idx]
+            
+            # Apply size limit to the page
+            current_size = 0
+            max_size_bytes = max_size_mb * 1024 * 1024
+            limited_lines = []
+            
+            for line in page_lines:
+                line_bytes = line.encode('utf-8')
+                if current_size + len(line_bytes) > max_size_bytes:
+                    limited_lines.append(f"... (truncated at {max_size_mb}MB limit)")
+                    break
+                limited_lines.append(line.rstrip())
+                current_size += len(line_bytes)
+            
+            return {
+                "status": "success",
+                "logs": "\n".join(limited_lines),
+                "pagination": {
+                    "current_page": page,
+                    "total_pages": total_pages,
+                    "page_size": page_size,
+                    "total_lines": total_lines,
+                    "lines_in_page": len(limited_lines),
+                    "has_next": page < total_pages,
+                    "has_previous": page > 1
+                },
+                "size_info": {
+                    "current_size_mb": current_size / (1024 * 1024),
+                    "max_size_mb": max_size_mb
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in paginated log streaming: {e}")
+            return {
+                "status": "error",
+                "message": f"Error streaming logs with pagination: {str(e)}"
+            }
 
     async def _initialize_job_client_with_retry(
         self, address: str, max_retries: int = 8, delay: float = 3.0
@@ -1161,30 +1315,41 @@ class RayManager:
         log_type: str = "job",
         num_lines: int = 100,
         include_errors: bool = False,
+        max_size_mb: int = 10,  # New parameter for size limit
     ) -> Dict[str, Any]:
         """
-        Retrieve logs from Ray cluster for jobs, actors, or nodes.
+        Retrieve logs from Ray cluster for jobs, actors, or nodes with memory protection.
 
         Args:
             identifier: Job ID, actor ID/name, or node ID
             log_type: Type of logs to retrieve - 'job', 'actor', or 'node'
-            num_lines: Number of log lines to retrieve (0 for all)
+            num_lines: Number of log lines to retrieve (0 for all, max 10000)
             include_errors: Whether to include error analysis for jobs
+            max_size_mb: Maximum size of logs in MB (1-100, default 10)
 
         Returns:
             Dictionary containing logs and metadata
         """
         try:
             self._ensure_initialized()
+            
+            # Validate parameters
+            validation_error = self._validate_log_parameters(num_lines, max_size_mb)
+            if validation_error:
+                return validation_error
 
             if log_type == "job":
                 return await self._retrieve_job_logs(
-                    identifier, num_lines, include_errors
+                    identifier, num_lines, include_errors, max_size_mb
                 )
             elif log_type == "actor":
-                return await self._retrieve_actor_logs(identifier, num_lines)
+                return await self._retrieve_actor_logs(
+                    identifier, num_lines, max_size_mb
+                )
             elif log_type == "node":
-                return await self._retrieve_node_logs(identifier, num_lines)
+                return await self._retrieve_node_logs(
+                    identifier, num_lines, max_size_mb
+                )
             else:
                 return {
                     "status": "error",
@@ -1197,15 +1362,35 @@ class RayManager:
             return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
 
     async def _retrieve_job_logs(
-        self, job_id: str, num_lines: int = 100, include_errors: bool = False
+        self, job_id: str, num_lines: int = 100, include_errors: bool = False, max_size_mb: int = 10
     ) -> Dict[str, Any]:
-        """Retrieve logs for a specific job."""
+        """Retrieve logs for a specific job with streaming and memory protection."""
         try:
             if self._job_client:
-                # Get job logs using job client
+                # Get job logs using job client with streaming
                 logs = self._job_client.get_job_logs(job_id)
+                
+                # Check size before processing
+                if logs and len(logs.encode('utf-8')) > max_size_mb * 1024 * 1024:
+                    # Truncate logs to size limit
+                    truncated_logs = self._truncate_logs_to_size(logs, max_size_mb)
+                    response = {
+                        "status": "success",
+                        "log_type": "job",
+                        "identifier": job_id,
+                        "logs": truncated_logs,
+                        "warning": f"Logs truncated to {max_size_mb}MB limit",
+                        "original_size_mb": len(logs.encode('utf-8')) / (1024 * 1024),
+                    }
+                    
+                    if include_errors:
+                        response["error_analysis"] = self._analyze_job_logs(truncated_logs)
+                    
+                    return response
+                
+                # Apply line limit if specified
                 if num_lines > 0:
-                    logs = "\n".join(logs.split("\n")[-num_lines:])
+                    logs = await self._stream_logs_async(logs, num_lines, max_size_mb)
 
                 response: Dict[str, Any] = {
                     "status": "success",
@@ -1226,8 +1411,14 @@ class RayManager:
                     # Create a job submission client using the current Ray context
                     job_client = ray.job_submission.JobSubmissionClient()
                     logs = job_client.get_job_logs(job_id)
+                    
+                    # Apply streaming with limits
                     if num_lines > 0:
-                        logs = "\n".join(logs.split("\n")[-num_lines:])
+                        logs = await self._stream_logs_async(logs, num_lines, max_size_mb)
+                    else:
+                        # Check size limit for full logs
+                        if logs and len(logs.encode('utf-8')) > max_size_mb * 1024 * 1024:
+                            logs = self._truncate_logs_to_size(logs, max_size_mb)
 
                     response: Dict[str, Any] = {
                         "status": "success",
@@ -1240,27 +1431,23 @@ class RayManager:
                         response["error_analysis"] = self._analyze_job_logs(logs)
 
                     return response
+
                 except Exception as e:
-                    logger.error(
-                        f"Failed to get job logs using Ray built-in client: {e}"
-                    )
+                    logger.error(f"Failed to retrieve job logs using Ray client: {e}")
                     return {
-                        "status": "partial",
-                        "message": f"Job log retrieval not available in Ray Client mode: {str(e)}",
-                        "suggestion": "Check Ray dashboard for comprehensive log viewing",
+                        "status": "error",
+                        "message": f"Failed to retrieve job logs: {str(e)}",
+                        "suggestion": "Check if job exists and Ray is properly initialized",
                     }
 
         except Exception as e:
             logger.error(f"Failed to retrieve job logs: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve job logs: {str(e)}",
-            }
+            return {"status": "error", "message": f"Failed to retrieve job logs: {str(e)}"}
 
     async def _retrieve_actor_logs(
-        self, actor_identifier: str, num_lines: int = 100
+        self, actor_identifier: str, num_lines: int = 100, max_size_mb: int = 10
     ) -> Dict[str, Any]:
-        """Retrieve logs for a specific actor."""
+        """Retrieve logs for a specific actor with streaming support."""
         try:
             # Note: Ray doesn't provide direct actor log access through Python API
             # This is a placeholder for future implementation
@@ -1296,6 +1483,7 @@ class RayManager:
                         "Use Ray CLI: ray logs --actor-id <actor_id>",
                         "Monitor actor through dashboard at http://localhost:8265",
                     ],
+                    "note": f"Log retrieval parameters (num_lines={num_lines}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
                 }
 
             except ValueError:
@@ -1313,9 +1501,9 @@ class RayManager:
             }
 
     async def _retrieve_node_logs(
-        self, node_id: str, num_lines: int = 100
+        self, node_id: str, num_lines: int = 100, max_size_mb: int = 10
     ) -> Dict[str, Any]:
-        """Retrieve logs for a specific node."""
+        """Retrieve logs for a specific node with streaming support."""
         try:
             if not RAY_AVAILABLE or ray is None:
                 return {"status": "error", "message": "Ray is not available"}
@@ -1355,6 +1543,7 @@ class RayManager:
                     "Check log files at /tmp/ray/session_*/logs/",
                     "Monitor node through dashboard at http://localhost:8265",
                 ],
+                "note": f"Log retrieval parameters (num_lines={num_lines}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
             }
 
         except Exception as e:
@@ -1371,23 +1560,9 @@ class RayManager:
 
         logs = str(logs)
 
-        # Limit log size to prevent memory issues (10MB limit)
-        MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
-        if len(logs) > MAX_LOG_SIZE:
-            logs = logs[:MAX_LOG_SIZE]
-            logger.warning(
-                f"Log size exceeded {MAX_LOG_SIZE} bytes, truncating for analysis"
-            )
-
+        # Note: Size limits are now handled by the calling methods
+        # This method receives pre-processed logs that are already within limits
         lines = logs.split("\n")
-
-        # Limit number of lines to process to prevent memory issues
-        MAX_LINES = 10000
-        if len(lines) > MAX_LINES:
-            lines = lines[-MAX_LINES:]  # Keep the most recent lines
-            logger.warning(
-                f"Log has {len(lines)} lines, limiting analysis to last {MAX_LINES} lines"
-            )
 
         error_lines = [
             line
@@ -1657,3 +1832,235 @@ class RayManager:
         except Exception as e:
             logger.error(f"Failed to inspect job: {e}")
             return {"status": "error", "message": f"Failed to inspect job: {str(e)}"}
+
+    async def retrieve_logs_paginated(
+        self,
+        identifier: str,
+        log_type: str = "job",
+        page: int = 1,
+        page_size: int = 100,
+        max_size_mb: int = 10,
+        include_errors: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve logs from Ray cluster with pagination support for large log files.
+
+        Args:
+            identifier: Job ID, actor ID/name, or node ID
+            log_type: Type of logs to retrieve - 'job', 'actor', or 'node'
+            page: Page number (1-based)
+            page_size: Number of lines per page
+            max_size_mb: Maximum size of logs in MB (1-100, default 10)
+            include_errors: Whether to include error analysis for jobs
+
+        Returns:
+            Dictionary containing logs, pagination info, and metadata
+        """
+        try:
+            self._ensure_initialized()
+            
+            # Validate parameters
+            if page < 1:
+                return {
+                    "status": "error",
+                    "message": "page must be positive"
+                }
+            if page_size <= 0 or page_size > 1000:
+                return {
+                    "status": "error",
+                    "message": "page_size must be between 1 and 1000"
+                }
+            validation_error = self._validate_log_parameters(page_size, max_size_mb)
+            if validation_error:
+                return validation_error
+
+            if log_type == "job":
+                return await self._retrieve_job_logs_paginated(
+                    identifier, page, page_size, max_size_mb, include_errors
+                )
+            elif log_type == "actor":
+                return await self._retrieve_actor_logs_paginated(
+                    identifier, page, page_size, max_size_mb
+                )
+            elif log_type == "node":
+                return await self._retrieve_node_logs_paginated(
+                    identifier, page, page_size, max_size_mb
+                )
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Unsupported log type: {log_type}",
+                    "suggestion": "Supported types: 'job', 'actor', 'node'",
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve logs with pagination: {e}")
+            return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
+
+    async def _retrieve_job_logs_paginated(
+        self, job_id: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10, include_errors: bool = False
+    ) -> Dict[str, Any]:
+        """Retrieve job logs with pagination support."""
+        try:
+            if self._job_client:
+                # Get job logs using job client
+                logs = self._job_client.get_job_logs(job_id)
+                
+                # Use paginated streaming
+                result = await self._stream_logs_with_pagination(logs, page, page_size, max_size_mb)
+                
+                if result["status"] == "success":
+                    response = {
+                        "status": "success",
+                        "log_type": "job",
+                        "identifier": job_id,
+                        "logs": result["logs"],
+                        "pagination": result["pagination"],
+                        "size_info": result["size_info"],
+                    }
+                    
+                    if include_errors:
+                        response["error_analysis"] = self._analyze_job_logs(result["logs"])
+                    
+                    return response
+                else:
+                    return result
+            else:
+                # Use Ray's built-in job log functionality for Ray Client mode
+                try:
+                    import ray.job_submission
+
+                    job_client = ray.job_submission.JobSubmissionClient()
+                    logs = job_client.get_job_logs(job_id)
+                    
+                    # Use paginated streaming
+                    result = await self._stream_logs_with_pagination(logs, page, page_size, max_size_mb)
+                    
+                    if result["status"] == "success":
+                        response = {
+                            "status": "success",
+                            "log_type": "job",
+                            "identifier": job_id,
+                            "logs": result["logs"],
+                            "pagination": result["pagination"],
+                            "size_info": result["size_info"],
+                        }
+                        
+                        if include_errors:
+                            response["error_analysis"] = self._analyze_job_logs(result["logs"])
+                        
+                        return response
+                    else:
+                        return result
+
+                except Exception as e:
+                    logger.error(f"Failed to retrieve job logs using Ray client: {e}")
+                    return {
+                        "status": "error",
+                        "message": f"Failed to retrieve job logs: {str(e)}",
+                        "suggestion": "Check if job exists and Ray is properly initialized",
+                    }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve job logs with pagination: {e}")
+            return {"status": "error", "message": f"Failed to retrieve job logs: {str(e)}"}
+
+    async def _retrieve_actor_logs_paginated(
+        self, actor_identifier: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10
+    ) -> Dict[str, Any]:
+        """Retrieve actor logs with pagination support (placeholder)."""
+        try:
+            # Note: Ray doesn't provide direct actor log access through Python API
+            # This is a placeholder for future implementation
+            if not RAY_AVAILABLE or ray is None:
+                return {"status": "error", "message": "Ray is not available"}
+
+            return {
+                "status": "partial",
+                "log_type": "actor",
+                "identifier": actor_identifier,
+                "message": "Actor logs are not directly accessible through Ray Python API",
+                "pagination": {
+                    "current_page": page,
+                    "total_pages": 0,
+                    "page_size": page_size,
+                    "total_lines": 0,
+                    "lines_in_page": 0,
+                    "has_next": False,
+                    "has_previous": False
+                },
+                "suggestions": [
+                    "Check Ray dashboard for actor logs",
+                    "Use Ray CLI: ray logs --actor-id <actor_id>",
+                    "Monitor actor through dashboard at http://localhost:8265",
+                ],
+                "note": f"Pagination parameters (page={page}, page_size={page_size}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve actor logs with pagination: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve actor logs: {str(e)}",
+            }
+
+    async def _retrieve_node_logs_paginated(
+        self, node_id: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10
+    ) -> Dict[str, Any]:
+        """Retrieve node logs with pagination support (placeholder)."""
+        try:
+            if not RAY_AVAILABLE or ray is None:
+                return {"status": "error", "message": "Ray is not available"}
+
+            # Get node information
+            nodes = ray.nodes()
+            target_node = None
+
+            for node in nodes:
+                if node["NodeID"] == node_id:
+                    target_node = node
+                    break
+
+            if not target_node:
+                return {
+                    "status": "error",
+                    "message": f"Node {node_id} not found",
+                    "suggestion": "Use inspect_ray tool to see available nodes",
+                }
+
+            # Note: Ray doesn't provide direct node log access through Python API
+            return {
+                "status": "partial",
+                "log_type": "node",
+                "identifier": node_id,
+                "message": "Node logs are not directly accessible through Ray Python API",
+                "node_info": {
+                    "node_id": target_node["NodeID"],
+                    "alive": target_node["Alive"],
+                    "node_name": target_node.get("NodeName", ""),
+                    "node_manager_address": target_node.get("NodeManagerAddress", ""),
+                },
+                "pagination": {
+                    "current_page": page,
+                    "total_pages": 0,
+                    "page_size": page_size,
+                    "total_lines": 0,
+                    "lines_in_page": 0,
+                    "has_next": False,
+                    "has_previous": False
+                },
+                "suggestions": [
+                    "Check Ray dashboard for node logs",
+                    "Use Ray CLI: ray logs --node-id <node_id>",
+                    "Check log files at /tmp/ray/session_*/logs/",
+                    "Monitor node through dashboard at http://localhost:8265",
+                ],
+                "note": f"Pagination parameters (page={page}, page_size={page_size}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve node logs with pagination: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve node logs: {str(e)}",
+            }
