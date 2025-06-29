@@ -676,15 +676,20 @@ class RayManager:
                 await asyncio.sleep(2)
 
                 # Consume output asynchronously to prevent deadlocks
-                stdout, stderr = await asyncio.get_event_loop().run_in_executor(
-                    None, head_process.communicate
-                )
-                exit_code = head_process.poll()
-                if exit_code != 0 or "Ray runtime started" not in stdout:
+                try:
+                    stdout, stderr = await self._communicate_with_timeout(head_process, timeout=30)
+                    exit_code = head_process.poll()
+                    if exit_code != 0 or "Ray runtime started" not in stdout:
+                        await self._cleanup_head_node_process()
+                        return {
+                            "status": "error",
+                            "message": f"Failed to start head node (exit code: {exit_code}). stdout: {stdout}, stderr: {stderr}",
+                        }
+                except RuntimeError as e:
                     await self._cleanup_head_node_process()
                     return {
                         "status": "error",
-                        "message": f"Failed to start head node (exit code: {exit_code}). stdout: {stdout}, stderr: {stderr}",
+                        "message": f"Head node startup failed: {str(e)}",
                     }
                 dashboard_url = parse_dashboard_url(stdout)
                 gcs_address = parse_gcs_address(stdout)
@@ -2109,3 +2114,90 @@ class RayManager:
                 "status": "error",
                 "message": f"Failed to retrieve node logs: {str(e)}",
             }
+
+    async def _communicate_with_timeout(
+        self, process, timeout: int = 30, max_output_size: int = 1024 * 1024
+    ) -> tuple[str, str]:
+        """Communicate with process with timeout and memory limits.
+        
+        Args:
+            process: The subprocess to communicate with
+            timeout: Timeout in seconds for the communication
+            max_output_size: Maximum output size in bytes before truncation
+            
+        Returns:
+            Tuple of (stdout, stderr) strings
+            
+        Raises:
+            RuntimeError: If process communication times out
+        """
+        try:
+            # Use asyncio.wait_for with timeout
+            stdout, stderr = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, process.communicate),
+                timeout=timeout
+            )
+            
+            # Limit output size to prevent memory issues
+            if stdout and len(stdout) > max_output_size:
+                stdout = stdout[:max_output_size] + "\n... (truncated)"
+            if stderr and len(stderr) > max_output_size:
+                stderr = stderr[:max_output_size] + "\n... (truncated)"
+                
+            return stdout, stderr
+        except asyncio.TimeoutError:
+            # Kill process if it hangs
+            try:
+                process.kill()
+            except Exception:
+                pass  # Process might already be dead
+            raise RuntimeError(f"Process communication timed out after {timeout} seconds")
+
+    async def _stream_process_output(
+        self, process, timeout: int = 30, max_lines: int = 1000
+    ) -> tuple[str, str]:
+        """Stream process output to avoid memory issues.
+        
+        Args:
+            process: The subprocess to stream output from
+            timeout: Timeout in seconds for the streaming
+            max_lines: Maximum number of lines to collect
+            
+        Returns:
+            Tuple of (stdout, stderr) strings
+            
+        Raises:
+            RuntimeError: If process startup times out
+        """
+        stdout_lines = []
+        stderr_lines = []
+        
+        async def _stream_output():
+            while process.poll() is None:
+                if process.stdout and process.stdout.readable():
+                    line = await asyncio.get_event_loop().run_in_executor(
+                        None, process.stdout.readline
+                    )
+                    if line:
+                        stdout_lines.append(line.decode().strip())
+                        if len(stdout_lines) >= max_lines:
+                            break
+                            
+                if process.stderr and process.stderr.readable():
+                    line = await asyncio.get_event_loop().run_in_executor(
+                        None, process.stderr.readline
+                    )
+                    if line:
+                        stderr_lines.append(line.decode().strip())
+                        if len(stderr_lines) >= max_lines:
+                            break
+                            
+                await asyncio.sleep(0.1)
+        
+        try:
+            await asyncio.wait_for(_stream_output(), timeout=timeout)
+        except asyncio.TimeoutError:
+            process.kill()
+            raise RuntimeError(f"Process startup timed out after {timeout} seconds")
+            
+        return "\n".join(stdout_lines), "\n".join(stderr_lines)
