@@ -3,7 +3,7 @@
 This guide covers the most common configuration options for the Ray MCP Server.
 
 ## Environment Variables
-- `RAY_ADDRESS`: Ray cluster address (e.g. "ray://127.0.0.1:10001")
+- `RAY_ADDRESS`: Ray cluster address (e.g. "127.0.0.1:10001")
 - `RAY_DASHBOARD_HOST`: Dashboard host (default: "0.0.0.0")
 - `RAY_MCP_ENHANCED_OUTPUT`: Enable enhanced output ("true"/"false")
 

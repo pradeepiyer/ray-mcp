@@ -88,13 +88,17 @@ class TestToolRegistry:
         """Test execute_tool with valid tool."""
         self.mock_ray_manager.init_cluster = AsyncMock(
             return_value={
-                "status": "started",
-                "cluster_address": "ray://localhost:10001",
+                "status": "connected",
+                "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
+                "cluster_address": "127.0.0.1:10001",
+                "dashboard_url": "http://127.0.0.1:8265",
+                "node_id": "node_123",
+                "job_client_status": "ready",
             }
         )
 
         result = await self.registry.execute_tool("init_ray", {"num_cpus": 4})
-        assert result["status"] == "started"
+        assert result["status"] == "connected"
         self.mock_ray_manager.init_cluster.assert_called_once()
 
     @pytest.mark.asyncio
@@ -121,12 +125,12 @@ class TestToolRegistry:
                 # Mock the init_cluster method to return success
                 with patch.object(registry.ray_manager, "init_cluster") as mock_init:
                     mock_init.return_value = {
-                        "status": "started",
-                        "message": "Ray cluster started successfully",
-                        "address": "ray://127.0.0.1:10001",
+                        "status": "connected",
+                        "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
+                        "cluster_address": "127.0.0.1:10001",
                         "dashboard_url": "http://127.0.0.1:8265",
                         "node_id": "node_123",
-                        "session_name": "test_session",
+                        "job_client_status": "ready",
                     }
 
                     result = await registry.execute_tool(
@@ -143,9 +147,12 @@ class TestToolRegistry:
                         },
                     )
 
-                    assert result["status"] == "started"
-                    assert "Ray cluster started successfully" in result["message"]
-                    assert result["address"] == "ray://127.0.0.1:10001"
+                    assert result["status"] == "connected"
+                    assert (
+                        "Successfully connected to Ray cluster at 127.0.0.1:10001"
+                        in result["message"]
+                    )
+                    assert result["cluster_address"] == "127.0.0.1:10001"
                     assert result["dashboard_url"] == "http://127.0.0.1:8265"
 
     def test_wrap_with_system_prompt(self):

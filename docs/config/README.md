@@ -79,7 +79,7 @@ Start your MCP client and test the connection:
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `RAY_ADDRESS` | Ray cluster address | `""` | `"ray://127.0.0.1:10001"` |
+| `RAY_ADDRESS` | Ray cluster address | `""` | `"127.0.0.1:10001"` |
 | `RAY_DASHBOARD_HOST` | Dashboard host | `"0.0.0.0"` | `"127.0.0.1"` |
 | `RAY_MCP_ENHANCED_OUTPUT` | Enable enhanced output | `"false"` | `"true"` |
 

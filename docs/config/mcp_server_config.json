@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "ray-mcp": {
-      "command": "/path/to/your/venv/bin/ray-mcp",
+      "command": "python",
+      "args": ["-m", "ray_mcp.main"],
       "env": {
-        "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0",
+        "RAY_ADDRESS": "127.0.0.1:10001",
         "RAY_MCP_ENHANCED_OUTPUT": "false"
       }
     }
