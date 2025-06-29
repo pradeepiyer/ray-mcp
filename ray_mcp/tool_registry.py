@@ -32,7 +32,7 @@ class ToolRegistry:
         # Basic cluster management
         self._register_tool(
             name="init_ray",
-            description="Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster with optional worker specifications.",
+            description="Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster. IMPORTANT: For head-node-only clusters (no worker nodes), explicitly pass worker_nodes=[] (empty array). For default behavior (2 workers), omit worker_nodes parameter. For custom workers, specify worker configurations.",
             schema={
                 "type": "object",
                 "properties": {
@@ -58,7 +58,7 @@ class ToolRegistry:
                     },
                     "worker_nodes": {
                         "type": "array",
-                        "description": "Configuration for worker nodes to start (only used when starting new cluster)",
+                        "description": "Worker node configuration. CRITICAL: Pass empty array [] for head-node-only clusters (when user says 'only head node' or 'no worker nodes'). Omit this parameter for default behavior (2 workers). Pass array with worker configs for custom workers.",
                         "items": {
                             "type": "object",
                             "properties": {
