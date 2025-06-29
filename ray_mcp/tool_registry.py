@@ -182,7 +182,7 @@ class ToolRegistry:
 
         self._register_tool(
             name="retrieve_logs",
-            description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis",
+            description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis and memory protection",
             schema={
                 "type": "object",
                 "properties": {
@@ -198,8 +198,64 @@ class ToolRegistry:
                     },
                     "num_lines": {
                         "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000,
                         "default": 100,
-                        "description": "Number of log lines to retrieve (0 for all lines)",
+                        "description": "Number of log lines to retrieve (0 for all lines, max 10000)",
+                    },
+                    "include_errors": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Whether to include error analysis for job logs",
+                    },
+                    "max_size_mb": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 10,
+                        "description": "Maximum size of logs in MB (1-100, default 10) to prevent memory exhaustion",
+                    },
+                },
+                "required": ["identifier"],
+            },
+            handler=self._retrieve_logs_handler,
+        )
+
+        self._register_tool(
+            name="retrieve_logs_paginated",
+            description="Retrieve logs from Ray cluster with pagination support for large log files and memory protection",
+            schema={
+                "type": "object",
+                "properties": {
+                    "identifier": {
+                        "type": "string",
+                        "description": "Job ID, actor ID/name, or node ID to get logs for (required)",
+                    },
+                    "log_type": {
+                        "type": "string",
+                        "enum": ["job", "actor", "node"],
+                        "default": "job",
+                        "description": "Type of logs to retrieve: 'job' for job logs, 'actor' for actor logs, 'node' for node logs",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1,
+                        "description": "Page number (1-based) for paginated log retrieval",
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "default": 100,
+                        "description": "Number of lines per page (1-1000)",
+                    },
+                    "max_size_mb": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 10,
+                        "description": "Maximum size of logs in MB (1-100, default 10) to prevent memory exhaustion",
                     },
                     "include_errors": {
                         "type": "boolean",
@@ -209,7 +265,7 @@ class ToolRegistry:
                 },
                 "required": ["identifier"],
             },
-            handler=self._retrieve_logs_handler,
+            handler=self._retrieve_logs_paginated_handler,
         )
 
     def _register_tool(
@@ -281,6 +337,10 @@ class ToolRegistry:
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for retrieve_logs tool."""
         return await self.ray_manager.retrieve_logs(**kwargs)
+
+    async def _retrieve_logs_paginated_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for retrieve_logs_paginated tool."""
+        return await self.ray_manager.retrieve_logs_paginated(**kwargs)
 
     def _wrap_with_system_prompt(self, tool_name: str, result: Dict[str, Any]) -> str:
         """Wrap tool output with a system prompt for LLM enhancement."""
