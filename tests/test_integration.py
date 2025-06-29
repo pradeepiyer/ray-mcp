@@ -92,8 +92,12 @@ class TestMCPIntegration:
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
             with patch.object(registry.ray_manager, "stop_cluster") as mock_stop:
                 mock_init.return_value = {
-                    "status": "started",
-                    "cluster_address": "ray://127.0.0.1:10001",
+                    "status": "connected",
+                    "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
+                    "cluster_address": "127.0.0.1:10001",
+                    "dashboard_url": "http://127.0.0.1:8265",
+                    "node_id": "node_123",
+                    "job_client_status": "ready",
                 }
                 mock_stop.return_value = {
                     "status": "stopped",
@@ -102,7 +106,7 @@ class TestMCPIntegration:
 
                 # Test cluster initialization
                 result = await registry.execute_tool("init_ray", {"num_cpus": 4})
-                assert result["status"] == "started"
+                assert result["status"] == "connected"
                 mock_init.assert_called_once()
 
                 # Test cluster stop
@@ -190,13 +194,13 @@ class TestMCPIntegration:
 
         # Test with invalid parameters
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
-            mock_init.return_value = {"status": "started"}
+            mock_init.return_value = {"status": "connected"}
 
             # Test with valid parameters
             result = await registry.execute_tool(
                 "init_ray", {"num_cpus": 4, "num_gpus": 1}
             )
-            assert result["status"] == "started"
+            assert result["status"] == "connected"
 
             # Verify that parameters were passed correctly
             mock_init.assert_called_once()
@@ -211,8 +215,12 @@ class TestMCPIntegration:
 
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
             mock_init.return_value = {
-                "status": "started",
-                "cluster_address": "ray://127.0.0.1:10001",
+                "status": "connected",
+                "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
+                "cluster_address": "127.0.0.1:10001",
+                "dashboard_url": "http://127.0.0.1:8265",
+                "node_id": "node_123",
+                "job_client_status": "ready",
             }
 
             result = await registry.execute_tool("init_ray", {"num_cpus": 4})
@@ -228,7 +236,7 @@ class TestMCPIntegration:
         registry = ToolRegistry(RayManager())
 
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
-            mock_init.return_value = {"status": "started"}
+            mock_init.return_value = {"status": "connected"}
 
             # Make concurrent calls
             tasks = [
@@ -241,7 +249,7 @@ class TestMCPIntegration:
 
             # All calls should succeed
             for result in results:
-                assert result["status"] == "started"
+                assert result["status"] == "connected"
 
             # All calls should have been made
             assert mock_init.call_count == 3
@@ -252,7 +260,7 @@ class TestMCPIntegration:
         registry = ToolRegistry(RayManager())
 
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
-            mock_init.return_value = {"status": "started"}
+            mock_init.return_value = {"status": "connected"}
 
             complex_params = {
                 "num_cpus": 4,
@@ -267,7 +275,7 @@ class TestMCPIntegration:
             }
 
             result = await registry.execute_tool("init_ray", complex_params)
-            assert result["status"] == "started"
+            assert result["status"] == "connected"
 
             # Verify complex parameters were passed correctly
             mock_init.assert_called_once()
@@ -320,8 +328,12 @@ class TestMCPIntegration:
         async def fake_init_cluster(**kwargs):
             called_params.update(kwargs)
             return {
-                "status": "started",
-                "address": "ray://127.0.0.1:10001",
+                "status": "connected",
+                "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
+                "cluster_address": "127.0.0.1:10001",
+                "dashboard_url": "http://127.0.0.1:8265",
+                "node_id": "node_123",
+                "job_client_status": "ready",
             }
 
         mock = AsyncMock(side_effect=fake_init_cluster)
@@ -439,14 +451,18 @@ class TestMCPIntegration:
 
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
             mock_init.return_value = {
-                "status": "started",
-                "cluster_address": "ray://localhost:10001",
+                "status": "connected",
+                "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
+                "cluster_address": "127.0.0.1:10001",
+                "dashboard_url": "http://127.0.0.1:8265",
+                "node_id": "node_123",
+                "job_client_status": "ready",
             }
 
             result = await registry.execute_tool(
                 "init_ray", {"num_cpus": 4, "worker_nodes": worker_config}
             )
-            assert result["status"] == "started"
+            assert result["status"] == "connected"
             mock_init.assert_called_once()
 
 

@@ -31,13 +31,13 @@ class ToolRegistry:
         # Basic cluster management
         self._register_tool(
             name="init_ray",
-            description="Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster. IMPORTANT: For head-node-only clusters (no worker nodes), explicitly pass worker_nodes=[] (empty array). For default behavior (2 workers), omit worker_nodes parameter. For custom workers, specify worker configurations.",
+            description="Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster. IMPORTANT: For head-node-only clusters (no worker nodes), explicitly pass worker_nodes=[] (empty array). For default behavior (2 workers), omit worker_nodes parameter. For custom workers, specify worker configurations. All cluster management is done through the dashboard API.",
             schema={
                 "type": "object",
                 "properties": {
                     "address": {
                         "type": "string",
-                        "description": "Ray cluster address to connect to (e.g., 'ray://127.0.0.1:10001'). If provided, connects to existing cluster; if not provided, starts a new cluster.",
+                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster; if not provided, starts a new cluster. Uses direct GCS address format, not Ray Client API.",
                     },
                     "num_cpus": {
                         "type": "integer",
