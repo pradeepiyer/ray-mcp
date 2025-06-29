@@ -9,6 +9,15 @@ import socket
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
+# Import psutil for enhanced process management
+try:
+    import psutil
+
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    psutil = None  # type: ignore
+
 # Import Ray modules with error handling
 try:
     import ray
@@ -69,47 +78,42 @@ class RayManager:
     async def _initialize_job_client_with_retry(
         self, address: str, max_retries: int = 8, delay: float = 3.0
     ):
-        """Initialize job client with retry logic to wait for dashboard agent to be ready."""
+        """Initialize job client with retry logic.
 
+        Attempts to create a JobSubmissionClient with retry logic to handle
+        cases where the dashboard might not be immediately available after
+        cluster startup.
+
+        Args:
+            address: Dashboard URL to connect to
+            max_retries: Maximum number of retry attempts
+            delay: Delay between retry attempts in seconds
+
+        Returns:
+            JobSubmissionClient instance if successful, None otherwise
+        """
         if JobSubmissionClient is None:
-            logger.error("JobSubmissionClient is not available")
+            logger.warning("JobSubmissionClient not available")
             return None
 
         for attempt in range(max_retries):
             try:
-                job_client = JobSubmissionClient(address)
-                # Test the connection by doing a simple operation that requires the agent
-                job_client.list_jobs()
                 logger.info(
-                    f"Job client initialized successfully on attempt {attempt + 1}"
+                    f"Attempting to initialize job client (attempt {attempt + 1}/{max_retries})"
                 )
+                job_client = JobSubmissionClient(address)
+                logger.info("Job client initialized successfully")
                 return job_client
             except Exception as e:
-                error_msg = str(e)
+                logger.warning(
+                    f"Job client initialization attempt {attempt + 1} failed: {e}"
+                )
                 if attempt < max_retries - 1:
-                    # Check if it's a timeout or connection error that we should retry
-                    if any(
-                        keyword in error_msg.lower()
-                        for keyword in ["timeout", "connection", "agent", "not found"]
-                    ):
-                        logger.warning(
-                            f"Job client initialization attempt {attempt + 1} failed (retryable): {e}. Retrying in {delay} seconds..."
-                        )
-                        await asyncio.sleep(delay)
-                        # Exponential backoff for later attempts
-                        if attempt >= 3:
-                            delay *= 1.5
-                    else:
-                        logger.error(
-                            f"Job client initialization failed with non-retryable error: {e}"
-                        )
-                        return None
+                    logger.info(f"Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
                 else:
-                    logger.error(
-                        f"Failed to initialize job client after {max_retries} attempts: {e}"
-                    )
+                    logger.error("Job client initialization failed after all retries")
                     return None
-        return None
 
     def _filter_cluster_starting_parameters(
         self, kwargs: Dict[str, Any]
@@ -156,32 +160,116 @@ class RayManager:
         return filtered_kwargs
 
     def _sanitize_init_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove ``None`` values and any keys not accepted by ``ray.init``."""
+        """Sanitize Ray init kwargs to remove None values and invalid parameters."""
+        sanitized = {}
+        for key, value in kwargs.items():
+            if value is not None and key not in ["worker_nodes"]:
+                sanitized[key] = value
+        return sanitized
 
-        cleaned = {k: v for k, v in kwargs.items() if v is not None}
+    async def _cleanup_head_node_process(self, timeout: int = 10) -> None:
+        """Terminate and reset the head node process with configurable timeout.
 
-        try:
-            if ray is not None:
-                valid_params = set(inspect.signature(ray.init).parameters.keys())
-            else:
-                raise ValueError
-        except Exception:
-            # If ray or its signature isn't available, return without extra filtering
-            return cleaned
+        This method provides robust process cleanup with:
+        - Configurable timeout for graceful termination
+        - Child process cleanup using psutil
+        - Proper process state monitoring
+        - Fallback force kill if graceful termination fails
 
-        return {k: v for k, v in cleaned.items() if k in valid_params}
-
-    async def _cleanup_head_node_process(self) -> None:
-        """Terminate and reset the head node process if it exists."""
+        Args:
+            timeout: Maximum time to wait for graceful termination in seconds
+        """
         if self._head_node_process is not None:
             try:
-                logger.info("Cleaning up head node process")
+                logger.info(f"Cleaning up head node process with {timeout}s timeout")
+
+                # Get process and all its children if psutil is available
+                children = []
+                if PSUTIL_AVAILABLE and psutil is not None:
+                    try:
+                        parent = psutil.Process(self._head_node_process.pid)
+                        children = parent.children(recursive=True)
+                        logger.info(f"Found {len(children)} child processes to cleanup")
+                    except (
+                        psutil.NoSuchProcess,
+                        psutil.AccessDenied,
+                        psutil.ZombieProcess,
+                    ) as e:
+                        logger.warning(f"Could not enumerate child processes: {e}")
+
+                # Terminate all child processes gracefully first
+                for child in children:
+                    try:
+                        child.terminate()
+                        logger.debug(f"Terminated child process {child.pid}")
+                    except (
+                        psutil.NoSuchProcess,
+                        psutil.AccessDenied,
+                        psutil.ZombieProcess,
+                    ):
+                        pass  # Process already terminated or inaccessible
+
+                # Terminate the main process
                 self._head_node_process.terminate()
-                await asyncio.sleep(1)
-                if self._head_node_process.poll() is None:
+                logger.info("Sent terminate signal to head node process")
+
+                # Wait for graceful termination with timeout
+                try:
+                    await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, self._head_node_process.wait
+                        ),
+                        timeout=timeout,
+                    )
+                    logger.info("Head node process terminated gracefully")
+                    # Wait for children to terminate (shorter timeout for children)
+                    if children:
+                        child_timeout = min(5, timeout // 2)
+                        for child in children:
+                            try:
+                                await asyncio.wait_for(
+                                    asyncio.get_event_loop().run_in_executor(
+                                        None, child.wait
+                                    ),
+                                    timeout=child_timeout,
+                                )
+                                logger.debug(
+                                    f"Child process {child.pid} terminated gracefully"
+                                )
+                            except (
+                                asyncio.TimeoutError,
+                                psutil.NoSuchProcess,
+                                psutil.AccessDenied,
+                                psutil.ZombieProcess,
+                            ):
+                                logger.debug(
+                                    f"Child process {child.pid} cleanup completed (timeout or already terminated)"
+                                )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Head node process did not terminate within {timeout}s, force killing"
+                    )
+                    # Force kill all child processes
+                    for child in children:
+                        try:
+                            child.kill()
+                            logger.debug(f"Force killed child process {child.pid}")
+                        except (
+                            psutil.NoSuchProcess,
+                            psutil.AccessDenied,
+                            psutil.ZombieProcess,
+                        ):
+                            pass
+                    # Force kill the main process
                     self._head_node_process.kill()
-            except Exception as cleanup_error:  # pragma: no cover - best effort
-                logger.error(f"Failed to cleanup head node process: {cleanup_error}")
+                    # Wait for force kill to complete
+                    try:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, self._head_node_process.wait
+                        )
+                        logger.info("Head node process force killed successfully")
+                    except Exception as e:
+                        logger.warning(f"Error waiting for force kill completion: {e}")
             finally:
                 self._head_node_process = None
 
@@ -201,9 +289,10 @@ class RayManager:
 
         If address is provided, connects to existing cluster; otherwise starts a new cluster.
         This method unifies the functionality of starting and connecting to Ray clusters.
+        All cluster management is done through the dashboard API.
 
         Args:
-            address: Ray cluster address to connect to. If provided, connects to existing cluster.
+            address: Ray cluster address to connect to (e.g., "127.0.0.1:10001"). If provided, connects to existing cluster.
             num_cpus: Number of CPUs for head node (only for new clusters).
             num_gpus: Number of GPUs for head node (only for new clusters).
             object_store_memory: Object store memory in bytes for head node (only for new clusters).
@@ -262,60 +351,22 @@ class RayManager:
                 )
 
             def parse_dashboard_url(stdout: str) -> Optional[str]:
+                """Parse dashboard URL from Ray start output."""
                 import re
 
-                # Log the stdout for debugging
-                logger.debug(f"Parsing dashboard URL from stdout: {stdout}")
+                # Look for dashboard URL in the output
+                pattern = r"View the Ray dashboard at (https?://[^\s]+)"
+                match = re.search(pattern, stdout)
+                if match:
+                    return match.group(1)
 
-                # Multiple patterns to handle different Ray output formats
-                patterns = [
-                    # Original pattern: "View the Ray dashboard at http://..."
-                    r"View the Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?",
-                    # Alternative pattern: "Ray dashboard at http://..."
-                    r"Ray dashboard at ['\"]?(http://[^\s\"']+)['\"]?",
-                    # Pattern for newer Ray versions: "Dashboard URL: http://..."
-                    r"Dashboard URL: ['\"]?(http://[^\s\"']+)['\"]?",
-                    # Pattern for dashboard port info: "dashboard port: XXXX"
-                    r"dashboard port: (\d+)",
-                ]
-
-                for pattern in patterns:
-                    match = re.search(pattern, stdout, re.IGNORECASE)
-                    if match:
-                        if "port" in pattern:
-                            # If we found a port, construct the URL
-                            port = match.group(1)
-                            # Try to extract IP from GCS address or use default
-                            gcs_match = re.search(
-                                r"--address=['\"]?([\d\.]+):\d+['\"]?", stdout
-                            )
-                            ip = gcs_match.group(1) if gcs_match else "127.0.0.1"
-                            return f"http://{ip}:{port}"
-                        else:
-                            # Direct URL found
-                            return match.group(1)
-
-                # If no pattern matches, try to construct URL from dashboard port in command
-                # Look for --dashboard-port in the command output
-                dashboard_port_match = re.search(r"--dashboard-port (\d+)", stdout)
-                if dashboard_port_match:
-                    port = dashboard_port_match.group(1)
-                    # Try to extract IP from GCS address or use default
-                    gcs_match = re.search(
-                        r"--address=['\"]?([\d\.]+):\d+['\"]?", stdout
-                    )
-                    ip = gcs_match.group(1) if gcs_match else "127.0.0.1"
-                    logger.info(
-                        f"Constructed dashboard URL from port: http://{ip}:{port}"
-                    )
-                    return f"http://{ip}:{port}"
-
-                logger.warning(
-                    f"Could not parse dashboard URL from stdout: {stdout[:500]}..."
-                )
-                return None
+                # Fallback pattern for different Ray versions
+                pattern = r"Ray dashboard at (https?://[^\s]+)"
+                match = re.search(pattern, stdout)
+                return match.group(1) if match else None
 
             def parse_gcs_address(stdout: str) -> Optional[str]:
+                """Parse GCS address from Ray start output."""
                 import re
 
                 # Updated pattern to handle addresses with single quotes, double quotes, or no quotes
@@ -352,13 +403,8 @@ class RayManager:
                     dashboard_url  # Store dashboard URL for subsequent operations
                 )
 
-                # Extract GCS address from the provided address for worker nodes
-                if address.startswith("ray://"):
-                    # Extract IP:PORT from ray://IP:PORT format
-                    self._gcs_address = address[6:]  # Remove "ray://" prefix
-                else:
-                    # Assume it's already in IP:PORT format
-                    self._gcs_address = address
+                # Store GCS address for worker nodes (direct address format)
+                self._gcs_address = address
 
                 # Initialize job client with retry logic - this must complete before returning success
                 job_client_status = "ready"
@@ -403,7 +449,6 @@ class RayManager:
                         if ray is not None
                         else None
                     ),
-                    "session_name": getattr(ray_context, "session_name", "unknown"),
                     "job_client_status": job_client_status,
                 }
             else:
@@ -418,11 +463,6 @@ class RayManager:
                 if dashboard_port is None:
                     dashboard_port = await find_free_port(8265)
 
-                # Find a free port for the Ray Client server (start from a different range to avoid conflicts)
-                ray_client_port = await find_free_port(
-                    30000
-                )  # Start from 30000 to ensure it's different from head_node_port
-
                 # Use head_node_port as the GCS server port
                 gcs_port = head_node_port
 
@@ -433,8 +473,6 @@ class RayManager:
                     "--head",
                     "--port",
                     str(gcs_port),
-                    "--ray-client-server-port",
-                    str(ray_client_port),
                     "--dashboard-port",
                     str(dashboard_port),
                 ]
@@ -501,7 +539,7 @@ class RayManager:
                         f"Constructed dashboard URL from fallback: {self._dashboard_url}"
                     )
 
-                # Use direct connection to head node instead of Ray Client for better job submission support
+                # Use direct connection to head node for better job submission support
                 # The GCS address is in format IP:PORT, we'll use it directly
                 init_kwargs: Dict[str, Any] = {
                     "address": gcs_address,  # Direct connection to head node
@@ -588,7 +626,6 @@ class RayManager:
                 "node_id": (
                     ray.get_runtime_context().get_node_id() if ray is not None else None
                 ),
-                "session_name": getattr(ray_context, "session_name", "unknown"),
                 "job_client_status": job_client_status,
                 "worker_nodes": worker_results if worker_results else None,
             }
@@ -1435,34 +1472,52 @@ class RayManager:
     # Note: debug_job functionality is now part of inspect_job method
 
     def _generate_debug_suggestions(self, job_info, job_logs: str) -> List[str]:
-        """Generate debugging suggestions based on job info and logs."""
+        """Generate debug suggestions based on job info and logs."""
         suggestions = []
 
-        job_logs = str(job_logs) if job_logs is not None else ""
-
-        if job_info.status == "FAILED":
+        # Check for common error patterns
+        if "ImportError" in job_logs:
             suggestions.append(
-                "Job failed. Check error logs for specific error messages."
+                "ImportError detected. Check if all required packages are installed in the runtime environment."
+            )
+        if "ModuleNotFoundError" in job_logs:
+            suggestions.append(
+                "ModuleNotFoundError detected. Verify the module path and runtime environment configuration."
+            )
+        if "PermissionError" in job_logs:
+            suggestions.append(
+                "PermissionError detected. Check file permissions and access rights."
+            )
+        if "TimeoutError" in job_logs:
+            suggestions.append(
+                "TimeoutError detected. Consider increasing timeout values or optimizing the workload."
+            )
+        if "MemoryError" in job_logs:
+            suggestions.append(
+                "MemoryError detected. Consider reducing memory usage or increasing available memory."
             )
 
-        if job_logs and "import" in job_logs.lower() and "error" in job_logs.lower():
-            suggestions.append(
-                "Import error detected. Check if all required packages are installed in the runtime environment."
-            )
+        # Check job status - handle both dict and JobDetails objects
+        job_status = None
+        if hasattr(job_info, "status"):
+            # JobDetails object
+            job_status = job_info.status
+        elif isinstance(job_info, dict):
+            # Dictionary
+            job_status = job_info.get("status")
 
-        if job_logs and "memory" in job_logs.lower() and "error" in job_logs.lower():
+        if job_status == "FAILED":
             suggestions.append(
-                "Memory error detected. Consider increasing object store memory or optimizing data usage."
+                "Job failed. Check the logs above for specific error details."
             )
-
-        if job_logs and "timeout" in job_logs.lower():
+        elif job_status == "PENDING":
             suggestions.append(
-                "Timeout detected. Check if the job is taking longer than expected or increase timeout limits."
+                "Job is pending. Check cluster resources and job queue status."
             )
 
         if not suggestions:
             suggestions.append(
-                "No obvious issues detected. Check the complete logs for more details."
+                "No specific issues detected. Check the logs for more details."
             )
 
         return suggestions
@@ -1482,69 +1537,77 @@ class RayManager:
             self._ensure_initialized()
 
             if not self._job_client:
-                # Use Ray's built-in job inspection for Ray Client mode
-                try:
-                    import ray.job_submission
+                # Try to create a job submission client using the dashboard URL
+                if self._dashboard_url:
+                    try:
+                        logger.info(
+                            f"Creating job submission client for inspection with dashboard URL: {self._dashboard_url}"
+                        )
+                        job_client = JobSubmissionClient(self._dashboard_url)
+                        job_info = job_client.get_job_info(job_id)
 
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    job_info = job_client.get_job_info(job_id)
-
-                    # Base response with job status
-                    response = {
-                        "status": "success",
-                        "job_id": job_id,
-                        "job_status": job_info.status,
-                        "entrypoint": job_info.entrypoint,
-                        "start_time": job_info.start_time,
-                        "end_time": job_info.end_time,
-                        "metadata": job_info.metadata or {},
-                        "runtime_env": job_info.runtime_env or {},
-                        "message": job_info.message or "",
-                        "inspection_mode": mode,
-                        "logs": None,  # Initialize logs field for consistency
-                        "debug_info": None,  # Initialize debug_info field for consistency
-                    }
-
-                    # Add logs if requested
-                    if mode in ["logs", "debug"]:
-                        try:
-                            job_logs = job_client.get_job_logs(job_id)
-                            response["logs"] = job_logs
-                        except Exception as e:
-                            response["logs"] = f"Failed to retrieve logs: {str(e)}"
-
-                    # Add debugging information if requested
-                    if mode == "debug":
-                        response["debug_info"] = {
-                            "error_logs": [
-                                line
-                                for line in str(response.get("logs", "")).split("\n")
-                                if "error" in line.lower()
-                                or "exception" in line.lower()
-                            ],
-                            "recent_logs": (
-                                str(response.get("logs", "")).split("\n")[-20:]
-                                if response.get("logs")
-                                else []
-                            ),
-                            "debugging_suggestions": self._generate_debug_suggestions(
-                                job_info, str(response.get("logs", ""))
-                            ),
+                        # Base response with job status
+                        response = {
+                            "status": "success",
+                            "job_id": job_id,
+                            "job_status": job_info.status,
+                            "entrypoint": job_info.entrypoint,
+                            "start_time": job_info.start_time,
+                            "end_time": job_info.end_time,
+                            "metadata": job_info.metadata or {},
+                            "runtime_env": job_info.runtime_env or {},
+                            "message": job_info.message or "",
+                            "inspection_mode": mode,
+                            "logs": None,  # Initialize logs field for consistency
+                            "debug_info": None,  # Initialize debug_info field for consistency
                         }
 
-                    return response
+                        # Add logs if requested
+                        if mode in ["logs", "debug"]:
+                            try:
+                                job_logs = job_client.get_job_logs(job_id)
+                                response["logs"] = job_logs
+                            except Exception as e:
+                                response["logs"] = f"Failed to retrieve logs: {str(e)}"
 
-                except Exception as e:
-                    logger.error(
-                        f"Failed to inspect job using Ray built-in client: {e}"
-                    )
+                        # Add debugging information if requested
+                        if mode == "debug":
+                            response["debug_info"] = {
+                                "error_logs": [
+                                    line
+                                    for line in str(response.get("logs", "")).split(
+                                        "\n"
+                                    )
+                                    if "error" in line.lower()
+                                    or "exception" in line.lower()
+                                ],
+                                "recent_logs": (
+                                    str(response.get("logs", "")).split("\n")[-20:]
+                                    if response.get("logs")
+                                    else []
+                                ),
+                                "debugging_suggestions": self._generate_debug_suggestions(
+                                    job_info, str(response.get("logs", ""))
+                                ),
+                            }
+
+                        return response
+
+                    except Exception as e:
+                        logger.error(f"Failed to inspect job using dashboard URL: {e}")
+                        return {
+                            "status": "error",
+                            "message": f"Job inspection failed: {str(e)}",
+                        }
+                else:
                     return {
                         "status": "error",
-                        "message": f"Job inspection not available in Ray Client mode: {str(e)}",
+                        "message": "Job inspection not available: No dashboard URL available",
                     }
 
             # Use job client if available
+            if self._job_client is None:
+                return {"status": "error", "message": "Job client is not initialized."}
             job_info = self._job_client.get_job_info(job_id)
 
             # Base response with job status
