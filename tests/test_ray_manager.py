@@ -568,14 +568,16 @@ class TestRayManager:
     async def test_communicate_with_timeout_success(self):
         """Test _communicate_with_timeout with successful process completion."""
         manager = RayManager()
-        
+
         # Create a mock process that completes successfully
         mock_process = Mock()
         mock_process.communicate.return_value = ("stdout output", "stderr output")
         mock_process.poll.return_value = 0
-        
-        stdout, stderr = await manager._communicate_with_timeout(mock_process, timeout=5)
-        
+
+        stdout, stderr = await manager._communicate_with_timeout(
+            mock_process, timeout=5
+        )
+
         assert stdout == "stdout output"
         assert stderr == "stderr output"
         mock_process.communicate.assert_called_once()
@@ -584,30 +586,34 @@ class TestRayManager:
     async def test_communicate_with_timeout_timeout(self):
         """Test _communicate_with_timeout with timeout."""
         manager = RayManager()
-        
+
         # Create a mock process that hangs
         mock_process = Mock()
         mock_process.communicate.side_effect = asyncio.TimeoutError()
         mock_process.kill = Mock()
-        
-        with pytest.raises(RuntimeError, match="Process communication timed out after 1 seconds"):
+
+        with pytest.raises(
+            RuntimeError, match="Process communication timed out after 1 seconds"
+        ):
             await manager._communicate_with_timeout(mock_process, timeout=1)
-        
+
         mock_process.kill.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_communicate_with_timeout_output_truncation(self):
         """Test _communicate_with_timeout with large output that gets truncated."""
         manager = RayManager()
-        
+
         # Create large output that exceeds the limit
         large_output = "x" * (1024 * 1024 + 100)  # 1MB + 100 bytes
         mock_process = Mock()
         mock_process.communicate.return_value = (large_output, "stderr")
         mock_process.poll.return_value = 0
-        
-        stdout, stderr = await manager._communicate_with_timeout(mock_process, timeout=5, max_output_size=1024*1024)
-        
+
+        stdout, stderr = await manager._communicate_with_timeout(
+            mock_process, timeout=5, max_output_size=1024 * 1024
+        )
+
         assert len(stdout) == 1024 * 1024 + len("\n... (truncated)")
         assert stdout.endswith("\n... (truncated)")
         assert stderr == "stderr"
@@ -616,19 +622,25 @@ class TestRayManager:
     async def test_stream_process_output_success(self):
         """Test _stream_process_output with successful process completion."""
         manager = RayManager()
-        
+
         # Create a mock process that completes successfully
         mock_process = Mock()
-        mock_process.poll.side_effect = [None, None, 0]  # Process completes after 2 iterations
+        mock_process.poll.side_effect = [
+            None,
+            None,
+            0,
+        ]  # Process completes after 2 iterations
         mock_process.stdout = Mock()
         mock_process.stdout.readable.return_value = True
         mock_process.stdout.readline.side_effect = [b"line1\n", b"line2\n", b""]
         mock_process.stderr = Mock()
         mock_process.stderr.readable.return_value = True
         mock_process.stderr.readline.side_effect = [b"error1\n", b""]
-        
-        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5, max_lines=10)
-        
+
+        stdout, stderr = await manager._stream_process_output(
+            mock_process, timeout=5, max_lines=10
+        )
+
         assert "line1" in stdout
         assert "line2" in stdout
         assert "error1" in stderr
@@ -637,7 +649,7 @@ class TestRayManager:
     async def test_stream_process_output_timeout(self):
         """Test _stream_process_output with timeout."""
         manager = RayManager()
-        
+
         # Create a mock process
         mock_process = Mock()
         mock_process.poll.return_value = None  # Process never completes
@@ -648,12 +660,16 @@ class TestRayManager:
         mock_process.stderr.readable.return_value = True
         mock_process.stderr.readline.return_value = b""
         mock_process.kill = Mock()
-        
+
         # Mock asyncio.wait_for to raise TimeoutError
-        with patch('asyncio.wait_for', side_effect=asyncio.TimeoutError()):
-            with pytest.raises(RuntimeError, match="Process startup timed out after 1 seconds"):
-                await manager._stream_process_output(mock_process, timeout=1, max_lines=10)
-        
+        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+            with pytest.raises(
+                RuntimeError, match="Process startup timed out after 1 seconds"
+            ):
+                await manager._stream_process_output(
+                    mock_process, timeout=1, max_lines=10
+                )
+
         mock_process.kill.assert_called_once()
 
 
