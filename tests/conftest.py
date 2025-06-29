@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures for Ray MCP tests."""
 
 import os
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -51,3 +52,15 @@ def cleanup_ray_between_e2e_tests(request):
             print("⚠️  Warning: Ray may not have fully shutdown")
     else:
         yield
+
+
+@pytest.fixture
+def mock_cluster_startup():
+    """Mock cluster startup operations to speed up tests."""
+    with patch("asyncio.sleep") as mock_sleep:
+        with patch("subprocess.Popen.communicate") as mock_communicate:
+            mock_communicate.return_value = (
+                "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                "",
+            )
+            yield

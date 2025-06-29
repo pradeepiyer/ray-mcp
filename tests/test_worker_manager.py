@@ -84,7 +84,9 @@ class TestWorkerManager:
         assert "2" in command
 
     @pytest.mark.asyncio
-    async def test_start_worker_nodes_success(self, worker_manager):
+    async def test_start_worker_nodes_success(
+        self, worker_manager, mock_cluster_startup
+    ):
         """Test successful worker node startup."""
         worker_configs = [
             {"num_cpus": 2, "node_name": "worker-1"},
