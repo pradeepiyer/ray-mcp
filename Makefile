@@ -1,9 +1,11 @@
 # Ray MCP Server - Test Automation (UV Native)
 
-.PHONY: test test-fast test-e2e test-full install dev-install sync clean uv-lock uv-check lint-tool-functions test-tool-functions wc test-e2e-clean test-e2e-clean-x test-e2e-file test-e2e-clean-verbose
+.PHONY: test test-fast test-e2e install dev-install sync clean uv-lock uv-check lint-tool-functions wc
 
-# Default development test (fast)
-test: test-fast
+# Default test - full test suite including e2e
+test:
+	@echo "🔍 Running complete test suite..."
+	@uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=term-missing --cov-report=html:htmlcov
 
 # Fast test suite (excludes e2e tests) - for development
 test-fast:
@@ -20,16 +22,6 @@ test-e2e:
 	@echo "🧹 Running final cleanup..."
 	@./scripts/ray_cleanup.sh
 	@echo "✅ E2E tests completed with cleanup"
-
-# Full test suite - all tests including e2e
-test-full:
-	@echo "🔍 Running complete test suite..."
-	@uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=term-missing --cov-report=html:htmlcov
-
-# Tool function specific tests
-test-tool-functions:
-	@echo "🔧 Running tool function tests..."
-	@echo "Note: tool_functions.py has been removed. Use test-full instead."
 
 # Linting - matches CI workflow
 lint:
@@ -146,39 +138,6 @@ wc:
 	@echo "Total code lines (Python + Shell + Config):"
 	@find . -name "*.py" -o -name "*.sh" -o -name "*.toml" -o -name "*.ini" -o -name "*.cfg" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" | grep -v ".venv" | grep -v ".git" | grep -v ".mypy_cache" | grep -v ".pytest_cache" | grep -v "htmlcov" | grep -v ".coverage_data" | xargs wc -l | tail -1
 
-# Run e2e tests with automatic cleanup between tests (using pytest plugin)
-test-e2e-clean:
-	@echo "🧪 Running e2e tests with automatic cleanup..."
-	@echo "🧹 Running initial cleanup..."
-	@./scripts/ray_cleanup.sh
-	@echo "🚀 Starting e2e tests with automatic cleanup..."
-	@uv run pytest tests/ -m e2e -v --tb=short
-	@echo "🧹 Running final cleanup..."
-	@./scripts/ray_cleanup.sh
-	@echo "✅ E2E tests completed with cleanup"
-
-# Run e2e tests with detailed output and cleanup
-test-e2e-verbose:
-	@echo "🧪 Running e2e tests with detailed output and cleanup..."
-	@echo "🧹 Running initial cleanup..."
-	@./scripts/ray_cleanup.sh
-	@echo "🚀 Starting e2e tests with automatic cleanup..."
-	@uv run pytest tests/ -m e2e -v -s --tb=long
-	@echo "🧹 Running final cleanup..."
-	@./scripts/ray_cleanup.sh
-	@echo "✅ E2E tests completed with cleanup"
-
-# Run specific e2e test file with cleanup
-test-e2e-file:
-	@echo "🧪 Running specific e2e test file with automatic cleanup..."
-	@echo "🧹 Running initial cleanup..."
-	@./scripts/ray_cleanup.sh
-	@echo "🚀 Starting e2e tests from test_e2e_integration.py..."
-	@uv run pytest tests/test_e2e_integration.py -v --tb=short
-	@echo "🧹 Running final cleanup..."
-	@./scripts/ray_cleanup.sh
-	@echo "✅ E2E tests completed with cleanup"
-
 # Help
 help:
 	@echo "Ray MCP Server - Available Commands:"
@@ -191,14 +150,14 @@ help:
 	@echo "  uv-check         Check dependency consistency"
 	@echo ""
 	@echo "🧪 Testing:"
-	@echo "  test             Run fast tests only"
-	@echo "  test-fast        Run fast tests only"
+	@echo "  test             Run complete test suite (default)"
+	@echo "  test-fast        Run fast tests only (excludes e2e)"
 	@echo "  test-e2e         Run e2e tests with automatic cleanup"
-	@echo "  test-e2e-verbose Run e2e tests with detailed output and cleanup"
-	@echo "  test-full        Run full test suite"
 	@echo ""
 	@echo "🔧 Development:"
+	@echo "  lint             Run linting checks"
+	@echo "  lint-enhanced    Run enhanced linting with tool function checks"
+	@echo "  format           Format code"
 	@echo "  lint-tool-functions  Lint tool function signatures"
-	@echo "  test-tool-functions  Test tool function signatures"
-	@echo "  wc                 Count lines of code with directory breakdown"
-	@echo "  clean              Clean build artifacts" 
+	@echo "  wc               Count lines of code with directory breakdown"
+	@echo "  clean            Clean build artifacts" 

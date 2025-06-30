@@ -16,6 +16,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+from .logging_utils import LoggingUtility, ResponseFormatter
 
 
 class WorkerManager:
@@ -38,6 +39,7 @@ class WorkerManager:
         """
         self.worker_processes: List[subprocess.Popen] = []
         self.worker_configs: List[Dict[str, Any]] = []
+        self.response_formatter = ResponseFormatter()
 
     async def start_worker_nodes(
         self, worker_configs: List[Dict[str, Any]], head_node_address: str
@@ -87,7 +89,7 @@ class WorkerManager:
                     await asyncio.sleep(0.5)
 
             except Exception as e:
-                logger.error(f"Failed to start worker node {i+1}: {e}")
+                LoggingUtility.log_error(f"start worker node {i+1}", e)
                 worker_results.append(
                     {
                         "status": "error",
@@ -155,7 +157,7 @@ class WorkerManager:
                 }
 
         except Exception as e:
-            logger.error(f"Failed to start worker process for {node_name}: {e}")
+            LoggingUtility.log_error(f"start worker process for {node_name}", e)
             return {
                 "status": "error",
                 "node_name": node_name,
@@ -226,6 +228,7 @@ class WorkerManager:
 
         return cmd
 
+    @ResponseFormatter.handle_exceptions("spawn worker process")
     async def _spawn_worker_process(
         self, cmd: List[str], node_name: str
     ) -> Optional[subprocess.Popen]:
@@ -256,47 +259,48 @@ class WorkerManager:
             - Environment setup issues: Returns None with environment errors
             - Process validation failure: Returns None if process not running after startup
         """
-        try:
-            logger.info(
-                f"Starting worker node '{node_name}' with command: {' '.join(cmd)}"
+        LoggingUtility.log_info(
+            "worker_manager",
+            f"Starting worker node '{node_name}' with command: {' '.join(cmd)}",
+        )
+
+        # Create process with proper environment
+        env = os.environ.copy()
+        env["RAY_DISABLE_USAGE_STATS"] = "1"
+        # Enable multi-node clusters on Windows and macOS
+        env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
+
+        # Start the process
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            text=True,
+        )
+
+        # Give it a moment to start
+        await asyncio.sleep(0.2)
+
+        # Check if process is still running
+        if process.poll() is None:
+            LoggingUtility.log_info(
+                "worker_manager",
+                f"Worker node '{node_name}' started successfully (PID: {process.pid})",
             )
-
-            # Create process with proper environment
-            env = os.environ.copy()
-            env["RAY_DISABLE_USAGE_STATS"] = "1"
-            # Enable multi-node clusters on Windows and macOS
-            env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
-
-            # Start the process
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-                text=True,
-            )
-
-            # Give it a moment to start
-            await asyncio.sleep(0.2)
-
-            # Check if process is still running
-            if process.poll() is None:
-                logger.info(
-                    f"Worker node '{node_name}' started successfully (PID: {process.pid})"
-                )
-                return process
-            else:
-                # Process failed to start
-                exit_code = process.poll()
-                logger.error(
+            return process
+        else:
+            # Process failed to start
+            exit_code = process.poll()
+            LoggingUtility.log_error(
+                "worker_manager",
+                Exception(
                     f"Worker node '{node_name}' failed to start with exit code: {exit_code}"
-                )
-                return None
-
-        except Exception as e:
-            logger.error(f"Failed to spawn worker process for {node_name}: {e}")
+                ),
+            )
             return None
 
+    @ResponseFormatter.handle_exceptions("stop all workers")
     async def stop_all_workers(self) -> List[Dict[str, Any]]:
         """Stop all worker nodes.
 
@@ -363,13 +367,10 @@ class WorkerManager:
                     remaining_configs.append(self.worker_configs[i])
 
             except Exception as e:
-                logger.error(f"Failed to stop worker {i+1}: {e}")
                 results.append(
-                    {
-                        "status": "error",
-                        "node_name": f"worker-{i+1}",
-                        "message": f"Failed to stop worker: {str(e)}",
-                    }
+                    ResponseFormatter.format_error_response(
+                        "stop worker", e, node_name=f"worker-{i+1}"
+                    )
                 )
                 remaining_processes.append(process)
                 remaining_configs.append(self.worker_configs[i])

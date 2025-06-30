@@ -1,159 +1,276 @@
-# Ray MCP Server: Development Guide
+# Development Guide
 
-This guide covers setup, testing, and best practices for developing Ray MCP.
+Setup and development instructions for Ray MCP contributors.
 
-## Setup
-- Python 3.10+
-- Install [uv](https://github.com/astral-sh/uv)
+## Development Setup
+
+### Prerequisites
+
+- Python ≥ 3.10
+- [uv](https://docs.astral.sh/uv/) package manager (recommended)
+- Git
+
+### Local Development
 
 ```bash
-# Clone and install
-git clone https://github.com/pradeepiyer/ray-mcp
+# Clone repository
+git clone https://github.com/pradeepiyer/ray-mcp.git
 cd ray-mcp
-uv sync --all-extras --dev
+
+# Install with development dependencies
+uv sync
+
+# Activate virtual environment
+source .venv/bin/activate  # Linux/macOS
+# or
+.venv\Scripts\activate     # Windows
+
+# Verify installation
+ray-mcp --help
+```
+
+### Alternative Setup (pip)
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install in development mode
+pip install -e ".[dev]"
 ```
 
 ## Project Structure
+
 ```
-mcp/
-├── ray_mcp/      # Core server code
-├── tests/        # Test suite
-├── examples/     # Example scripts (simple_job.py)
-├── docs/         # Documentation
-└── scripts/      # Utilities
+ray-mcp/
+├── ray_mcp/                 # Main package
+│   ├── __init__.py
+│   ├── main.py             # MCP server entry point
+│   ├── ray_manager.py      # Ray cluster operations
+│   ├── tool_registry.py    # Tool definitions and handlers
+│   ├── worker_manager.py   # Worker node management
+│   └── logging_utils.py    # Logging and response formatting
+├── tests/                  # Test suite
+├── examples/               # Usage examples
+├── docs/                   # Documentation
+└── pyproject.toml         # Project configuration
 ```
 
 ## Development Workflow
 
-### 1. Feature Development
-```bash
-# Create feature branch
-git checkout -b feature/your-feature-name
+### Code Style
 
-# Make changes and test
-uv run pytest tests/ -k "not e2e"  # Fast feedback
-uv run pytest tests/               # Full test suite
+The project uses automated formatting and linting:
 
-# Commit with clear message
-git commit -m "feat: add new feature description"
-```
-
-### 2. Code Quality Checks
 ```bash
 # Format code
-uv run black ray_mcp/ tests/
-uv run isort ray_mcp/ tests/
+uv run black ray_mcp tests examples
+
+# Sort imports
+uv run isort ray_mcp tests examples
 
 # Type checking
-uv run pyright ray_mcp/
-
-# Lint tool functions
-uv run python scripts/lint_tool_functions.py
-
-# Run all quality checks
-uv run black --check ray_mcp/ tests/
-uv run isort --check-only ray_mcp/ tests/
-uv run pyright ray_mcp/
+uv run pyright
 ```
 
-### 3. Testing Strategy
-- **Unit tests**: Fast execution for quick feedback
-- **E2E tests**: Complete workflow testing
-- **CI mode**: Head node only, minimal resources
-- **Local mode**: Full cluster, comprehensive testing
+### Running the Server
+
+```bash
+# Run server directly
+uv run ray-mcp
+
+# Run with enhanced output
+RAY_MCP_ENHANCED_OUTPUT=true uv run ray-mcp
+
+# Run with debug logging
+RAY_MCP_LOG_LEVEL=DEBUG uv run ray-mcp
+```
+
+## Testing
+
+### Test Suite
 
 ```bash
 # Run all tests
-uv run pytest tests/
+uv run pytest
 
-# Unit tests only (fast)
-uv run pytest tests/ -k "not e2e"
+# Run with coverage
+uv run pytest --cov=ray_mcp --cov-report=html
 
-# E2E tests only
-uv run pytest tests/test_e2e_integration.py
-
-# Coverage report
-uv run pytest tests/ --cov=ray_mcp --cov-report=html
+# Run specific test categories
+uv run pytest tests/test_ray_manager.py
+uv run pytest -k "test_init_cluster"
 ```
 
-### 4. Pull Request Process
-1. **Fork and clone** the repository
-2. **Create feature branch** with descriptive name
-3. **Make changes** following coding standards
-4. **Run all tests** and quality checks
-5. **Update documentation** if needed
-6. **Submit PR** with clear description
+### Test Categories
 
-## Code Quality Standards
+- **Unit tests** - Individual component testing
+- **Integration tests** - Multi-component workflows
+- **End-to-end tests** - Full MCP server testing
 
-### Code Style
-- **Black**: Automatic code formatting
-- **isort**: Import sorting and organization
-- **Type hints**: Use throughout the codebase
-- **Docstrings**: Document all public functions
+### Manual Testing
 
-### Testing Requirements
-- **New features**: Must include unit tests
-- **Bug fixes**: Must include regression tests
-- **Coverage**: Maintain high test coverage
-- **E2E tests**: Test complete workflows
+```bash
+# Test with MCP client simulator
+uv run python -m ray_mcp.main
 
-### Code Review Checklist
-- [ ] All tests pass (unit + e2e)
-- [ ] Code is formatted and linted
-- [ ] Type checking passes
-- [ ] Documentation is updated
-- [ ] No breaking changes (or documented)
-- [ ] Performance impact considered
-
-## Best Practices
-
-### Development
-- Keep tests fast and isolated
-- Use minimal resources for CI
-- Always clean up Ray clusters after tests
-- Update docs for any new features
-- Follow established patterns and conventions
-
-### Testing
-- Write meaningful test names
-- Use appropriate assertions
-- Mock external dependencies
-- Test both success and failure cases
-- Keep test data minimal and focused
-
-### Documentation
-- Update README.md for user-facing changes
-- Keep examples current and working
-- Document new tools and features
-- Use clear, concise language
+# Test individual tools
+python -c "
+import asyncio
+from ray_mcp.ray_manager import RayManager
+rm = RayManager()
+result = asyncio.run(rm.init_cluster())
+print(result)
+"
+```
 
 ## Debugging
 
-### Common Issues
-```bash
-# Clean up Ray processes
-./scripts/ray_cleanup.sh
+### Logging Configuration
 
-# Check Ray status
-ray status
-
-# Run specific test with debug output
-uv run pytest tests/test_ray_manager.py::TestRayManager::test_specific -v -s
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('ray_mcp')
+logger.setLevel(logging.DEBUG)
 ```
 
-### Environment Issues
+### Common Debug Scenarios
+
+#### MCP Protocol Issues
+
 ```bash
-# Verify installation
-python -c "import ray; print(ray.__version__)"
-
-# Check environment variables
-echo $CI $GITHUB_ACTIONS
-
-# Reinstall dependencies
-uv sync --all-extras --dev
+# Enable MCP debug logging
+export MCP_LOG_LEVEL=debug
+uv run ray-mcp
 ```
 
----
+#### Ray Cluster Issues
 
-For troubleshooting, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+```bash
+# Enable Ray debug output
+export RAY_DISABLE_USAGE_STATS=1
+export RAY_LOG_LEVEL=debug
+uv run ray-mcp
+```
+
+#### Tool Execution Issues
+
+```python
+# Test tool directly
+from ray_mcp.tool_registry import ToolRegistry
+from ray_mcp.ray_manager import RayManager
+
+registry = ToolRegistry(RayManager())
+result = await registry.execute_tool("init_ray", {})
+```
+
+## Adding New Tools
+
+### 1. Define Tool Schema
+
+In `tool_registry.py`:
+
+```python
+self._register_tool(
+    name="my_new_tool",
+    description="Description of what the tool does",
+    schema={
+        "type": "object",
+        "properties": {
+            "param1": {"type": "string", "description": "Parameter description"},
+            "param2": {"type": "integer", "minimum": 1}
+        },
+        "required": ["param1"]
+    },
+    handler=self._my_new_tool_handler
+)
+```
+
+### 2. Implement Handler
+
+```python
+async def _my_new_tool_handler(self, **kwargs) -> Dict[str, Any]:
+    """Handler for my_new_tool."""
+    return await self.ray_manager.my_new_operation(**kwargs)
+```
+
+### 3. Add Ray Manager Method
+
+In `ray_manager.py`:
+
+```python
+@ResponseFormatter.handle_exceptions("my operation")
+async def my_new_operation(self, param1: str, param2: int = 1) -> Dict[str, Any]:
+    """Implement the new operation."""
+    # Implementation here
+    return ResponseFormatter.format_success_response(
+        message="Operation completed",
+        data={"result": "value"}
+    )
+```
+
+### 4. Add Tests
+
+```python
+# tests/test_my_new_tool.py
+async def test_my_new_tool():
+    registry = ToolRegistry(RayManager())
+    result = await registry.execute_tool("my_new_tool", {"param1": "test"})
+    assert result["status"] == "success"
+```
+
+## Release Process
+
+### Version Management
+
+Update version in `pyproject.toml`:
+
+```toml
+[project]
+version = "0.3.0"
+```
+
+### Testing Before Release
+
+```bash
+# Full test suite
+uv run pytest
+
+# Type checking
+uv run pyright
+
+# Code formatting
+uv run black --check ray_mcp tests examples
+uv run isort --check ray_mcp tests examples
+
+# Build package
+uv build
+```
+
+## Contributing
+
+### Pull Request Process
+
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/my-feature`
+3. Make changes with tests
+4. Verify all tests pass: `uv run pytest`
+5. Submit pull request
+
+### Code Review Guidelines
+
+- All new code must have tests
+- Follow existing code style and patterns
+- Update documentation for user-facing changes
+- Ensure backward compatibility
+- Add type hints for new functions
+
+### Issue Reporting
+
+Include in bug reports:
+- Ray version and OS
+- MCP client configuration
+- Full error logs
+- Minimal reproduction case 
