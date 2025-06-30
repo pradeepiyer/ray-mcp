@@ -1103,7 +1103,7 @@ class RayManager:
         validation_error = self._validate_entrypoint(entrypoint)
         if validation_error:
             return validation_error
-            
+
         return await self._execute_job_operation(
             "job_submission",
             self._submit_job_operation,
@@ -1111,7 +1111,7 @@ class RayManager:
             runtime_env,
             job_id,
             metadata,
-            **kwargs
+            **kwargs,
         )
 
     @ResponseFormatter.handle_exceptions("list jobs")
@@ -1426,12 +1426,6 @@ class RayManager:
         except Exception as e:
             LoggingUtility.log_error("retrieve logs", f"Failed to retrieve logs: {e}")
             return self.response_formatter.format_error_response("retrieve logs", e)
-
-
-
-
-
-
 
     def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
         """Analyze job logs for errors and provide debugging suggestions."""
@@ -1778,12 +1772,6 @@ class RayManager:
                 "retrieve logs with pagination", e
             )
 
-
-
-
-
-
-
     async def _communicate_with_timeout(
         self, process, timeout: int = 30, max_output_size: int = 1024 * 1024
     ) -> tuple[str, str]:
@@ -1885,20 +1873,27 @@ class RayManager:
 
         return "\n".join(stdout_lines), "\n".join(stderr_lines)
 
-    def _filter_cluster_starting_parameters(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def _filter_cluster_starting_parameters(
+        self, kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Filter out parameters that are only valid for starting clusters, not connecting."""
         # Parameters that should be filtered out when connecting to existing cluster
         cluster_start_only_params = {
-            "num_cpus", "num_gpus", "object_store_memory", 
-            "head_node_port", "dashboard_port", "head_node_host", "worker_nodes"
+            "num_cpus",
+            "num_gpus",
+            "object_store_memory",
+            "head_node_port",
+            "dashboard_port",
+            "head_node_host",
+            "worker_nodes",
         }
-        
+
         return {k: v for k, v in kwargs.items() if k not in cluster_start_only_params}
 
     # ===== LOG RETRIEVAL HELPERS =====
     # REFACTORING COMPLETED: These methods consolidate redundant log retrieval logic
     # that was previously duplicated across 8+ methods (retrieve_logs, retrieve_logs_paginated,
-    # and their 6 variants for job/actor/node types). 
+    # and their 6 variants for job/actor/node types).
     #
     # Key improvements:
     # 1. Unified job client creation with standardized error handling
@@ -1907,24 +1902,24 @@ class RayManager:
     # 4. Standardized placeholder responses for actor/node logs
     # 5. Eliminated ~500 lines of redundant code
     # 6. Consistent error handling and response formatting
-    
+
     async def _get_or_create_job_client(self, operation_name: str) -> Optional[Any]:
         """Get existing job client or create a new one with standardized error handling."""
         if self.job_client:
             return self.job_client
-            
+
         if not self.dashboard_url:
             LoggingUtility.log_warning(
                 operation_name, "Job client not available: No dashboard URL available"
             )
             return None
-            
+
         if JobSubmissionClient is None:
             LoggingUtility.log_warning(
                 operation_name, "JobSubmissionClient not available"
             )
             return None
-            
+
         try:
             LoggingUtility.log_info(
                 operation_name,
@@ -1938,7 +1933,7 @@ class RayManager:
             return None
 
     def _validate_log_retrieval_params(
-        self, 
+        self,
         identifier: str,
         log_type: str,
         num_lines: int = 0,
@@ -1951,20 +1946,20 @@ class RayManager:
             return self.response_formatter.format_validation_error(
                 "Identifier cannot be empty"
             )
-            
+
         if log_type not in ["job", "actor", "node"]:
             return self.response_formatter.format_validation_error(
                 f"Unsupported log type: {log_type}",
                 suggestion="Supported types: 'job', 'actor', 'node'",
             )
-            
+
         # Validate basic log parameters
         validation_error = self.log_processor.validate_log_parameters(
             num_lines or 100, max_size_mb
         )
         if validation_error:
             return validation_error
-            
+
         # Validate pagination parameters if provided
         if page is not None:
             if page < 1:
@@ -1976,7 +1971,7 @@ class RayManager:
                 return self.response_formatter.format_validation_error(
                     "page_size must be between 1 and 1000"
                 )
-                
+
         return None
 
     async def _retrieve_job_logs_unified(
@@ -1996,7 +1991,7 @@ class RayManager:
                 return self.response_formatter.format_error_response(
                     "retrieve job logs", "Job client not available"
                 )
-                
+
             # Get raw logs
             try:
                 logs = job_client.get_job_logs(job_id)
@@ -2004,17 +1999,17 @@ class RayManager:
                 return self.response_formatter.format_error_response(
                     "retrieve job logs", f"Failed to get job logs: {e}"
                 )
-                
+
             # Process logs based on mode
             if page is not None and page_size is not None:
                 # Paginated mode
                 result = await self.log_processor.stream_logs_with_pagination(
                     logs, page, page_size, max_size_mb
                 )
-                
+
                 if result["status"] != "success":
                     return result
-                    
+
                 response = {
                     "status": "success",
                     "log_type": "job",
@@ -2044,22 +2039,22 @@ class RayManager:
                         logs = await self.log_processor.stream_logs_async(
                             logs, num_lines, max_size_mb
                         )
-                        
+
                     response = {
                         "status": "success",
                         "log_type": "job",
                         "identifier": job_id,
                         "logs": logs,
                     }
-            
+
             # Add error analysis if requested
             if include_errors:
                 response["error_analysis"] = self._analyze_job_logs(
                     response.get("logs", "")
                 )
-                
+
             return response
-            
+
         except Exception as e:
             LoggingUtility.log_error("job logs", f"Failed to retrieve job logs: {e}")
             return self.response_formatter.format_error_response("retrieve job logs", e)
@@ -2086,10 +2081,10 @@ class RayManager:
                 "Monitor through dashboard at http://localhost:8265",
             ],
         }
-        
+
         if additional_info:
             response.update(additional_info)
-            
+
         # Add pagination info if in paginated mode
         if page is not None and page_size is not None:
             response["pagination"] = {
@@ -2101,12 +2096,16 @@ class RayManager:
                 "has_next": False,
                 "has_previous": False,
             }
-            note_params = f"page={page}, page_size={page_size}, max_size_mb={max_size_mb}"
+            note_params = (
+                f"page={page}, page_size={page_size}, max_size_mb={max_size_mb}"
+            )
         else:
             note_params = f"num_lines={num_lines}, max_size_mb={max_size_mb}"
-            
-        response["note"] = f"Log retrieval parameters ({note_params}) will be applied when direct access is implemented"
-        
+
+        response["note"] = (
+            f"Log retrieval parameters ({note_params}) will be applied when direct access is implemented"
+        )
+
         return response
 
     async def _retrieve_actor_logs_unified(
@@ -2146,8 +2145,13 @@ class RayManager:
                 )
 
             return self._create_placeholder_log_response(
-                "actor", actor_identifier, num_lines, max_size_mb, 
-                page, page_size, additional_info
+                "actor",
+                actor_identifier,
+                num_lines,
+                max_size_mb,
+                page,
+                page_size,
+                additional_info,
             )
 
         except Exception as e:
@@ -2198,8 +2202,13 @@ class RayManager:
             }
 
             return self._create_placeholder_log_response(
-                "node", node_id, num_lines, max_size_mb, 
-                page, page_size, additional_info
+                "node",
+                node_id,
+                num_lines,
+                max_size_mb,
+                page,
+                page_size,
+                additional_info,
             )
 
         except Exception as e:
@@ -2210,7 +2219,7 @@ class RayManager:
 
     # ===== JOB OPERATION HELPERS =====
     # Additional refactoring for job submission, listing, cancellation, and inspection methods
-    
+
     def _format_job_info(self, job) -> Dict[str, Any]:
         """Standardize job information formatting across all job operations."""
         return {
@@ -2222,15 +2231,17 @@ class RayManager:
             "metadata": job.metadata or {},
             "runtime_env": job.runtime_env or {},
         }
-    
-    def _validate_job_id(self, job_id: str, operation_name: str) -> Optional[Dict[str, Any]]:
+
+    def _validate_job_id(
+        self, job_id: str, operation_name: str
+    ) -> Optional[Dict[str, Any]]:
         """Validate job ID parameter for job operations."""
         if not job_id or not job_id.strip():
             return self.response_formatter.format_validation_error(
                 f"Job ID cannot be empty for {operation_name}"
             )
         return None
-    
+
     def _validate_entrypoint(self, entrypoint: str) -> Optional[Dict[str, Any]]:
         """Validate entrypoint parameter for job submission."""
         if not entrypoint or not entrypoint.strip():
@@ -2238,38 +2249,34 @@ class RayManager:
                 "Entrypoint cannot be empty"
             )
         return None
-    
+
     async def _execute_job_operation(
-        self,
-        operation_name: str,
-        job_operation_func,
-        *args,
-        **kwargs
+        self, operation_name: str, job_operation_func, *args, **kwargs
     ) -> Dict[str, Any]:
         """
         Execute a job operation with unified error handling and job client management.
-        
+
         Args:
             operation_name: Name of the operation for logging (e.g., "job_submission")
             job_operation_func: Function to execute that takes (job_client, *args, **kwargs)
             *args, **kwargs: Arguments to pass to the operation function
-            
+
         Returns:
             Standardized response dictionary
         """
         try:
             self._ensure_initialized()
-            
+
             # Get or create job client
             job_client = await self._get_or_create_job_client(operation_name)
             if not job_client:
                 return self.response_formatter.format_error_response(
                     operation_name, "Job client not available"
                 )
-                
+
             # Execute the specific operation
             return await job_operation_func(job_client, *args, **kwargs)
-            
+
         except (KeyboardInterrupt, SystemExit):
             # Re-raise shutdown signals
             raise
@@ -2277,45 +2284,55 @@ class RayManager:
             LoggingUtility.log_error(operation_name, f"{operation_name} error: {e}")
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
-            LoggingUtility.log_error(operation_name, f"Connection error during {operation_name}: {e}")
+            LoggingUtility.log_error(
+                operation_name, f"Connection error during {operation_name}: {e}"
+            )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
-            LoggingUtility.log_error(operation_name, f"Invalid parameters for {operation_name}: {e}")
+            LoggingUtility.log_error(
+                operation_name, f"Invalid parameters for {operation_name}: {e}"
+            )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
-            LoggingUtility.log_error(operation_name, f"Runtime error during {operation_name}: {e}")
+            LoggingUtility.log_error(
+                operation_name, f"Runtime error during {operation_name}: {e}"
+            )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
-            LoggingUtility.log_error(operation_name, f"Unexpected error during {operation_name}: {e}", exc_info=True)
+            LoggingUtility.log_error(
+                operation_name,
+                f"Unexpected error during {operation_name}: {e}",
+                exc_info=True,
+            )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
-    
+
     async def _submit_job_operation(
-        self, 
-        job_client, 
+        self,
+        job_client,
         entrypoint: str,
         runtime_env: Optional[Dict[str, Any]] = None,
         job_id: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Execute the actual job submission operation."""
         # Entrypoint validation is now done upfront in submit_job method
-            
+
         # Prepare submit arguments
         submit_kwargs: Dict[str, Any] = {"entrypoint": entrypoint}
-        
+
         if runtime_env is not None:
             submit_kwargs["runtime_env"] = runtime_env
         if job_id is not None:
             submit_kwargs["job_id"] = job_id
         if metadata is not None:
             submit_kwargs["metadata"] = metadata
-            
+
         # Add any additional kwargs
         for key, value in kwargs.items():
             if key not in submit_kwargs and value is not None:
                 submit_kwargs[key] = value
-                
+
         # Submit the job
         submitted_job_id = job_client.submit_job(**submit_kwargs)
         return ResponseFormatter.format_success_response(
@@ -2323,7 +2340,7 @@ class RayManager:
             job_id=submitted_job_id,
             message=f"Job {submitted_job_id} submitted successfully",
         )
-    
+
     async def _list_jobs_operation(self, job_client) -> Dict[str, Any]:
         """Execute the actual job listing operation."""
         jobs = job_client.list_jobs()
@@ -2331,14 +2348,14 @@ class RayManager:
             result_type="success",
             jobs=[self._format_job_info(job) for job in jobs],
         )
-    
+
     async def _cancel_job_operation(self, job_client, job_id: str) -> Dict[str, Any]:
         """Execute the actual job cancellation operation."""
         # Validate job ID
         validation_error = self._validate_job_id(job_id, "job cancellation")
         if validation_error:
             return validation_error
-            
+
         success = job_client.stop_job(job_id)
         if success:
             return ResponseFormatter.format_success_response(
@@ -2352,16 +2369,18 @@ class RayManager:
                 "job_id": job_id,
                 "message": f"Failed to cancel job {job_id}",
             }
-    
-    async def _inspect_job_operation(self, job_client, job_id: str, mode: str = "status") -> Dict[str, Any]:
+
+    async def _inspect_job_operation(
+        self, job_client, job_id: str, mode: str = "status"
+    ) -> Dict[str, Any]:
         """Execute the actual job inspection operation."""
         # Validate job ID
         validation_error = self._validate_job_id(job_id, "job inspection")
         if validation_error:
             return validation_error
-            
+
         job_info = job_client.get_job_info(job_id)
-        
+
         # Base response with job status
         response = {
             "status": "success",
@@ -2377,7 +2396,7 @@ class RayManager:
             "logs": None,
             "debug_info": None,
         }
-        
+
         # Add logs if requested
         if mode in ["logs", "debug"]:
             try:
@@ -2385,21 +2404,23 @@ class RayManager:
                 response["logs"] = job_logs
             except Exception as e:
                 response["logs"] = f"Failed to retrieve logs: {str(e)}"
-                
+
         # Add debugging information if requested
         if mode == "debug":
             response["debug_info"] = {
                 "error_logs": [
-                    line for line in str(response.get("logs", "")).split("\n")
+                    line
+                    for line in str(response.get("logs", "")).split("\n")
                     if "error" in line.lower() or "exception" in line.lower()
                 ],
                 "recent_logs": (
                     str(response.get("logs", "")).split("\n")[-20:]
-                    if response.get("logs") else []
+                    if response.get("logs")
+                    else []
                 ),
                 "debugging_suggestions": self._generate_debug_suggestions(
                     job_info, str(response.get("logs", ""))
                 ),
             }
-            
+
         return response
