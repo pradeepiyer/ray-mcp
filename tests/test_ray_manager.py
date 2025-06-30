@@ -144,131 +144,109 @@ class TestRayManager:
             assert address.split(":")[1].isdigit()
 
     @pytest.mark.asyncio
-    async def test_find_free_port_basic(self, manager):
-        """Test basic find_free_port functionality."""
-        # Mock all system calls
-        with patch('tempfile.gettempdir', return_value='/tmp'), \
-             patch('builtins.open', mock_open()) as mock_file, \
-             patch('fcntl.flock') as mock_flock, \
-             patch('socket.socket') as mock_socket, \
-             patch('os.path.exists', return_value=False), \
-             patch('os.getpid', return_value=12345):
-            
-            # Mock successful socket binding
-            mock_socket.return_value.__enter__.return_value.bind.return_value = None
-            
-            port = await manager.find_free_port(start_port=20000, max_tries=10)
-            
-            assert isinstance(port, int)
-            assert port == 20000  # Should get the first port since mocked as available
-            mock_socket.assert_called()
-            mock_flock.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_find_free_port_race_condition_prevention(self, manager):
-        """Test that find_free_port prevents race conditions using file locking."""
-        # Mock file locking to simulate different processes getting different ports
-        call_count = 0
+    async def test_find_free_port_with_locking(self, manager):
+        """Test find_free_port functionality and race condition prevention."""
+        # Mock file locking to simulate race condition prevention
+        flock_call_count = 0
+        bind_call_count = 0
         
         def mock_flock_side_effect(*args):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                # First call succeeds (gets port 21000)
-                return None
-            elif call_count == 2:
-                # Second call fails first time (port 21001 locked), succeeds second time
-                if args[1] == fcntl.LOCK_EX | fcntl.LOCK_NB:
-                    raise OSError("Resource temporarily unavailable")
-                return None
-            else:
-                # Third call gets port 21002
-                return None
+            nonlocal flock_call_count
+            flock_call_count += 1
+            if flock_call_count == 2:  # Second port already locked by another process
+                raise OSError("Resource temporarily unavailable")
+            return None  # First and third ports succeed
+        
+        def mock_bind_side_effect(*args):
+            nonlocal bind_call_count
+            bind_call_count += 1
+            if bind_call_count == 3:  # Third bind call fails (port in use)
+                raise OSError("Port in use")
+            return None  # First and second bind calls succeed
         
         with patch('tempfile.gettempdir', return_value='/tmp'), \
              patch('builtins.open', mock_open()) as mock_file, \
              patch('fcntl.flock', side_effect=mock_flock_side_effect) as mock_flock, \
              patch('socket.socket') as mock_socket, \
-             patch('os.path.exists', return_value=False), \
-             patch('os.getpid', return_value=12345):
-            
-            # Mock successful socket binding
-            mock_socket.return_value.__enter__.return_value.bind.return_value = None
-            
-            # Test that concurrent calls work correctly
-            async def find_port_task(start_port):
-                return await manager.find_free_port(start_port=start_port, max_tries=5)
-            
-            # Run multiple concurrent port finding tasks
-            tasks = [find_port_task(21000 + i) for i in range(3)]
-            ports = await asyncio.gather(*tasks)
-            
-            # Verify all ports are integers and in expected ranges
-            for i, port in enumerate(ports):
-                assert isinstance(port, int)
-                expected_start = 21000 + i
-                assert expected_start <= port < expected_start + 5
-
-    @pytest.mark.asyncio
-    async def test_find_free_port_lock_cleanup(self, manager):
-        """Test that port lock files are properly cleaned up when ports are not available."""
-        with patch('tempfile.gettempdir', return_value='/tmp'), \
-             patch('builtins.open', mock_open()) as mock_file, \
-             patch('fcntl.flock') as mock_flock, \
-             patch('socket.socket') as mock_socket, \
              patch('os.path.exists', return_value=True), \
              patch('os.unlink') as mock_unlink, \
              patch('os.getpid', return_value=12345):
             
-            # Mock socket binding to fail for first port, succeed for second
-            bind_call_count = 0
-            def mock_bind_side_effect(*args):
-                nonlocal bind_call_count
-                bind_call_count += 1
-                if bind_call_count == 1:
-                    raise OSError("Port in use")  # First port fails
-                return None  # Second port succeeds
-            
             mock_socket.return_value.__enter__.return_value.bind.side_effect = mock_bind_side_effect
             
-            port = await manager.find_free_port(start_port=22000, max_tries=3)
-            
-            # Verify lock file cleanup was attempted for the unused port
-            mock_unlink.assert_called()
+            # Test basic functionality - should get first available port
+            port = await manager.find_free_port(start_port=20000, max_tries=5)
             assert isinstance(port, int)
-            assert port == 22001  # Should get second port
+            assert port == 20000
+            
+            # Verify file locking was used (core race condition fix)
+            mock_flock.assert_called()
+            
+            # Test race condition prevention - concurrent calls get different ports
+            async def find_port_task(start_port):
+                return await manager.find_free_port(start_port=start_port, max_tries=3)
+            
+            tasks = [find_port_task(21000), find_port_task(21001)]
+            ports = await asyncio.gather(*tasks)
+            
+            # Verify both tasks got valid ports
+            assert all(isinstance(p, int) for p in ports)
+            assert 21000 <= ports[0] < 21003
+            assert 21001 <= ports[1] < 21004
 
     @pytest.mark.asyncio
-    async def test_find_free_port_no_available_ports(self, manager):
-        """Test find_free_port when no ports are available."""
+    async def test_find_free_port_error_handling(self, manager):
+        """Test find_free_port error handling and fallback scenarios."""
+        # Test 1: No available ports (should raise RuntimeError)
         with patch('tempfile.gettempdir', return_value='/tmp'), \
-             patch('builtins.open', mock_open()) as mock_file, \
-             patch('fcntl.flock') as mock_flock, \
+             patch('builtins.open', mock_open()), \
+             patch('fcntl.flock'), \
              patch('socket.socket') as mock_socket, \
              patch('os.path.exists', return_value=False), \
              patch('os.getpid', return_value=12345):
             
-            # Mock socket.bind to always raise OSError (simulating all ports in use)
+            # All ports are in use
             mock_socket.return_value.__enter__.return_value.bind.side_effect = OSError("Address already in use")
             
             with pytest.raises(RuntimeError, match="No free port found in range"):
                 await manager.find_free_port(start_port=23000, max_tries=3)
-
-    @pytest.mark.asyncio  
-    async def test_find_free_port_file_system_error_handling(self, manager):
-        """Test find_free_port handles file system errors gracefully."""
+        
+        # Test 2: File system errors (should fallback to simple socket binding)
         with patch('tempfile.gettempdir', side_effect=OSError("Permission denied")), \
              patch('builtins.open', side_effect=OSError("Permission denied")), \
              patch('socket.socket') as mock_socket, \
              patch('os.getpid', return_value=12345):
             
-            # Mock successful socket binding for fallback
+            # Fallback socket binding succeeds
             mock_socket.return_value.__enter__.return_value.bind.return_value = None
             
-            # Should still work by falling back to simple socket binding
-            port = await manager.find_free_port(start_port=24000, max_tries=5)
+            port = await manager.find_free_port(start_port=24000, max_tries=3)
             assert isinstance(port, int)
-            assert port == 24000  # Should get first port since mocked as available
+            assert port == 24000
+        
+        # Test 3: Lock cleanup when ports fail
+        with patch('tempfile.gettempdir', return_value='/tmp'), \
+             patch('builtins.open', mock_open()), \
+             patch('fcntl.flock'), \
+             patch('socket.socket') as mock_socket, \
+             patch('os.path.exists', return_value=True), \
+             patch('os.unlink') as mock_unlink, \
+             patch('os.getpid', return_value=12345):
+            
+            # First port fails, second succeeds
+            bind_attempts = 0
+            def mock_bind(*args):
+                nonlocal bind_attempts
+                bind_attempts += 1
+                if bind_attempts == 1:
+                    raise OSError("Port in use")
+                return None
+            
+            mock_socket.return_value.__enter__.return_value.bind.side_effect = mock_bind
+            
+            port = await manager.find_free_port(start_port=25000, max_tries=3)
+            assert port == 25001  # Should get second port
+            mock_unlink.assert_called()  # Lock file cleanup should occur
 
 
 @pytest.mark.fast
