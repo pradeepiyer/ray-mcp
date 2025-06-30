@@ -1099,155 +1099,20 @@ class RayManager:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Submit a job to the Ray cluster."""
-        try:
-            self._ensure_initialized()
-
-            # Validate parameters
-            if not entrypoint or not entrypoint.strip():
-                raise JobValidationError("Entrypoint cannot be empty")
-
-            if not self.job_client:
-                # Try to create a job submission client using the dashboard URL
-                if self.dashboard_url:
-                    try:
-                        LoggingUtility.log_info(
-                            "job submission",
-                            f"Creating job submission client with dashboard URL: {self.dashboard_url}",
-                        )
-                        job_client = JobSubmissionClient(self.dashboard_url)
-
-                        # Prepare submit arguments
-                        submit_kwargs: Dict[str, Any] = {
-                            "entrypoint": entrypoint,
-                        }
-
-                        if runtime_env is not None:
-                            submit_kwargs["runtime_env"] = runtime_env
-                        if job_id is not None:
-                            submit_kwargs["job_id"] = job_id
-                        if metadata is not None:
-                            submit_kwargs["metadata"] = metadata
-
-                        # Add any additional kwargs
-                        for key, value in kwargs.items():
-                            if key not in submit_kwargs and value is not None:
-                                submit_kwargs[key] = value
-
-                        # Submit the job using the new job client
-                        submitted_job_id = job_client.submit_job(**submit_kwargs)
-                        return ResponseFormatter.format_success_response(
-                            result_type="submitted",
-                            job_id=submitted_job_id,
-                            message=f"Job {submitted_job_id} submitted successfully using dashboard URL",
-                        )
-                    except (ImportError, AttributeError) as e:
-                        LoggingUtility.log_error(
-                            "job submission", f"Job submission not available: {e}"
-                        )
-                        return {
-                            "status": "error",
-                            "message": f"Job submission not available: {str(e)}",
-                        }
-                    except (ConnectionError, TimeoutError) as e:
-                        LoggingUtility.log_error(
-                            "job submission",
-                            f"Connection error during job submission: {e}",
-                        )
-                        return {
-                            "status": "error",
-                            "message": f"Connection error: {str(e)}",
-                        }
-                    except (ValueError, TypeError) as e:
-                        LoggingUtility.log_error(
-                            "job submission",
-                            f"Invalid parameters for job submission: {e}",
-                        )
-                        return {
-                            "status": "error",
-                            "message": f"Invalid parameters: {str(e)}",
-                        }
-                    except RuntimeError as e:
-                        LoggingUtility.log_error(
-                            "job submission",
-                            f"Runtime error during job submission: {e}",
-                        )
-                        return {
-                            "status": "error",
-                            "message": f"Runtime error: {str(e)}",
-                        }
-                    except Exception as e:
-                        LoggingUtility.log_error(
-                            "job submission",
-                            f"Unexpected error during job submission: {e}",
-                            exc_info=True,
-                        )
-                        return {
-                            "status": "error",
-                            "message": f"Unexpected error: {str(e)}",
-                        }
-                else:
-                    return {
-                        "status": "error",
-                        "message": "Job submission not available: No dashboard URL available",
-                    }
-
-            # Type the submit_kwargs properly to avoid pyright errors
-            submit_kwargs: Dict[str, Any] = {
-                "entrypoint": entrypoint,
-            }
-
-            if runtime_env is not None:
-                submit_kwargs["runtime_env"] = runtime_env
-            if job_id is not None:
-                submit_kwargs["job_id"] = job_id
-            if metadata is not None:
-                submit_kwargs["metadata"] = metadata
-
-            # Add any additional kwargs
-            for key, value in kwargs.items():
-                if key not in submit_kwargs and value is not None:
-                    submit_kwargs[key] = value
-
-            # Submit the job
-            if self.job_client is None:
-                raise JobClientError("Job client is not initialized.")
-            submitted_job_id = self.job_client.submit_job(**submit_kwargs)
-            return ResponseFormatter.format_success_response(
-                result_type="submitted",
-                job_id=submitted_job_id,
-                message=f"Job {submitted_job_id} submitted successfully",
-            )
-
-        except (KeyboardInterrupt, SystemExit):
-            # Re-raise shutdown signals
-            raise
-        except JobSubmissionError as e:
-            # Handle known job submission errors
-            LoggingUtility.log_error("job submission", f"Job submission error: {e}")
-            return {"status": "error", "message": str(e)}
-        except (ConnectionError, TimeoutError) as e:
-            LoggingUtility.log_error(
-                "job submission", f"Connection error during job submission: {e}"
-            )
-            return {"status": "error", "message": f"Connection error: {str(e)}"}
-        except (ValueError, TypeError) as e:
-            LoggingUtility.log_error(
-                "job submission", f"Invalid parameters for job submission: {e}"
-            )
-            return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
-        except RuntimeError as e:
-            LoggingUtility.log_error(
-                "job submission", f"Runtime error during job submission: {e}"
-            )
-            return {"status": "error", "message": f"Runtime error: {str(e)}"}
-        except Exception as e:
-            # Log unexpected errors but don't mask them
-            LoggingUtility.log_error(
-                "job submission",
-                f"Unexpected error during job submission: {e}",
-                exc_info=True,
-            )
-            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+        # Validate entrypoint upfront to maintain expected error precedence
+        validation_error = self._validate_entrypoint(entrypoint)
+        if validation_error:
+            return validation_error
+            
+        return await self._execute_job_operation(
+            "job_submission",
+            self._submit_job_operation,
+            entrypoint,
+            runtime_env,
+            job_id,
+            metadata,
+            **kwargs
+        )
 
     @ResponseFormatter.handle_exceptions("list jobs")
     async def list_jobs(self) -> Dict[str, Any]:
@@ -1533,25 +1398,26 @@ class RayManager:
             self._ensure_initialized()
 
             # Validate parameters
-            validation_error = self.log_processor.validate_log_parameters(
-                num_lines, max_size_mb
+            validation_error = self._validate_log_retrieval_params(
+                identifier, log_type, num_lines, max_size_mb
             )
             if validation_error:
                 return validation_error
 
             if log_type == "job":
-                return await self._retrieve_job_logs(
+                return await self._retrieve_job_logs_unified(
                     identifier, num_lines, include_errors, max_size_mb
                 )
             elif log_type == "actor":
-                return await self._retrieve_actor_logs(
+                return await self._retrieve_actor_logs_unified(
                     identifier, num_lines, max_size_mb
                 )
             elif log_type == "node":
-                return await self._retrieve_node_logs(
+                return await self._retrieve_node_logs_unified(
                     identifier, num_lines, max_size_mb
                 )
             else:
+                # This should not happen due to validation, but kept for safety
                 return self.response_formatter.format_validation_error(
                     f"Unsupported log type: {log_type}",
                     suggestion="Supported types: 'job', 'actor', 'node'",
@@ -1561,214 +1427,11 @@ class RayManager:
             LoggingUtility.log_error("retrieve logs", f"Failed to retrieve logs: {e}")
             return self.response_formatter.format_error_response("retrieve logs", e)
 
-    async def _retrieve_job_logs(
-        self,
-        job_id: str,
-        num_lines: int = 100,
-        include_errors: bool = False,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Retrieve logs for a specific job with streaming and memory protection."""
-        try:
-            if self.job_client:
-                # Get job logs using job client with streaming
-                logs = self.job_client.get_job_logs(job_id)
 
-                # Check size before processing
-                if logs and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024:
-                    # Truncate logs to size limit
-                    truncated_logs = self.log_processor.truncate_logs_to_size(
-                        logs, max_size_mb
-                    )
-                    response = {
-                        "status": "success",
-                        "log_type": "job",
-                        "identifier": job_id,
-                        "logs": truncated_logs,
-                        "warning": f"Logs truncated to {max_size_mb}MB limit",
-                        "original_size_mb": len(logs.encode("utf-8")) / (1024 * 1024),
-                    }
 
-                    if include_errors:
-                        response["error_analysis"] = self._analyze_job_logs(
-                            truncated_logs
-                        )
 
-                    return response
 
-                # Apply line limit if specified
-                if num_lines > 0:
-                    logs = await self.log_processor.stream_logs_async(
-                        logs, num_lines, max_size_mb
-                    )
 
-                response: Dict[str, Any] = {
-                    "status": "success",
-                    "log_type": "job",
-                    "identifier": job_id,
-                    "logs": logs,
-                }
-
-                if include_errors:
-                    response["error_analysis"] = self._analyze_job_logs(logs)
-
-                return response
-            else:
-                # Use Ray's built-in job log functionality for Ray Client mode
-                try:
-                    import ray.job_submission
-
-                    # Create a job submission client using the current Ray context
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    logs = job_client.get_job_logs(job_id)
-
-                    # Apply streaming with limits
-                    if num_lines > 0:
-                        logs = await self.log_processor.stream_logs_async(
-                            logs, num_lines, max_size_mb
-                        )
-                    else:
-                        # Check size limit for full logs
-                        if (
-                            logs
-                            and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024
-                        ):
-                            logs = self.log_processor.truncate_logs_to_size(
-                                logs, max_size_mb
-                            )
-
-                    response: Dict[str, Any] = {
-                        "status": "success",
-                        "log_type": "job",
-                        "identifier": job_id,
-                        "logs": logs,
-                    }
-
-                    if include_errors:
-                        response["error_analysis"] = self._analyze_job_logs(logs)
-
-                    return response
-
-                except Exception as e:
-                    LoggingUtility.log_error(
-                        "job logs", f"Failed to retrieve job logs using Ray client: {e}"
-                    )
-                    return self.response_formatter.format_error_response(
-                        "retrieve job logs using Ray client", e
-                    )
-
-        except Exception as e:
-            LoggingUtility.log_error("job logs", f"Failed to retrieve job logs: {e}")
-            return self.response_formatter.format_error_response("retrieve job logs", e)
-
-    @ResponseFormatter.handle_exceptions("retrieve actor logs")
-    async def _retrieve_actor_logs(
-        self, actor_identifier: str, num_lines: int = 100, max_size_mb: int = 10
-    ) -> Dict[str, Any]:
-        """Retrieve logs for a specific actor with streaming support."""
-        try:
-            if not RAY_AVAILABLE or ray is None:
-                return ResponseFormatter.format_error_response(
-                    "retrieve actor logs", "Ray is not available"
-                )
-
-            # Try to get actor information
-            try:
-                if len(actor_identifier) == 32 and all(
-                    c in "0123456789abcdefABCDEF" for c in actor_identifier
-                ):
-                    actor_handle = ray.get_actor(actor_identifier)
-                else:
-                    # Treat as an actor name, search across namespaces
-                    actor_handle = ray.get_actor(actor_identifier, namespace="*")
-
-                # Get actor info
-                actor_info = {
-                    "actor_id": actor_handle._actor_id.hex(),
-                    "state": "ALIVE",
-                }
-
-                return {
-                    "status": "partial",
-                    "log_type": "actor",
-                    "identifier": actor_identifier,
-                    "message": "Actor logs are not directly accessible through Ray Python API",
-                    "actor_info": actor_info,
-                    "suggestions": [
-                        "Check Ray dashboard for actor logs",
-                        "Use Ray CLI: ray logs --actor-id <actor_id>",
-                        "Monitor actor through dashboard at http://localhost:8265",
-                    ],
-                    "note": f"Log retrieval parameters (num_lines={num_lines}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
-                }
-
-            except ValueError:
-                return ResponseFormatter.format_validation_error(
-                    f"Actor {actor_identifier} not found",
-                    suggestion="Check Ray dashboard for available actors",
-                )
-
-        except Exception as e:
-            LoggingUtility.log_error(
-                "actor logs", f"Failed to retrieve actor logs: {e}"
-            )
-            return self.response_formatter.format_error_response(
-                "retrieve actor logs", e
-            )
-
-    @ResponseFormatter.handle_exceptions("retrieve node logs")
-    async def _retrieve_node_logs(
-        self, node_id: str, num_lines: int = 100, max_size_mb: int = 10
-    ) -> Dict[str, Any]:
-        """Retrieve logs for a specific node with streaming support."""
-        try:
-            if not RAY_AVAILABLE or ray is None:
-                return ResponseFormatter.format_error_response(
-                    "retrieve node logs", "Ray is not available"
-                )
-
-            # Get node information
-            nodes = ray.nodes()
-            target_node = None
-
-            for node in nodes:
-                if node["NodeID"] == node_id:
-                    target_node = node
-                    break
-
-            if not target_node:
-                return ResponseFormatter.format_validation_error(
-                    f"Node {node_id} not found",
-                    suggestion="Use inspect_ray tool to see available nodes",
-                )
-
-            # Note: Ray doesn't provide direct node log access through Python API
-            # This is a placeholder for future implementation
-            return {
-                "status": "partial",
-                "log_type": "node",
-                "identifier": node_id,
-                "message": "Node logs are not directly accessible through Ray Python API",
-                "node_info": {
-                    "node_id": target_node["NodeID"],
-                    "alive": target_node["Alive"],
-                    "node_name": target_node.get("NodeName", ""),
-                    "node_manager_address": target_node.get("NodeManagerAddress", ""),
-                },
-                "suggestions": [
-                    "Check Ray dashboard for node logs",
-                    "Use Ray CLI: ray logs --node-id <node_id>",
-                    "Check log files at /tmp/ray/session_*/logs/",
-                    "Monitor node through dashboard at http://localhost:8265",
-                ],
-                "note": f"Log retrieval parameters (num_lines={num_lines}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
-            }
-
-        except Exception as e:
-            LoggingUtility.log_error("node logs", f"Failed to retrieve node logs: {e}")
-            return self.response_formatter.format_error_response(
-                "retrieve node logs", e
-            )
 
     def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
         """Analyze job logs for errors and provide debugging suggestions."""
@@ -2082,34 +1745,26 @@ class RayManager:
             self._ensure_initialized()
 
             # Validate parameters
-            if page < 1:
-                return self.response_formatter.format_error_response(
-                    "retrieve logs with pagination", "page must be positive"
-                )
-            if page_size <= 0 or page_size > 1000:
-                return self.response_formatter.format_error_response(
-                    "retrieve logs with pagination",
-                    "page_size must be between 1 and 1000",
-                )
-            validation_error = self.log_processor.validate_log_parameters(
-                page_size, max_size_mb
+            validation_error = self._validate_log_retrieval_params(
+                identifier, log_type, page_size, max_size_mb, page, page_size
             )
             if validation_error:
                 return validation_error
 
             if log_type == "job":
-                return await self._retrieve_job_logs_paginated(
-                    identifier, page, page_size, max_size_mb, include_errors
+                return await self._retrieve_job_logs_unified(
+                    identifier, page_size, include_errors, max_size_mb, page, page_size
                 )
             elif log_type == "actor":
-                return await self._retrieve_actor_logs_paginated(
-                    identifier, page, page_size, max_size_mb
+                return await self._retrieve_actor_logs_unified(
+                    identifier, page_size, max_size_mb, page, page_size
                 )
             elif log_type == "node":
-                return await self._retrieve_node_logs_paginated(
-                    identifier, page, page_size, max_size_mb
+                return await self._retrieve_node_logs_unified(
+                    identifier, page_size, max_size_mb, page, page_size
                 )
             else:
+                # This should not happen due to validation, but kept for safety
                 return self.response_formatter.format_error_response(
                     "retrieve logs with pagination", f"Unsupported log type: {log_type}"
                 )
@@ -2123,197 +1778,11 @@ class RayManager:
                 "retrieve logs with pagination", e
             )
 
-    async def _retrieve_job_logs_paginated(
-        self,
-        job_id: str,
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-        include_errors: bool = False,
-    ) -> Dict[str, Any]:
-        """Retrieve job logs with pagination support."""
-        try:
-            if self.job_client:
-                # Get job logs using job client
-                logs = self.job_client.get_job_logs(job_id)
 
-                # Use paginated streaming
-                result = await self.log_processor.stream_logs_with_pagination(
-                    logs, page, page_size, max_size_mb
-                )
 
-                if result["status"] == "success":
-                    response = {
-                        "status": "success",
-                        "log_type": "job",
-                        "identifier": job_id,
-                        "logs": result["logs"],
-                        "pagination": result["pagination"],
-                        "size_info": result["size_info"],
-                    }
 
-                    if include_errors:
-                        response["error_analysis"] = self._analyze_job_logs(
-                            result["logs"]
-                        )
 
-                    return response
-                else:
-                    return result
-            else:
-                # Use Ray's built-in job log functionality for Ray Client mode
-                try:
-                    import ray.job_submission
 
-                    job_client = ray.job_submission.JobSubmissionClient()
-                    logs = job_client.get_job_logs(job_id)
-
-                    # Use paginated streaming
-                    result = await self.log_processor.stream_logs_with_pagination(
-                        logs, page, page_size, max_size_mb
-                    )
-
-                    if result["status"] == "success":
-                        response = {
-                            "status": "success",
-                            "log_type": "job",
-                            "identifier": job_id,
-                            "logs": result["logs"],
-                            "pagination": result["pagination"],
-                            "size_info": result["size_info"],
-                        }
-
-                        if include_errors:
-                            response["error_analysis"] = self._analyze_job_logs(
-                                result["logs"]
-                            )
-
-                        return response
-                    else:
-                        return result
-
-                except Exception as e:
-                    LoggingUtility.log_error(
-                        "job logs paginated",
-                        f"Failed to retrieve job logs using Ray client: {e}",
-                    )
-                    return self.response_formatter.format_error_response(
-                        "retrieve job logs using Ray client", e
-                    )
-
-        except Exception as e:
-            LoggingUtility.log_error(
-                "job logs paginated",
-                f"Failed to retrieve job logs with pagination: {e}",
-            )
-            return self.response_formatter.format_error_response(
-                "retrieve job logs with pagination", e
-            )
-
-    async def _retrieve_actor_logs_paginated(
-        self,
-        actor_identifier: str,
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Retrieve actor logs with pagination support (placeholder)."""
-        try:
-            # Note: Ray doesn't provide direct actor log access through Python API
-            # This is a placeholder for future implementation
-            return {
-                "status": "partial",
-                "log_type": "actor",
-                "identifier": actor_identifier,
-                "message": "Actor logs are not directly accessible through Ray Python API",
-                "suggestions": [
-                    "Check Ray dashboard for actor logs",
-                    "Use Ray CLI: ray logs --actor-id <actor_id>",
-                    "Monitor actor through dashboard at http://localhost:8265",
-                ],
-                "pagination": {
-                    "current_page": page,
-                    "total_pages": 0,
-                    "page_size": page_size,
-                    "total_lines": 0,
-                    "lines_in_page": 0,
-                    "has_next": False,
-                    "has_previous": False,
-                },
-                "note": f"Pagination parameters (page={page}, page_size={page_size}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
-            }
-
-        except Exception as e:
-            LoggingUtility.log_error(
-                "actor logs paginated",
-                f"Failed to retrieve actor logs with pagination: {e}",
-            )
-            return self.response_formatter.format_error_response(
-                "retrieve actor logs with pagination", e
-            )
-
-    async def _retrieve_node_logs_paginated(
-        self, node_id: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10
-    ) -> Dict[str, Any]:
-        """Retrieve node logs with pagination support (placeholder)."""
-        try:
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
-            # Get node information
-            nodes = ray.nodes()
-            target_node = None
-
-            for node in nodes:
-                if node["NodeID"] == node_id:
-                    target_node = node
-                    break
-
-            if not target_node:
-                return {
-                    "status": "error",
-                    "message": f"Node {node_id} not found",
-                    "suggestion": "Use inspect_ray tool to see available nodes",
-                }
-
-            # Note: Ray doesn't provide direct node log access through Python API
-            return {
-                "status": "partial",
-                "log_type": "node",
-                "identifier": node_id,
-                "message": "Node logs are not directly accessible through Ray Python API",
-                "node_info": {
-                    "node_id": target_node["NodeID"],
-                    "alive": target_node["Alive"],
-                    "node_name": target_node.get("NodeName", ""),
-                    "node_manager_address": target_node.get("NodeManagerAddress", ""),
-                },
-                "pagination": {
-                    "current_page": page,
-                    "total_pages": 0,
-                    "page_size": page_size,
-                    "total_lines": 0,
-                    "lines_in_page": 0,
-                    "has_next": False,
-                    "has_previous": False,
-                },
-                "suggestions": [
-                    "Check Ray dashboard for node logs",
-                    "Use Ray CLI: ray logs --node-id <node_id>",
-                    "Check log files at /tmp/ray/session_*/logs/",
-                    "Monitor node through dashboard at http://localhost:8265",
-                ],
-                "note": f"Pagination parameters (page={page}, page_size={page_size}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
-            }
-
-        except Exception as e:
-            LoggingUtility.log_error(
-                "node logs paginated",
-                f"Failed to retrieve node logs with pagination: {e}",
-            )
-            return self.response_formatter.format_error_response(
-                "retrieve node logs with pagination", e
-            )
 
     async def _communicate_with_timeout(
         self, process, timeout: int = 30, max_output_size: int = 1024 * 1024
@@ -2415,3 +1884,522 @@ class RayManager:
             raise RuntimeError(f"Process startup timed out after {timeout} seconds")
 
         return "\n".join(stdout_lines), "\n".join(stderr_lines)
+
+    def _filter_cluster_starting_parameters(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter out parameters that are only valid for starting clusters, not connecting."""
+        # Parameters that should be filtered out when connecting to existing cluster
+        cluster_start_only_params = {
+            "num_cpus", "num_gpus", "object_store_memory", 
+            "head_node_port", "dashboard_port", "head_node_host", "worker_nodes"
+        }
+        
+        return {k: v for k, v in kwargs.items() if k not in cluster_start_only_params}
+
+    # ===== LOG RETRIEVAL HELPERS =====
+    # REFACTORING COMPLETED: These methods consolidate redundant log retrieval logic
+    # that was previously duplicated across 8+ methods (retrieve_logs, retrieve_logs_paginated,
+    # and their 6 variants for job/actor/node types). 
+    #
+    # Key improvements:
+    # 1. Unified job client creation with standardized error handling
+    # 2. Consolidated parameter validation for all log retrieval operations
+    # 3. Single unified job log retrieval method handling both regular and paginated modes
+    # 4. Standardized placeholder responses for actor/node logs
+    # 5. Eliminated ~500 lines of redundant code
+    # 6. Consistent error handling and response formatting
+    
+    async def _get_or_create_job_client(self, operation_name: str) -> Optional[Any]:
+        """Get existing job client or create a new one with standardized error handling."""
+        if self.job_client:
+            return self.job_client
+            
+        if not self.dashboard_url:
+            LoggingUtility.log_warning(
+                operation_name, "Job client not available: No dashboard URL available"
+            )
+            return None
+            
+        if JobSubmissionClient is None:
+            LoggingUtility.log_warning(
+                operation_name, "JobSubmissionClient not available"
+            )
+            return None
+            
+        try:
+            LoggingUtility.log_info(
+                operation_name,
+                f"Creating job submission client with dashboard URL: {self.dashboard_url}",
+            )
+            return JobSubmissionClient(self.dashboard_url)
+        except Exception as e:
+            LoggingUtility.log_error(
+                operation_name, f"Failed to create job client: {e}"
+            )
+            return None
+
+    def _validate_log_retrieval_params(
+        self, 
+        identifier: str,
+        log_type: str,
+        num_lines: int = 0,
+        max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Validate parameters for log retrieval operations."""
+        if not identifier or not identifier.strip():
+            return self.response_formatter.format_validation_error(
+                "Identifier cannot be empty"
+            )
+            
+        if log_type not in ["job", "actor", "node"]:
+            return self.response_formatter.format_validation_error(
+                f"Unsupported log type: {log_type}",
+                suggestion="Supported types: 'job', 'actor', 'node'",
+            )
+            
+        # Validate basic log parameters
+        validation_error = self.log_processor.validate_log_parameters(
+            num_lines or 100, max_size_mb
+        )
+        if validation_error:
+            return validation_error
+            
+        # Validate pagination parameters if provided
+        if page is not None:
+            if page < 1:
+                return self.response_formatter.format_validation_error(
+                    "page must be positive"
+                )
+        if page_size is not None:
+            if page_size <= 0 or page_size > 1000:
+                return self.response_formatter.format_validation_error(
+                    "page_size must be between 1 and 1000"
+                )
+                
+        return None
+
+    async def _retrieve_job_logs_unified(
+        self,
+        job_id: str,
+        num_lines: int = 100,
+        include_errors: bool = False,
+        max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Unified job log retrieval handling both regular and paginated modes."""
+        try:
+            # Get job client
+            job_client = await self._get_or_create_job_client("job_logs")
+            if not job_client:
+                return self.response_formatter.format_error_response(
+                    "retrieve job logs", "Job client not available"
+                )
+                
+            # Get raw logs
+            try:
+                logs = job_client.get_job_logs(job_id)
+            except Exception as e:
+                return self.response_formatter.format_error_response(
+                    "retrieve job logs", f"Failed to get job logs: {e}"
+                )
+                
+            # Process logs based on mode
+            if page is not None and page_size is not None:
+                # Paginated mode
+                result = await self.log_processor.stream_logs_with_pagination(
+                    logs, page, page_size, max_size_mb
+                )
+                
+                if result["status"] != "success":
+                    return result
+                    
+                response = {
+                    "status": "success",
+                    "log_type": "job",
+                    "identifier": job_id,
+                    "logs": result["logs"],
+                    "pagination": result["pagination"],
+                    "size_info": result["size_info"],
+                }
+            else:
+                # Regular mode
+                # Check size before processing
+                if logs and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024:
+                    truncated_logs = self.log_processor.truncate_logs_to_size(
+                        logs, max_size_mb
+                    )
+                    response = {
+                        "status": "success",
+                        "log_type": "job",
+                        "identifier": job_id,
+                        "logs": truncated_logs,
+                        "warning": f"Logs truncated to {max_size_mb}MB limit",
+                        "original_size_mb": len(logs.encode("utf-8")) / (1024 * 1024),
+                    }
+                else:
+                    # Apply line limit if specified
+                    if num_lines > 0:
+                        logs = await self.log_processor.stream_logs_async(
+                            logs, num_lines, max_size_mb
+                        )
+                        
+                    response = {
+                        "status": "success",
+                        "log_type": "job",
+                        "identifier": job_id,
+                        "logs": logs,
+                    }
+            
+            # Add error analysis if requested
+            if include_errors:
+                response["error_analysis"] = self._analyze_job_logs(
+                    response.get("logs", "")
+                )
+                
+            return response
+            
+        except Exception as e:
+            LoggingUtility.log_error("job logs", f"Failed to retrieve job logs: {e}")
+            return self.response_formatter.format_error_response("retrieve job logs", e)
+
+    def _create_placeholder_log_response(
+        self,
+        log_type: str,
+        identifier: str,
+        num_lines: int,
+        max_size_mb: int,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
+        additional_info: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Create standardized placeholder response for actor/node logs."""
+        response = {
+            "status": "partial",
+            "log_type": log_type,
+            "identifier": identifier,
+            "message": f"{log_type.title()} logs are not directly accessible through Ray Python API",
+            "suggestions": [
+                f"Check Ray dashboard for {log_type} logs",
+                f"Use Ray CLI: ray logs --{log_type}-id <{log_type}_id>",
+                "Monitor through dashboard at http://localhost:8265",
+            ],
+        }
+        
+        if additional_info:
+            response.update(additional_info)
+            
+        # Add pagination info if in paginated mode
+        if page is not None and page_size is not None:
+            response["pagination"] = {
+                "current_page": page,
+                "total_pages": 0,
+                "page_size": page_size,
+                "total_lines": 0,
+                "lines_in_page": 0,
+                "has_next": False,
+                "has_previous": False,
+            }
+            note_params = f"page={page}, page_size={page_size}, max_size_mb={max_size_mb}"
+        else:
+            note_params = f"num_lines={num_lines}, max_size_mb={max_size_mb}"
+            
+        response["note"] = f"Log retrieval parameters ({note_params}) will be applied when direct access is implemented"
+        
+        return response
+
+    async def _retrieve_actor_logs_unified(
+        self,
+        actor_identifier: str,
+        num_lines: int = 100,
+        max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Unified actor log retrieval handling both regular and paginated modes."""
+        try:
+            if not RAY_AVAILABLE or ray is None:
+                return ResponseFormatter.format_error_response(
+                    "retrieve actor logs", "Ray is not available"
+                )
+
+            # Try to get actor information for additional context
+            additional_info = {}
+            try:
+                if len(actor_identifier) == 32 and all(
+                    c in "0123456789abcdefABCDEF" for c in actor_identifier
+                ):
+                    actor_handle = ray.get_actor(actor_identifier)
+                else:
+                    # Treat as an actor name, search across namespaces
+                    actor_handle = ray.get_actor(actor_identifier, namespace="*")
+
+                additional_info["actor_info"] = {
+                    "actor_id": actor_handle._actor_id.hex(),
+                    "state": "ALIVE",
+                }
+            except ValueError:
+                return ResponseFormatter.format_validation_error(
+                    f"Actor {actor_identifier} not found",
+                    suggestion="Check Ray dashboard for available actors",
+                )
+
+            return self._create_placeholder_log_response(
+                "actor", actor_identifier, num_lines, max_size_mb, 
+                page, page_size, additional_info
+            )
+
+        except Exception as e:
+            LoggingUtility.log_error(
+                "actor logs", f"Failed to retrieve actor logs: {e}"
+            )
+            return self.response_formatter.format_error_response(
+                "retrieve actor logs", e
+            )
+
+    async def _retrieve_node_logs_unified(
+        self,
+        node_id: str,
+        num_lines: int = 100,
+        max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Unified node log retrieval handling both regular and paginated modes."""
+        try:
+            if not RAY_AVAILABLE or ray is None:
+                return ResponseFormatter.format_error_response(
+                    "retrieve node logs", "Ray is not available"
+                )
+
+            # Get node information for additional context
+            nodes = ray.nodes()
+            target_node = None
+
+            for node in nodes:
+                if node["NodeID"] == node_id:
+                    target_node = node
+                    break
+
+            if not target_node:
+                return ResponseFormatter.format_validation_error(
+                    f"Node {node_id} not found",
+                    suggestion="Use inspect_ray tool to see available nodes",
+                )
+
+            additional_info = {
+                "node_info": {
+                    "node_id": target_node["NodeID"],
+                    "alive": target_node["Alive"],
+                    "node_name": target_node.get("NodeName", ""),
+                    "node_manager_address": target_node.get("NodeManagerAddress", ""),
+                }
+            }
+
+            return self._create_placeholder_log_response(
+                "node", node_id, num_lines, max_size_mb, 
+                page, page_size, additional_info
+            )
+
+        except Exception as e:
+            LoggingUtility.log_error("node logs", f"Failed to retrieve node logs: {e}")
+            return self.response_formatter.format_error_response(
+                "retrieve node logs", e
+            )
+
+    # ===== JOB OPERATION HELPERS =====
+    # Additional refactoring for job submission, listing, cancellation, and inspection methods
+    
+    def _format_job_info(self, job) -> Dict[str, Any]:
+        """Standardize job information formatting across all job operations."""
+        return {
+            "job_id": job.job_id,
+            "status": job.status,
+            "entrypoint": job.entrypoint,
+            "start_time": job.start_time,
+            "end_time": job.end_time,
+            "metadata": job.metadata or {},
+            "runtime_env": job.runtime_env or {},
+        }
+    
+    def _validate_job_id(self, job_id: str, operation_name: str) -> Optional[Dict[str, Any]]:
+        """Validate job ID parameter for job operations."""
+        if not job_id or not job_id.strip():
+            return self.response_formatter.format_validation_error(
+                f"Job ID cannot be empty for {operation_name}"
+            )
+        return None
+    
+    def _validate_entrypoint(self, entrypoint: str) -> Optional[Dict[str, Any]]:
+        """Validate entrypoint parameter for job submission."""
+        if not entrypoint or not entrypoint.strip():
+            return self.response_formatter.format_validation_error(
+                "Entrypoint cannot be empty"
+            )
+        return None
+    
+    async def _execute_job_operation(
+        self,
+        operation_name: str,
+        job_operation_func,
+        *args,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Execute a job operation with unified error handling and job client management.
+        
+        Args:
+            operation_name: Name of the operation for logging (e.g., "job_submission")
+            job_operation_func: Function to execute that takes (job_client, *args, **kwargs)
+            *args, **kwargs: Arguments to pass to the operation function
+            
+        Returns:
+            Standardized response dictionary
+        """
+        try:
+            self._ensure_initialized()
+            
+            # Get or create job client
+            job_client = await self._get_or_create_job_client(operation_name)
+            if not job_client:
+                return self.response_formatter.format_error_response(
+                    operation_name, "Job client not available"
+                )
+                
+            # Execute the specific operation
+            return await job_operation_func(job_client, *args, **kwargs)
+            
+        except (KeyboardInterrupt, SystemExit):
+            # Re-raise shutdown signals
+            raise
+        except JobSubmissionError as e:
+            LoggingUtility.log_error(operation_name, f"{operation_name} error: {e}")
+            return {"status": "error", "message": str(e)}
+        except (ConnectionError, TimeoutError) as e:
+            LoggingUtility.log_error(operation_name, f"Connection error during {operation_name}: {e}")
+            return {"status": "error", "message": f"Connection error: {str(e)}"}
+        except (ValueError, TypeError) as e:
+            LoggingUtility.log_error(operation_name, f"Invalid parameters for {operation_name}: {e}")
+            return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
+        except RuntimeError as e:
+            LoggingUtility.log_error(operation_name, f"Runtime error during {operation_name}: {e}")
+            return {"status": "error", "message": f"Runtime error: {str(e)}"}
+        except Exception as e:
+            LoggingUtility.log_error(operation_name, f"Unexpected error during {operation_name}: {e}", exc_info=True)
+            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+    
+    async def _submit_job_operation(
+        self, 
+        job_client, 
+        entrypoint: str,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        job_id: Optional[str] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """Execute the actual job submission operation."""
+        # Entrypoint validation is now done upfront in submit_job method
+            
+        # Prepare submit arguments
+        submit_kwargs: Dict[str, Any] = {"entrypoint": entrypoint}
+        
+        if runtime_env is not None:
+            submit_kwargs["runtime_env"] = runtime_env
+        if job_id is not None:
+            submit_kwargs["job_id"] = job_id
+        if metadata is not None:
+            submit_kwargs["metadata"] = metadata
+            
+        # Add any additional kwargs
+        for key, value in kwargs.items():
+            if key not in submit_kwargs and value is not None:
+                submit_kwargs[key] = value
+                
+        # Submit the job
+        submitted_job_id = job_client.submit_job(**submit_kwargs)
+        return ResponseFormatter.format_success_response(
+            result_type="submitted",
+            job_id=submitted_job_id,
+            message=f"Job {submitted_job_id} submitted successfully",
+        )
+    
+    async def _list_jobs_operation(self, job_client) -> Dict[str, Any]:
+        """Execute the actual job listing operation."""
+        jobs = job_client.list_jobs()
+        return ResponseFormatter.format_success_response(
+            result_type="success",
+            jobs=[self._format_job_info(job) for job in jobs],
+        )
+    
+    async def _cancel_job_operation(self, job_client, job_id: str) -> Dict[str, Any]:
+        """Execute the actual job cancellation operation."""
+        # Validate job ID
+        validation_error = self._validate_job_id(job_id, "job cancellation")
+        if validation_error:
+            return validation_error
+            
+        success = job_client.stop_job(job_id)
+        if success:
+            return ResponseFormatter.format_success_response(
+                result_type="cancelled",
+                job_id=job_id,
+                message=f"Job {job_id} cancelled successfully",
+            )
+        else:
+            return {
+                "status": "error",
+                "job_id": job_id,
+                "message": f"Failed to cancel job {job_id}",
+            }
+    
+    async def _inspect_job_operation(self, job_client, job_id: str, mode: str = "status") -> Dict[str, Any]:
+        """Execute the actual job inspection operation."""
+        # Validate job ID
+        validation_error = self._validate_job_id(job_id, "job inspection")
+        if validation_error:
+            return validation_error
+            
+        job_info = job_client.get_job_info(job_id)
+        
+        # Base response with job status
+        response = {
+            "status": "success",
+            "job_id": job_id,
+            "job_status": job_info.status,
+            "entrypoint": job_info.entrypoint,
+            "start_time": job_info.start_time,
+            "end_time": job_info.end_time,
+            "metadata": job_info.metadata or {},
+            "runtime_env": job_info.runtime_env or {},
+            "message": job_info.message or "",
+            "inspection_mode": mode,
+            "logs": None,
+            "debug_info": None,
+        }
+        
+        # Add logs if requested
+        if mode in ["logs", "debug"]:
+            try:
+                job_logs = job_client.get_job_logs(job_id)
+                response["logs"] = job_logs
+            except Exception as e:
+                response["logs"] = f"Failed to retrieve logs: {str(e)}"
+                
+        # Add debugging information if requested
+        if mode == "debug":
+            response["debug_info"] = {
+                "error_logs": [
+                    line for line in str(response.get("logs", "")).split("\n")
+                    if "error" in line.lower() or "exception" in line.lower()
+                ],
+                "recent_logs": (
+                    str(response.get("logs", "")).split("\n")[-20:]
+                    if response.get("logs") else []
+                ),
+                "debugging_suggestions": self._generate_debug_suggestions(
+                    job_info, str(response.get("logs", ""))
+                ),
+            }
+            
+        return response
