@@ -2193,14 +2193,19 @@ class RayManager:
             return "unavailable"
 
     async def _stream_process_output(
-        self, process, timeout: int = 30, max_lines: int = 1000
+        self,
+        process,
+        timeout: int = 30,
+        max_lines: int = 1000,
+        max_output_size: int = 1024 * 1024,
     ) -> tuple[str, str]:
-        """Stream process output to avoid memory issues.
+        """Stream process output with proper memory limits to avoid memory leaks.
 
         Args:
             process: The subprocess to stream output from
             timeout: Timeout in seconds for the streaming
-            max_lines: Maximum number of lines to collect
+            max_lines: Maximum number of lines to collect per stream
+            max_output_size: Maximum size of output in bytes per stream
 
         Returns:
             Tuple of (stdout, stderr) strings
@@ -2208,38 +2213,90 @@ class RayManager:
         Raises:
             RuntimeError: If process startup times out
         """
-        stdout_lines = []
-        stderr_lines = []
+        stdout_chunks = []
+        stderr_chunks = []
+        stdout_size = 0
+        stderr_size = 0
+        stdout_lines = 0
+        stderr_lines = 0
+
+        async def read_stream_line(stream):
+            """Read a single line from stream with error handling."""
+            try:
+                if not stream or not hasattr(stream, "readline"):
+                    return None
+                line = await asyncio.get_event_loop().run_in_executor(
+                    None, stream.readline
+                )
+                return line if line else None
+            except Exception:
+                return None
 
         async def _stream_output():
-            while process.poll() is None:
-                if process.stdout and process.stdout.readable():
-                    line = await asyncio.get_event_loop().run_in_executor(
-                        None, process.stdout.readline
-                    )
-                    if line:
-                        stdout_lines.append(line.decode().strip())
-                        if len(stdout_lines) >= max_lines:
-                            break
+            nonlocal stdout_size, stderr_size, stdout_lines, stderr_lines
 
-                if process.stderr and process.stderr.readable():
-                    line = await asyncio.get_event_loop().run_in_executor(
-                        None, process.stderr.readline
-                    )
+            while process.poll() is None:
+                # Check if we've reached limits for both streams
+                stdout_limit_reached = (
+                    stdout_lines >= max_lines or stdout_size >= max_output_size
+                )
+                stderr_limit_reached = (
+                    stderr_lines >= max_lines or stderr_size >= max_output_size
+                )
+
+                if stdout_limit_reached and stderr_limit_reached:
+                    break
+
+                # Read from stdout if not at limit
+                if not stdout_limit_reached and process.stdout:
+                    line = await read_stream_line(process.stdout)
                     if line:
-                        stderr_lines.append(line.decode().strip())
-                        if len(stderr_lines) >= max_lines:
-                            break
+                        line_str = (
+                            line.decode().strip()
+                            if isinstance(line, bytes)
+                            else line.strip()
+                        )
+                        line_size = len(line_str.encode("utf-8"))
+
+                        # Check if adding this line would exceed limits
+                        if (
+                            stdout_size + line_size <= max_output_size
+                            and stdout_lines < max_lines
+                        ):
+                            stdout_chunks.append(line_str)
+                            stdout_size += line_size
+                            stdout_lines += 1
+
+                # Read from stderr if not at limit
+                if not stderr_limit_reached and process.stderr:
+                    line = await read_stream_line(process.stderr)
+                    if line:
+                        line_str = (
+                            line.decode().strip()
+                            if isinstance(line, bytes)
+                            else line.strip()
+                        )
+                        line_size = len(line_str.encode("utf-8"))
+
+                        # Check if adding this line would exceed limits
+                        if (
+                            stderr_size + line_size <= max_output_size
+                            and stderr_lines < max_lines
+                        ):
+                            stderr_chunks.append(line_str)
+                            stderr_size += line_size
+                            stderr_lines += 1
 
                 await asyncio.sleep(0.1)
 
         try:
             await asyncio.wait_for(_stream_output(), timeout=timeout)
         except asyncio.TimeoutError:
-            process.kill()
+            if hasattr(process, "kill"):
+                process.kill()
             raise RuntimeError(f"Process startup timed out after {timeout} seconds")
 
-        return "\n".join(stdout_lines), "\n".join(stderr_lines)
+        return "\n".join(stdout_chunks), "\n".join(stderr_chunks)
 
     def _filter_cluster_starting_parameters(
         self, kwargs: Dict[str, Any]
