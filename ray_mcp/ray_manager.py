@@ -983,21 +983,11 @@ class RayManager:
             head_stop_result = None
             if self._head_node_process is not None:
                 try:
-                    import subprocess
-
-                    # Use ray stop to properly stop the head node
-                    stop_cmd = ["ray", "stop"]
-                    stop_process = subprocess.run(
-                        stop_cmd, capture_output=True, text=True, timeout=10
-                    )
-                    if stop_process.returncode == 0:
-                        head_stop_result = "stopped"
-                    else:
-                        head_stop_result = f"error: {stop_process.stderr}"
+                    # Use the robust cleanup method that handles process state properly
+                    await self._cleanup_head_node_process(timeout=10)
+                    head_stop_result = "stopped"
                 except Exception as e:
                     head_stop_result = f"error: {str(e)}"
-                finally:
-                    self._head_node_process = None
 
             self._state_manager.reset_state()
 
