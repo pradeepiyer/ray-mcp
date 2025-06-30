@@ -294,7 +294,9 @@ class WorkerManager:
             exit_code = process.poll()
             LoggingUtility.log_error(
                 "worker_manager",
-                f"Worker node '{node_name}' failed to start with exit code: {exit_code}",
+                Exception(
+                    f"Worker node '{node_name}' failed to start with exit code: {exit_code}"
+                ),
             )
             return None
 

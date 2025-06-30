@@ -129,7 +129,7 @@ class RayStateManager:
 
         except Exception as e:
             LoggingUtility.log_error(
-                "state_validation", f"State validation failed: {e}"
+                "state_validation", Exception(f"State validation failed: {e}")
             )
             self._state["initialized"] = False
 
@@ -169,7 +169,9 @@ class RayStateManager:
             return True
 
         except Exception as e:
-            LoggingUtility.log_error("ray_state", f"Error validating Ray state: {e}")
+            LoggingUtility.log_error(
+                "ray_state", Exception(f"Error validating Ray state: {e}")
+            )
             return False
 
     def update_state(self, **kwargs) -> None:
@@ -304,9 +306,9 @@ class RayManager:
                             f"Found {len(children)} child processes to cleanup",
                         )
                     except (
-                        psutil.NoSuchProcess,
-                        psutil.AccessDenied,
-                        psutil.ZombieProcess,
+                        psutil.NoSuchProcess if psutil else Exception,
+                        psutil.AccessDenied if psutil else Exception,
+                        psutil.ZombieProcess if psutil else Exception,
                     ) as e:
                         LoggingUtility.log_warning(
                             "cleanup", f"Could not enumerate child processes: {e}"
@@ -320,9 +322,9 @@ class RayManager:
                             "cleanup", f"Terminated child process {child.pid}"
                         )
                     except (
-                        psutil.NoSuchProcess,
-                        psutil.AccessDenied,
-                        psutil.ZombieProcess,
+                        psutil.NoSuchProcess if psutil else Exception,
+                        psutil.AccessDenied if psutil else Exception,
+                        psutil.ZombieProcess if psutil else Exception,
                     ):
                         pass  # Process already terminated or inaccessible
 
@@ -360,9 +362,9 @@ class RayManager:
                                 )
                             except (
                                 asyncio.TimeoutError,
-                                psutil.NoSuchProcess,
-                                psutil.AccessDenied,
-                                psutil.ZombieProcess,
+                                psutil.NoSuchProcess if psutil else Exception,
+                                psutil.AccessDenied if psutil else Exception,
+                                psutil.ZombieProcess if psutil else Exception,
                             ):
                                 LoggingUtility.log_debug(
                                     "cleanup",
@@ -381,9 +383,9 @@ class RayManager:
                                 "cleanup", f"Force killed child process {child.pid}"
                             )
                         except (
-                            psutil.NoSuchProcess,
-                            psutil.AccessDenied,
-                            psutil.ZombieProcess,
+                            psutil.NoSuchProcess if psutil else Exception,
+                            psutil.AccessDenied if psutil else Exception,
+                            psutil.ZombieProcess if psutil else Exception,
                         ):
                             pass
                     # Force kill the main process
@@ -453,7 +455,8 @@ class RayManager:
         try:
             if not RAY_AVAILABLE or ray is None:
                 return ResponseFormatter.format_error_response(
-                    "init cluster", "Ray is not available. Please install Ray."
+                    "init cluster",
+                    Exception("Ray is not available. Please install Ray."),
                 )
 
             async def find_free_port(start_port=10001, max_tries=50):
@@ -697,10 +700,14 @@ class RayManager:
                     )
                 except Exception as e:
                     LoggingUtility.log_error(
-                        "head_node", f"Failed to connect to head node: {e}"
+                        "head_node", Exception(f"Failed to connect to head node: {e}")
                     )
-                    LoggingUtility.log_error("head_node", f"Head node stdout: {stdout}")
-                    LoggingUtility.log_error("head_node", f"Head node stderr: {stderr}")
+                    LoggingUtility.log_error(
+                        "head_node", Exception(f"Head node stdout: {stdout}")
+                    )
+                    LoggingUtility.log_error(
+                        "head_node", Exception(f"Head node stderr: {stderr}")
+                    )
 
                     # Clean up the head node process if ray.init() failed
                     await self._cleanup_head_node_process()
@@ -789,7 +796,7 @@ class RayManager:
 
         except Exception as e:
             LoggingUtility.log_error(
-                "init_cluster", f"Failed to initialize Ray cluster: {e}"
+                "init_cluster", Exception(f"Failed to initialize Ray cluster: {e}")
             )
 
             # Clean up the head node process if it was started but initialization failed
@@ -822,7 +829,7 @@ class RayManager:
         try:
             if not RAY_AVAILABLE or ray is None:
                 return ResponseFormatter.format_error_response(
-                    "stop cluster", "Ray is not available"
+                    "stop cluster", Exception("Ray is not available")
                 )
 
             if not ray.is_initialized():
@@ -867,7 +874,9 @@ class RayManager:
             )
 
         except Exception as e:
-            LoggingUtility.log_error("stop_cluster", f"Failed to stop Ray cluster: {e}")
+            LoggingUtility.log_error(
+                "stop_cluster", Exception(f"Failed to stop Ray cluster: {e}")
+            )
             return ResponseFormatter.format_error_response("stop cluster", e)
 
     async def inspect_ray(self) -> Dict[str, Any]:
@@ -1086,7 +1095,9 @@ class RayManager:
             )
 
         except Exception as e:
-            LoggingUtility.log_error("retrieve logs", f"Failed to retrieve logs: {e}")
+            LoggingUtility.log_error(
+                "retrieve logs", Exception(f"Failed to retrieve logs: {e}")
+            )
             return self.response_formatter.format_error_response("retrieve logs", e)
 
     @ResponseFormatter.handle_exceptions("submit job")
@@ -1128,6 +1139,10 @@ class RayManager:
                             "job listing",
                             f"Creating job submission client for listing jobs with dashboard URL: {self.dashboard_url}",
                         )
+                        if JobSubmissionClient is None:
+
+                            raise ImportError("JobSubmissionClient not available")
+
                         job_client = JobSubmissionClient(self.dashboard_url)
                         jobs = job_client.list_jobs()
 
@@ -1148,7 +1163,7 @@ class RayManager:
                         )
                     except (ImportError, AttributeError) as e:
                         LoggingUtility.log_error(
-                            "job listing", f"Job listing not available: {e}"
+                            "job listing", Exception(f"Job listing not available: {e}")
                         )
                         return {
                             "status": "error",
@@ -1156,7 +1171,8 @@ class RayManager:
                         }
                     except (ConnectionError, TimeoutError) as e:
                         LoggingUtility.log_error(
-                            "job listing", f"Connection error during job listing: {e}"
+                            "job listing",
+                            Exception(f"Connection error during job listing: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1164,7 +1180,8 @@ class RayManager:
                         }
                     except (ValueError, TypeError) as e:
                         LoggingUtility.log_error(
-                            "job listing", f"Invalid parameters for job listing: {e}"
+                            "job listing",
+                            Exception(f"Invalid parameters for job listing: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1172,7 +1189,8 @@ class RayManager:
                         }
                     except RuntimeError as e:
                         LoggingUtility.log_error(
-                            "job listing", f"Runtime error during job listing: {e}"
+                            "job listing",
+                            Exception(f"Runtime error during job listing: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1181,7 +1199,7 @@ class RayManager:
                     except Exception as e:
                         LoggingUtility.log_error(
                             "job listing",
-                            f"Unexpected error during job listing: {e}",
+                            Exception(f"Unexpected error during job listing: {e}"),
                             exc_info=True,
                         )
                         return {
@@ -1217,28 +1235,33 @@ class RayManager:
             raise
         except JobSubmissionError as e:
             # Handle known job submission errors
-            LoggingUtility.log_error("job listing", f"Job listing error: {e}")
+            LoggingUtility.log_error(
+                "job listing", Exception(f"Job listing error: {e}")
+            )
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
             LoggingUtility.log_error(
-                "job listing", f"Connection error during job listing: {e}"
+                "job listing",
+                Exception(f"Connection error during job listing: {e}"),
             )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
             LoggingUtility.log_error(
-                "job listing", f"Invalid parameters for job listing: {e}"
+                "job listing",
+                Exception(f"Invalid parameters for job listing: {e}"),
             )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
             LoggingUtility.log_error(
-                "job listing", f"Runtime error during job listing: {e}"
+                "job listing",
+                Exception(f"Runtime error during job listing: {e}"),
             )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
             # Log unexpected errors but don't mask them
             LoggingUtility.log_error(
                 "job listing",
-                f"Unexpected error during job listing: {e}",
+                Exception(f"Unexpected error during job listing: {e}"),
                 exc_info=True,
             )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
@@ -1261,6 +1284,10 @@ class RayManager:
                             "job cancellation",
                             f"Creating job submission client for cancelling job with dashboard URL: {self.dashboard_url}",
                         )
+                        if JobSubmissionClient is None:
+
+                            raise ImportError("JobSubmissionClient not available")
+
                         job_client = JobSubmissionClient(self.dashboard_url)
                         success = job_client.stop_job(job_id)
 
@@ -1278,7 +1305,8 @@ class RayManager:
                             }
                     except (ImportError, AttributeError) as e:
                         LoggingUtility.log_error(
-                            "job cancellation", f"Job cancellation not available: {e}"
+                            "job cancellation",
+                            Exception(f"Job cancellation not available: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1287,7 +1315,7 @@ class RayManager:
                     except (ConnectionError, TimeoutError) as e:
                         LoggingUtility.log_error(
                             "job cancellation",
-                            f"Connection error during job cancellation: {e}",
+                            Exception(f"Connection error during job cancellation: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1296,7 +1324,7 @@ class RayManager:
                     except (ValueError, TypeError) as e:
                         LoggingUtility.log_error(
                             "job cancellation",
-                            f"Invalid parameters for job cancellation: {e}",
+                            Exception(f"Invalid parameters for job cancellation: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1305,7 +1333,7 @@ class RayManager:
                     except RuntimeError as e:
                         LoggingUtility.log_error(
                             "job cancellation",
-                            f"Runtime error during job cancellation: {e}",
+                            Exception(f"Runtime error during job cancellation: {e}"),
                         )
                         return {
                             "status": "error",
@@ -1314,7 +1342,7 @@ class RayManager:
                     except Exception as e:
                         LoggingUtility.log_error(
                             "job cancellation",
-                            f"Unexpected error during job cancellation: {e}",
+                            Exception(f"Unexpected error during job cancellation: {e}"),
                             exc_info=True,
                         )
                         return {
@@ -1347,28 +1375,33 @@ class RayManager:
             raise
         except JobSubmissionError as e:
             # Handle known job submission errors
-            LoggingUtility.log_error("job cancellation", f"Job cancellation error: {e}")
+            LoggingUtility.log_error(
+                "job cancellation", Exception(f"Job cancellation error: {e}")
+            )
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
             LoggingUtility.log_error(
-                "job cancellation", f"Connection error during job cancellation: {e}"
+                "job cancellation",
+                Exception(f"Connection error during job cancellation: {e}"),
             )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
             LoggingUtility.log_error(
-                "job cancellation", f"Invalid parameters for job cancellation: {e}"
+                "job cancellation",
+                Exception(f"Invalid parameters for job cancellation: {e}"),
             )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
             LoggingUtility.log_error(
-                "job cancellation", f"Runtime error during job cancellation: {e}"
+                "job cancellation",
+                Exception(f"Runtime error during job cancellation: {e}"),
             )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
             # Log unexpected errors but don't mask them
             LoggingUtility.log_error(
                 "job cancellation",
-                f"Unexpected error during job cancellation: {e}",
+                Exception(f"Unexpected error during job cancellation: {e}"),
                 exc_info=True,
             )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
@@ -1424,7 +1457,9 @@ class RayManager:
                 )
 
         except Exception as e:
-            LoggingUtility.log_error("retrieve logs", f"Failed to retrieve logs: {e}")
+            LoggingUtility.log_error(
+                "retrieve logs", Exception(f"Failed to retrieve logs: {e}")
+            )
             return self.response_formatter.format_error_response("retrieve logs", e)
 
     def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
@@ -1594,6 +1629,10 @@ class RayManager:
                             "inspect job",
                             f"Creating job submission client for inspection with dashboard URL: {self.dashboard_url}",
                         )
+                        if JobSubmissionClient is None:
+
+                            raise ImportError("JobSubmissionClient not available")
+
                         job_client = JobSubmissionClient(self.dashboard_url)
                         job_info = job_client.get_job_info(job_id)
 
@@ -1647,20 +1686,23 @@ class RayManager:
                     except Exception as e:
                         LoggingUtility.log_error(
                             "inspect job",
-                            f"Failed to inspect job using dashboard URL: {e}",
+                            Exception(
+                                f"Failed to inspect job using dashboard URL: {e}"
+                            ),
                         )
                         return self.response_formatter.format_error_response(
                             "inspect job using dashboard URL", e
                         )
                 else:
                     return self.response_formatter.format_error_response(
-                        "inspect job using dashboard URL", "No dashboard URL available"
+                        "inspect job using dashboard URL",
+                        Exception("No dashboard URL available"),
                     )
 
             # Use job client if available
             if self.job_client is None:
                 return self.response_formatter.format_error_response(
-                    "inspect job", "Job client is not initialized."
+                    "inspect job", Exception("Job client is not initialized.")
                 )
             job_info = self.job_client.get_job_info(job_id)
 
@@ -1709,7 +1751,9 @@ class RayManager:
             return response
 
         except Exception as e:
-            LoggingUtility.log_error("inspect job", f"Failed to inspect job: {e}")
+            LoggingUtility.log_error(
+                "inspect job", Exception(f"Failed to inspect job: {e}")
+            )
             return self.response_formatter.format_error_response("inspect job", e)
 
     async def retrieve_logs_paginated(
@@ -1760,13 +1804,14 @@ class RayManager:
             else:
                 # This should not happen due to validation, but kept for safety
                 return self.response_formatter.format_error_response(
-                    "retrieve logs with pagination", f"Unsupported log type: {log_type}"
+                    "retrieve logs with pagination",
+                    Exception(f"Unsupported log type: {log_type}"),
                 )
 
         except Exception as e:
             LoggingUtility.log_error(
                 "retrieve logs with pagination",
-                f"Failed to retrieve logs with pagination: {e}",
+                Exception(f"Failed to retrieve logs with pagination: {e}"),
             )
             return self.response_formatter.format_error_response(
                 "retrieve logs with pagination", e
@@ -1820,7 +1865,9 @@ class RayManager:
                 else:
                     LoggingUtility.log_error(
                         "job_client",
-                        f"Job client initialization failed after {max_retries} attempts",
+                        Exception(
+                            f"Job client initialization failed after {max_retries} attempts"
+                        ),
                     )
                     return None
 
@@ -1928,7 +1975,7 @@ class RayManager:
             return JobSubmissionClient(self.dashboard_url)
         except Exception as e:
             LoggingUtility.log_error(
-                operation_name, f"Failed to create job client: {e}"
+                operation_name, Exception(f"Failed to create job client: {e}")
             )
             return None
 
@@ -1989,7 +2036,7 @@ class RayManager:
             job_client = await self._get_or_create_job_client("job_logs")
             if not job_client:
                 return self.response_formatter.format_error_response(
-                    "retrieve job logs", "Job client not available"
+                    "retrieve job logs", Exception("Job client not available")
                 )
 
             # Get raw logs
@@ -1997,7 +2044,7 @@ class RayManager:
                 logs = job_client.get_job_logs(job_id)
             except Exception as e:
                 return self.response_formatter.format_error_response(
-                    "retrieve job logs", f"Failed to get job logs: {e}"
+                    "retrieve job logs", Exception(f"Failed to get job logs: {e}")
                 )
 
             # Process logs based on mode
@@ -2056,7 +2103,9 @@ class RayManager:
             return response
 
         except Exception as e:
-            LoggingUtility.log_error("job logs", f"Failed to retrieve job logs: {e}")
+            LoggingUtility.log_error(
+                "job logs", Exception(f"Failed to retrieve job logs: {e}")
+            )
             return self.response_formatter.format_error_response("retrieve job logs", e)
 
     def _create_placeholder_log_response(
@@ -2120,7 +2169,7 @@ class RayManager:
         try:
             if not RAY_AVAILABLE or ray is None:
                 return ResponseFormatter.format_error_response(
-                    "retrieve actor logs", "Ray is not available"
+                    "retrieve actor logs", Exception("Ray is not available")
                 )
 
             # Try to get actor information for additional context
@@ -2156,7 +2205,7 @@ class RayManager:
 
         except Exception as e:
             LoggingUtility.log_error(
-                "actor logs", f"Failed to retrieve actor logs: {e}"
+                "actor logs", Exception(f"Failed to retrieve actor logs: {e}")
             )
             return self.response_formatter.format_error_response(
                 "retrieve actor logs", e
@@ -2174,7 +2223,7 @@ class RayManager:
         try:
             if not RAY_AVAILABLE or ray is None:
                 return ResponseFormatter.format_error_response(
-                    "retrieve node logs", "Ray is not available"
+                    "retrieve node logs", Exception("Ray is not available")
                 )
 
             # Get node information for additional context
@@ -2212,7 +2261,9 @@ class RayManager:
             )
 
         except Exception as e:
-            LoggingUtility.log_error("node logs", f"Failed to retrieve node logs: {e}")
+            LoggingUtility.log_error(
+                "node logs", Exception(f"Failed to retrieve node logs: {e}")
+            )
             return self.response_formatter.format_error_response(
                 "retrieve node logs", e
             )
@@ -2271,7 +2322,7 @@ class RayManager:
             job_client = await self._get_or_create_job_client(operation_name)
             if not job_client:
                 return self.response_formatter.format_error_response(
-                    operation_name, "Job client not available"
+                    operation_name, Exception("Job client not available")
                 )
 
             # Execute the specific operation
@@ -2281,27 +2332,31 @@ class RayManager:
             # Re-raise shutdown signals
             raise
         except JobSubmissionError as e:
-            LoggingUtility.log_error(operation_name, f"{operation_name} error: {e}")
+            LoggingUtility.log_error(
+                operation_name, Exception(f"{operation_name} error: {e}")
+            )
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
             LoggingUtility.log_error(
-                operation_name, f"Connection error during {operation_name}: {e}"
+                operation_name,
+                Exception(f"Connection error during {operation_name}: {e}"),
             )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
             LoggingUtility.log_error(
-                operation_name, f"Invalid parameters for {operation_name}: {e}"
+                operation_name,
+                Exception(f"Invalid parameters for {operation_name}: {e}"),
             )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
             LoggingUtility.log_error(
-                operation_name, f"Runtime error during {operation_name}: {e}"
+                operation_name, Exception(f"Runtime error during {operation_name}: {e}")
             )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
             LoggingUtility.log_error(
                 operation_name,
-                f"Unexpected error during {operation_name}: {e}",
+                Exception(f"Unexpected error during {operation_name}: {e}"),
                 exc_info=True,
             )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}

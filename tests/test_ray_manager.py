@@ -56,7 +56,7 @@ class TestRayManager:
         """Test cluster initialization when Ray is not available."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", False):
             result = await manager.init_cluster(address="127.0.0.1:10001")
-            assert result["status"] == "error"
+            assert result and result["status"] == "error"
             assert "Ray is not available" in result["message"]
 
     @pytest.mark.asyncio
@@ -73,7 +73,7 @@ class TestRayManager:
                     mock_run.return_value.stderr = ""
 
                     result = await manager.stop_cluster()
-                    assert result["status"] == "success"
+                    assert result and result["status"] == "success"
                     assert result.get("result_type") == "stopped"
 
     @pytest.mark.asyncio
@@ -84,7 +84,7 @@ class TestRayManager:
                 mock_ray.is_initialized.return_value = False
 
                 result = await manager.stop_cluster()
-                assert result["status"] == "not_running"
+                assert result and result["status"] == "not_running"
 
     @pytest.mark.asyncio
     async def test_cleanup_head_node_process(self, manager):
@@ -153,7 +153,9 @@ class TestExceptionHandling:
         manager = RayManager()
         # Set internal state to avoid actual Ray setup
         manager._update_state(initialized=True)
-        manager._job_client = Mock()
+        # Mock the job client through the state manager rather than directly
+        mock_client = Mock()
+        manager._update_state(job_client=mock_client)
         return manager
 
     def _patch_is_initialized(self, manager):
@@ -173,12 +175,12 @@ class TestExceptionHandling:
         try:
             # Test with empty entrypoint
             result = await ray_manager.submit_job("")
-            assert result["status"] == "error"
+            assert result and result["status"] == "error"
             assert "Entrypoint cannot be empty" in result["message"]
 
             # Test with whitespace-only entrypoint
             result = await ray_manager.submit_job("   ")
-            assert result["status"] == "error"
+            assert result and result["status"] == "error"
             assert "Entrypoint cannot be empty" in result["message"]
         finally:
             self._restore_is_initialized(ray_manager, original_property)
@@ -190,12 +192,12 @@ class TestExceptionHandling:
         try:
             # Test with empty job_id
             result = await ray_manager.cancel_job("")
-            assert result["status"] == "error"
+            assert result and result["status"] == "error"
             assert "Job ID cannot be empty" in result["message"]
 
             # Test with whitespace-only job_id
             result = await ray_manager.cancel_job("   ")
-            assert result["status"] == "error"
+            assert result and result["status"] == "error"
             assert "Job ID cannot be empty" in result["message"]
         finally:
             self._restore_is_initialized(ray_manager, original_property)
@@ -229,7 +231,9 @@ class TestStreamingLogs:
         """Create a RayManager instance for testing."""
         manager = RayManager()
         manager._update_state(initialized=True)
-        manager._job_client = Mock()
+        # Mock the job client through the state manager rather than directly
+        mock_client = Mock()
+        manager._update_state(job_client=mock_client)
         manager._ensure_initialized = lambda: None
         return manager
 
@@ -239,20 +243,20 @@ class TestStreamingLogs:
 
     def test_validate_log_parameters_invalid_num_lines(self):
         result = LogProcessor.validate_log_parameters(0, 10)
-        assert result["status"] == "error"
+        assert result and result["status"] == "error"
         assert "num_lines must be positive" in result["message"]
 
         result = LogProcessor.validate_log_parameters(15000, 10)
-        assert result["status"] == "error"
+        assert result and result["status"] == "error"
         assert "num_lines cannot exceed 10000" in result["message"]
 
     def test_validate_log_parameters_invalid_max_size(self):
         result = LogProcessor.validate_log_parameters(100, 0)
-        assert result["status"] == "error"
+        assert result and result["status"] == "error"
         assert "max_size_mb must be between 1 and 100" in result["message"]
 
         result = LogProcessor.validate_log_parameters(100, 150)
-        assert result["status"] == "error"
+        assert result and result["status"] == "error"
         assert "max_size_mb must be between 1 and 100" in result["message"]
 
     def test_truncate_logs_to_size_within_limit(self):
@@ -282,7 +286,7 @@ class TestStreamingLogs:
         logs = "This is a normal log\nThis is an error log\nThis is an exception\nNormal log again"
         result = ray_manager._analyze_job_logs(logs)
 
-        assert result["error_count"] == 2
+        assert result and result["error_count"] == 2
         assert len(result["errors"]) == 2
         assert "error" in result["errors"][0].lower()
 

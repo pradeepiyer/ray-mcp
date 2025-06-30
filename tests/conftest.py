@@ -273,7 +273,7 @@ async def submit_and_wait_for_job(
     script_content: str,
     expected_status: str = "SUCCEEDED",
     max_wait: Optional[int] = None,
-    runtime_env: Optional[Dict] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, Dict[str, Any]]:
     """
     Submit a job and wait for completion.
@@ -290,7 +290,7 @@ async def submit_and_wait_for_job(
     with TempScriptManager(script_content) as script_path:
         print(f"Submitting job with script at {script_path}...")
 
-        job_args = {"entrypoint": f"python {script_path}"}
+        job_args: Dict[str, Any] = {"entrypoint": f"python {script_path}"}
         if runtime_env is not None:
             job_args["runtime_env"] = runtime_env
 
