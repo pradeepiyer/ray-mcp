@@ -348,10 +348,12 @@ class WorkerManager:
                 except subprocess.TimeoutExpired:
                     # Force kill if it doesn't stop gracefully
                     process.kill()
-                    # Wait for force kill to complete (no timeout needed for kill)
-                    await loop.run_in_executor(None, process.wait)
-                    status = "force_stopped"
-                    message = f"Worker node '{node_name}' force stopped"
+                    # Wait for force kill to complete with fallback zombie prevention
+                    status, message = (
+                        await self._wait_for_process_with_zombie_prevention(
+                            process, node_name, loop
+                        )
+                    )
 
                 results.append(
                     {
@@ -380,3 +382,130 @@ class WorkerManager:
         self.worker_configs = remaining_configs
 
         return results
+
+    async def _wait_for_process_with_zombie_prevention(
+        self, process: subprocess.Popen, node_name: str, loop: asyncio.AbstractEventLoop
+    ) -> Tuple[str, str]:
+        """Wait for process termination with zombie prevention.
+
+        Attempts multiple strategies to ensure the process is properly reaped
+        and doesn't become a zombie:
+        1. Standard wait with timeout
+        2. Non-blocking waitpid check
+        3. Repeated polling with exponential backoff
+
+        Args:
+            process: The subprocess to wait for
+            node_name: Name of the worker node for logging
+            loop: Event loop for async execution
+
+        Returns:
+            tuple[str, str]: (status, message) indicating the termination result
+        """
+        try:
+            # First attempt: normal wait with timeout
+            await loop.run_in_executor(None, lambda: process.wait(timeout=3))
+            return "force_stopped", f"Worker node '{node_name}' force stopped"
+        except subprocess.TimeoutExpired:
+            # Second attempt: use os.waitpid with WNOHANG for non-blocking check
+            try:
+                pid = process.pid
+                # Try non-blocking waitpid multiple times with backoff
+                for attempt in range(5):  # Try for up to ~3 more seconds
+                    try:
+                        result_pid, exit_status = await loop.run_in_executor(
+                            None, lambda: os.waitpid(pid, os.WNOHANG)
+                        )
+                        if result_pid == pid:
+                            # Process was successfully reaped
+                            LoggingUtility.log_info(
+                                "worker_manager",
+                                f"Worker '{node_name}' (PID: {pid}) reaped via waitpid after {attempt + 1} attempts",
+                            )
+                            return (
+                                "force_stopped",
+                                f"Worker node '{node_name}' force stopped",
+                            )
+                        elif result_pid == 0:
+                            # Process still running, wait and retry
+                            wait_time = 0.1 * (2**attempt)  # Exponential backoff
+                            await asyncio.sleep(wait_time)
+                        else:
+                            # Should not happen, but handle gracefully
+                            break
+                    except OSError as e:
+                        if e.errno == 3:  # ESRCH - No such process
+                            # Process already terminated and reaped
+                            LoggingUtility.log_info(
+                                "worker_manager",
+                                f"Worker '{node_name}' (PID: {pid}) already terminated and reaped",
+                            )
+                            return (
+                                "force_stopped",
+                                f"Worker node '{node_name}' force stopped",
+                            )
+                        else:
+                            # Other OS error, log and continue
+                            LoggingUtility.log_warning(
+                                "worker_manager",
+                                f"waitpid failed for worker '{node_name}' (PID: {pid}), attempt {attempt + 1}: {e}",
+                            )
+
+                # Final attempt: check if process is actually dead
+                try:
+                    # Send signal 0 to check if process exists
+                    await loop.run_in_executor(None, lambda: os.kill(pid, 0))
+                    # If we get here, process is still alive (shouldn't happen after SIGKILL)
+                    LoggingUtility.log_warning(
+                        "worker_manager",
+                        f"Worker '{node_name}' (PID: {pid}) still alive after force kill - may require system intervention",
+                    )
+                    return (
+                        "force_stopped",
+                        f"Worker node '{node_name}' force stopped (may still be running)",
+                    )
+                except OSError as e:
+                    if e.errno == 3:  # ESRCH - No such process
+                        # Process is dead, but we couldn't wait for it
+                        # This is the best we can do - process is terminated
+                        LoggingUtility.log_info(
+                            "worker_manager",
+                            f"Worker '{node_name}' (PID: {pid}) confirmed terminated",
+                        )
+                        return (
+                            "force_stopped",
+                            f"Worker node '{node_name}' force stopped",
+                        )
+                    else:
+                        # Permission denied or other error
+                        LoggingUtility.log_warning(
+                            "worker_manager",
+                            f"Cannot verify termination of worker '{node_name}' (PID: {pid}): {e}",
+                        )
+                        return (
+                            "force_stopped",
+                            f"Worker node '{node_name}' force stopped (status unknown)",
+                        )
+
+            except Exception as cleanup_error:
+                LoggingUtility.log_error(
+                    "worker_manager",
+                    Exception(
+                        f"Failed to clean up worker '{node_name}' (PID: {process.pid}): {cleanup_error}"
+                    ),
+                )
+                return (
+                    "force_stopped",
+                    f"Worker node '{node_name}' force stopped (cleanup failed)",
+                )
+        except Exception as wait_error:
+            LoggingUtility.log_error(
+                "worker_manager",
+                Exception(
+                    f"Unexpected error waiting for worker '{node_name}' (PID: {process.pid}): {wait_error}"
+                ),
+            )
+            return (
+                "force_stopped",
+                f"Worker node '{node_name}' force stopped (wait failed)",
+            )
