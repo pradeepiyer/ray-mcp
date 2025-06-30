@@ -25,6 +25,7 @@ except ImportError:
     ray = None
     job_submission = None
 
+from .logging_utils import LoggingUtility
 from .ray_manager import RayManager
 from .tool_registry import ToolRegistry
 
@@ -81,8 +82,9 @@ async def dispatch_tool_call(
 async def main():
     """Main entry point for the Ray MCP server."""
     if not RAY_AVAILABLE:
-        logger.warning(
-            "Ray is not available. The MCP server will start but Ray operations will fail."
+        LoggingUtility.log_warning(
+            "server",
+            "Ray is not available. The MCP server will start but Ray operations will fail.",
         )
 
     # Start the server
@@ -103,9 +105,9 @@ def run_server():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Server stopped by user")
+        LoggingUtility.log_info("server", "Server stopped by user")
     except Exception as e:
-        logger.error(f"Server error: {e}")
+        LoggingUtility.log_error("server", e)
         sys.exit(1)
 
 

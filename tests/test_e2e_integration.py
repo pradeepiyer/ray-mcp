@@ -102,9 +102,10 @@ class TestE2EIntegration:
         start_content = get_text_content(start_result)
         start_data = json.loads(start_content)
         print(f"Start result: {start_data}")
-        if start_data["status"] != "started":
-            print(f"Error message: {start_data.get('message', 'No error message')}")
-        assert start_data["status"] == "started"
+        if start_data["status"] == "error":
+            print("Error message:", start_data["message"])
+        assert start_data["status"] == "success"
+        assert start_data.get("result_type") == "started"
         print(f"Ray cluster started: {start_data}")
 
         # Step 2: Verify cluster status
@@ -149,8 +150,11 @@ print("Job completed successfully!")
             job_content = get_text_content(job_result)
             job_data = json.loads(job_content)
             assert (
-                job_data["status"] == "submitted"
-            ), f"Expected 'submitted' status, got: {job_data['status']}"
+                job_data["status"] == "success"
+            ), f"Expected 'success' status, got: {job_data['status']}"
+            assert (
+                job_data["result_type"] == "submitted"
+            ), f"Expected 'submitted' result_type, got: {job_data.get('result_type')}"
             job_id = job_data["job_id"]
             print(f"Job submitted with ID: {job_id}")
 
@@ -195,7 +199,8 @@ print("Job completed successfully!")
         stop_result = await call_tool("stop_ray")
         stop_content = get_text_content(stop_result)
         stop_data = json.loads(stop_content)
-        assert stop_data["status"] == "stopped"
+        assert stop_data["status"] == "success"
+        assert stop_data.get("result_type") == "stopped"
         print("Ray cluster stopped successfully!")
 
         # Step 5: Verify cluster is stopped
@@ -234,9 +239,10 @@ print("Job completed successfully!")
         start_content = get_text_content(start_result)
         start_data = json.loads(start_content)
         print(f"Start result: {start_data}")
-        if start_data["status"] != "started":
-            print(f"Error message: {start_data.get('message', 'No error message')}")
-        assert start_data["status"] == "started"
+        if start_data["status"] == "error":
+            print("Error message:", start_data["message"])
+        assert start_data["status"] == "success"
+        assert start_data.get("result_type") == "started"
         print(f"Ray cluster started for failure testing: {start_data}")
 
         # Step 2: Create a job that will fail
@@ -265,8 +271,11 @@ sys.exit(1)  # Intentional failure
             fail_job_content = get_text_content(fail_job_result)
             fail_job_data = json.loads(fail_job_content)
             assert (
-                fail_job_data["status"] == "submitted"
-            ), f"Expected 'submitted' status, got: {fail_job_data['status']}"
+                fail_job_data["status"] == "success"
+            ), f"Expected 'success' status, got: {fail_job_data['status']}"
+            assert (
+                fail_job_data["result_type"] == "submitted"
+            ), f"Expected 'submitted' result_type, got: {fail_job_data.get('result_type')}"
             fail_job_id = fail_job_data["job_id"]
             print(f"Failing job submitted with ID: {fail_job_id}")
 
@@ -383,7 +392,8 @@ print("Success job completed!")
         stop_result = await call_tool("stop_ray")
         stop_content = get_text_content(stop_result)
         stop_data = json.loads(stop_content)
-        assert stop_data["status"] == "stopped"
+        assert stop_data["status"] == "success"
+        assert stop_data.get("result_type") == "stopped"
 
         print("✅ Job failure and debugging workflow test passed successfully!")
 

@@ -88,7 +88,8 @@ class TestToolRegistry:
         """Test execute_tool with valid tool."""
         self.mock_ray_manager.init_cluster = AsyncMock(
             return_value={
-                "status": "connected",
+                "status": "success",
+                "result_type": "connected",
                 "message": "Successfully connected to Ray cluster at 127.0.0.1:10001",
                 "cluster_address": "127.0.0.1:10001",
                 "dashboard_url": "http://127.0.0.1:8265",
@@ -98,7 +99,8 @@ class TestToolRegistry:
         )
 
         result = await self.registry.execute_tool("init_ray", {"num_cpus": 4})
-        assert result["status"] == "connected"
+        assert result["status"] == "success"
+        assert result.get("result_type") == "connected"
         self.mock_ray_manager.init_cluster.assert_called_once()
 
     @pytest.mark.asyncio

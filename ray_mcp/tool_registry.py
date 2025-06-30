@@ -15,6 +15,7 @@ from mcp.types import Tool
 from .ray_manager import RayManager
 
 logger = logging.getLogger(__name__)
+from .logging_utils import LoggingUtility, ResponseFormatter
 
 
 class ToolRegistry:
@@ -23,6 +24,7 @@ class ToolRegistry:
     def __init__(self, ray_manager: RayManager):
         self.ray_manager = ray_manager
         self._tools: Dict[str, Dict[str, Any]] = {}
+        self.response_formatter = ResponseFormatter()
         self._register_all_tools()
 
     def _register_all_tools(self) -> None:
@@ -317,7 +319,9 @@ class ToolRegistry:
     async def _submit_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for submit_job tool."""
         sig = inspect.signature(RayManager.submit_job)
-        filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
+        # Exclude 'self' parameter from filtering since it's not in kwargs
+        valid_params = {k for k in sig.parameters.keys() if k != "self"}
+        filtered = {k: v for k, v in kwargs.items() if k in valid_params}
         return await self.ray_manager.submit_job(**filtered)
 
     async def _list_jobs_handler(self, **kwargs) -> Dict[str, Any]:
@@ -369,68 +373,39 @@ Quick reference of commonly used Ray MCP tools: {', '.join(self.list_tool_names(
 
         return system_prompt
 
+    @ResponseFormatter.handle_exceptions("execute tool")
     async def execute_tool(
         self, name: str, arguments: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Execute a tool by name with the given arguments."""
         handler = self.get_tool_handler(name)
         if not handler:
-            return {"status": "error", "message": f"Unknown tool: {name}"}
+            return ResponseFormatter.format_validation_error(f"Unknown tool: {name}")
 
-        try:
-            args = arguments or {}
+        args = arguments or {}
 
-            # Validate required parameters
-            tool_info = self._tools.get(name)
-            if tool_info and "schema" in tool_info:
-                schema = tool_info["schema"]
-                required_params = schema.get("required", [])
-                missing_params = [
-                    param for param in required_params if param not in args
-                ]
-                if missing_params:
-                    return {
-                        "status": "error",
-                        "message": f"Missing required parameters for tool '{name}': {', '.join(missing_params)}",
-                    }
-
-            result = await handler(**args)
-
-            # Check if enhanced output is enabled
-            use_enhanced_output = (
-                os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
-            )
-
-            if use_enhanced_output:
-                enhanced_response = self._wrap_with_system_prompt(name, result)
-                return {
-                    "status": "success",
-                    "enhanced_output": enhanced_response,
-                    "raw_result": result,
-                }
-            else:
-                return result
-
-        except Exception as e:
-            logger.error(f"Error executing {name}: {e}")
-            error_result = {
-                "status": "error",
-                "message": f"Error executing {name}: {str(e)}",
-            }
-
-            # Check if enhanced output is enabled
-            use_enhanced_output = (
-                os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
-            )
-
-            if use_enhanced_output:
-                enhanced_error_response = self._wrap_with_system_prompt(
-                    name, error_result
+        # Validate required parameters
+        tool_info = self._tools.get(name)
+        if tool_info and "schema" in tool_info:
+            schema = tool_info["schema"]
+            required_params = schema.get("required", [])
+            missing_params = [param for param in required_params if param not in args]
+            if missing_params:
+                return ResponseFormatter.format_validation_error(
+                    f"Missing required parameters for tool '{name}': {', '.join(missing_params)}"
                 )
-                return {
-                    "status": "error",
-                    "enhanced_output": enhanced_error_response,
-                    "raw_result": error_result,
-                }
-            else:
-                return error_result
+
+        result = await handler(**args)
+
+        # Check if enhanced output is enabled
+        use_enhanced_output = (
+            os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
+        )
+
+        if use_enhanced_output:
+            enhanced_response = self._wrap_with_system_prompt(name, result)
+            return ResponseFormatter.format_success_response(
+                enhanced_output=enhanced_response, raw_result=result
+            )
+        else:
+            return result

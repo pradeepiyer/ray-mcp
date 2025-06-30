@@ -47,7 +47,9 @@ class TestMultiNodeCluster:
 
                     # Mock worker manager
                     with patch.object(
-                        ray_manager._worker_manager, "stop_all_workers"
+                        ray_manager._worker_manager,
+                        "stop_all_workers",
+                        new_callable=AsyncMock,
                     ) as mock_stop_workers:
                         mock_stop_workers.return_value = [
                             {"status": "stopped", "node_name": "worker-1"},
@@ -56,7 +58,8 @@ class TestMultiNodeCluster:
 
                         result = await ray_manager.stop_cluster()
 
-                        assert result["status"] == "stopped"
+                        assert result["status"] == "success"
+                        assert result["result_type"] == "stopped"
                         assert "Ray cluster stopped successfully" in result["message"]
                         assert result["worker_nodes"] == [
                             {"status": "stopped", "node_name": "worker-1"},
@@ -84,13 +87,16 @@ class TestMultiNodeCluster:
 
                     # Mock worker manager
                     with patch.object(
-                        ray_manager._worker_manager, "stop_all_workers"
+                        ray_manager._worker_manager,
+                        "stop_all_workers",
+                        new_callable=AsyncMock,
                     ) as mock_stop_workers:
                         mock_stop_workers.return_value = []
 
                         result = await ray_manager.stop_cluster()
 
-                        assert result["status"] == "stopped"
+                        assert result["status"] == "success"
+                        assert result["result_type"] == "stopped"
                         assert "Ray cluster stopped successfully" in result["message"]
                         assert result["worker_nodes"] == []
 
@@ -170,68 +176,87 @@ class TestMultiNodeCluster:
                     mock_process.poll.return_value = 0
                     mock_popen.return_value = mock_process
                     with patch.object(
-                        ray_manager, "_initialize_job_client_with_retry"
+                        RayManager,
+                        "_initialize_job_client_with_retry",
+                        new_callable=AsyncMock,
                     ) as mock_init_job_client:
                         print(
                             f"  [{(time.time() - start_time)*1000:.1f}ms] Patched _initialize_job_client_with_retry"
                         )
-                        mock_init_job_client.return_value = Mock()
+                        mock_init_job_client.return_value = None
                         with patch.object(
-                            ray_manager._worker_manager, "start_worker_nodes"
-                        ) as mock_start_workers:
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] Patched start_worker_nodes"
+                            RayManager,
+                            "_communicate_with_timeout",
+                            new_callable=AsyncMock,
+                        ) as mock_communicate:
+                            mock_communicate.return_value = (
+                                "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                "",
                             )
                             with patch.object(
-                                ray_manager._worker_manager, "stop_all_workers"
-                            ) as mock_stop_workers:
+                                ray_manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
                                 print(
-                                    f"  [{(time.time() - start_time)*1000:.1f}ms] Patched stop_all_workers"
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] Patched start_worker_nodes"
                                 )
-                                mock_start_workers.return_value = [
-                                    {"status": "started", "node_name": "worker-1"},
-                                    {"status": "started", "node_name": "worker-2"},
-                                ]
-                                mock_stop_workers.return_value = [
-                                    {"status": "stopped", "node_name": "worker-1"},
-                                    {"status": "stopped", "node_name": "worker-2"},
-                                ]
-                                print(
-                                    f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
-                                )
-                                init_start = time.time()
-                                result = await ray_manager.init_cluster(
-                                    num_cpus=4,
-                                    worker_nodes=[
-                                        {"num_cpus": 2, "node_name": "worker-1"},
-                                        {"num_cpus": 2, "node_name": "worker-2"},
-                                    ],
-                                )
-                                print(
-                                    f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
-                                )
-                                assert result["status"] == "started"
-                                assert len(result["worker_nodes"]) == 2
-                                mock_start_workers.assert_called_once()
-                                mock_ray.is_initialized.return_value = True
-                                mock_ray.shutdown.return_value = None
-                                with patch("subprocess.run") as mock_run:
+                                with patch.object(
+                                    ray_manager._worker_manager,
+                                    "stop_all_workers",
+                                    new_callable=AsyncMock,
+                                ) as mock_stop_workers:
                                     print(
-                                        f"  [{(time.time() - start_time)*1000:.1f}ms] Patched subprocess.run"
+                                        f"  [{(time.time() - start_time)*1000:.1f}ms] Patched stop_all_workers"
                                     )
-                                    mock_run.return_value.returncode = 0
-                                    mock_run.return_value.stderr = ""
+                                    mock_start_workers.return_value = [
+                                        {"status": "started", "node_name": "worker-1"},
+                                        {"status": "started", "node_name": "worker-2"},
+                                    ]
+                                    mock_stop_workers.return_value = [
+                                        {"status": "stopped", "node_name": "worker-1"},
+                                        {"status": "stopped", "node_name": "worker-2"},
+                                    ]
                                     print(
-                                        f"  [{(time.time() - start_time)*1000:.1f}ms] About to call stop_cluster"
+                                        f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
                                     )
-                                    stop_start = time.time()
-                                    result = await ray_manager.stop_cluster()
+                                    init_start = time.time()
+                                    result = await ray_manager.init_cluster(
+                                        num_cpus=4,
+                                        head_node_port=20000,
+                                        dashboard_port=8265,
+                                        worker_nodes=[
+                                            {"num_cpus": 2, "node_name": "worker-1"},
+                                            {"num_cpus": 2, "node_name": "worker-2"},
+                                        ],
+                                    )
                                     print(
-                                        f"  [{(time.time() - start_time)*1000:.1f}ms] stop_cluster took {(time.time() - stop_start)*1000:.1f}ms"
+                                        f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
                                     )
-                                    assert result["status"] == "stopped"
+                                    assert result["status"] == "success"
+                                    assert result.get("result_type") == "started"
                                     assert len(result["worker_nodes"]) == 2
-                                    mock_stop_workers.assert_called_once()
+                                    mock_start_workers.assert_called_once()
+                                    mock_ray.is_initialized.return_value = True
+                                    mock_ray.shutdown.return_value = None
+                                    with patch("subprocess.run") as mock_run:
+                                        print(
+                                            f"  [{(time.time() - start_time)*1000:.1f}ms] Patched subprocess.run"
+                                        )
+                                        mock_run.return_value.returncode = 0
+                                        mock_run.return_value.stderr = ""
+                                        print(
+                                            f"  [{(time.time() - start_time)*1000:.1f}ms] About to call stop_cluster"
+                                        )
+                                        stop_start = time.time()
+                                        result = await ray_manager.stop_cluster()
+                                        print(
+                                            f"  [{(time.time() - start_time)*1000:.1f}ms] stop_cluster took {(time.time() - stop_start)*1000:.1f}ms"
+                                        )
+                                        assert result["status"] == "success"
+                                        assert result["result_type"] == "stopped"
+                                        assert len(result["worker_nodes"]) == 2
+                                        mock_stop_workers.assert_called_once()
         print(f"  [{(time.time() - start_time)*1000:.1f}ms] Test completed")
         print("=== End test_worker_manager_integration ===\n")
 
@@ -267,23 +292,43 @@ class TestMultiNodeCluster:
                     mock_process.poll.return_value = 0
                     mock_popen.return_value = mock_process
                     with patch.object(
-                        ray_manager, "_initialize_job_client_with_retry"
+                        RayManager,
+                        "_initialize_job_client_with_retry",
+                        new_callable=AsyncMock,
                     ) as mock_init_job_client:
                         print(
                             f"  [{(time.time() - start_time)*1000:.1f}ms] Patched _initialize_job_client_with_retry"
                         )
-                        mock_init_job_client.return_value = Mock()
-                        print(
-                            f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
-                        )
-                        init_start = time.time()
-                        result = await ray_manager.init_cluster(
-                            num_cpus=4, worker_nodes=invalid_worker_config
-                        )
-                        print(
-                            f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
-                        )
-                        assert result["status"] == "started"
+                        mock_init_job_client.return_value = None
+                        with patch.object(
+                            RayManager,
+                            "_communicate_with_timeout",
+                            new_callable=AsyncMock,
+                        ) as mock_communicate:
+                            mock_communicate.return_value = (
+                                "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                "",
+                            )
+                            with patch.object(
+                                ray_manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
+                                )
+                                init_start = time.time()
+                                result = await ray_manager.init_cluster(
+                                    num_cpus=4,
+                                    head_node_port=20000,
+                                    dashboard_port=8265,
+                                    worker_nodes=invalid_worker_config,
+                                )
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
+                                )
+                                assert result["status"] == "success"
+                                assert result.get("result_type") == "started"
         print(f"  [{(time.time() - start_time)*1000:.1f}ms] Test completed")
         print("=== End test_worker_config_validation ===\n")
 
@@ -304,52 +349,52 @@ class TestMultiNodeCluster:
                     "node_123"
                 )
 
-                # Mock socket operations to avoid actual port binding
-                with patch("socket.socket") as mock_socket:
-                    mock_socket_instance = Mock()
-                    mock_socket_instance.bind.return_value = None
-                    mock_socket_instance.close.return_value = None
-                    mock_socket.return_value.__enter__.return_value = (
-                        mock_socket_instance
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_process = Mock()
+                    mock_process.communicate.return_value = (
+                        "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                        "",
                     )
-                    mock_socket.return_value.__exit__.return_value = None
+                    mock_process.poll.return_value = 0
+                    mock_popen.return_value = mock_process
 
-                    # Mock subprocess for head node startup
-                    with patch("subprocess.Popen") as mock_popen:
-                        mock_process = Mock()
-                        mock_process.communicate.return_value = (
-                            "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
-                            "",
-                        )
-                        mock_process.poll.return_value = 0
-                        mock_popen.return_value = mock_process
+                    # Mock asyncio.sleep to avoid actual delays
+                    with patch("asyncio.sleep") as mock_sleep:
+                        # Mock asyncio.get_event_loop().run_in_executor to avoid blocking
+                        with patch("asyncio.get_event_loop") as mock_get_loop:
+                            mock_loop = Mock()
 
-                        # Mock asyncio.sleep to avoid actual delays
-                        with patch("asyncio.sleep") as mock_sleep:
-                            # Mock asyncio.get_event_loop().run_in_executor to avoid blocking
-                            with patch("asyncio.get_event_loop") as mock_get_loop:
-                                mock_loop = Mock()
+                            # Create a mock coroutine for run_in_executor
+                            async def mock_run_in_executor(*args, **kwargs):
+                                return (
+                                    "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                    "",
+                                )
 
-                                # Create a mock coroutine for run_in_executor
-                                async def mock_run_in_executor(*args, **kwargs):
-                                    return (
-                                        "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            mock_loop.run_in_executor = mock_run_in_executor
+                            mock_get_loop.return_value = mock_loop
+
+                            # Mock _initialize_job_client_with_retry to avoid retry delays
+                            with patch.object(
+                                RayManager,
+                                "_initialize_job_client_with_retry",
+                                new_callable=AsyncMock,
+                            ) as mock_init_job_client:
+                                mock_init_job_client.return_value = None
+                                with patch.object(
+                                    RayManager,
+                                    "_communicate_with_timeout",
+                                    new_callable=AsyncMock,
+                                ) as mock_communicate:
+                                    mock_communicate.return_value = (
+                                        "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
                                         "",
                                     )
-
-                                mock_loop.run_in_executor = mock_run_in_executor
-                                mock_get_loop.return_value = mock_loop
-
-                                # Mock _initialize_job_client_with_retry to avoid retry delays
-                                with patch.object(
-                                    ray_manager, "_initialize_job_client_with_retry"
-                                ) as mock_init_job_client:
-                                    mock_init_job_client.return_value = Mock()
-
                                     # Mock worker manager for scaling
                                     with patch.object(
                                         ray_manager._worker_manager,
                                         "start_worker_nodes",
+                                        new_callable=AsyncMock,
                                     ) as mock_start_workers:
                                         mock_start_workers.return_value = [
                                             {
@@ -361,12 +406,15 @@ class TestMultiNodeCluster:
                                         # Test initial cluster with 1 worker
                                         result = await ray_manager.init_cluster(
                                             num_cpus=4,
+                                            head_node_port=20000,
+                                            dashboard_port=8265,
                                             worker_nodes=[
                                                 {"num_cpus": 2, "node_name": "worker-1"}
                                             ],
                                         )
 
-                                        assert result["status"] == "started"
+                                        assert result["status"] == "success"
+                                        assert result.get("result_type") == "started"
                                         assert len(result["worker_nodes"]) == 1
 
                                         # Test adding more workers (simulated by re-initializing)
@@ -387,6 +435,8 @@ class TestMultiNodeCluster:
 
                                         result = await ray_manager.init_cluster(
                                             num_cpus=4,
+                                            head_node_port=20000,
+                                            dashboard_port=8265,
                                             worker_nodes=[
                                                 {
                                                     "num_cpus": 2,
@@ -403,7 +453,8 @@ class TestMultiNodeCluster:
                                             ],
                                         )
 
-                                        assert result["status"] == "started"
+                                        assert result["status"] == "success"
+                                        assert result.get("result_type") == "started"
                                         assert len(result["worker_nodes"]) == 3
 
     @pytest.mark.asyncio
@@ -422,9 +473,6 @@ class TestMultiNodeCluster:
                     dashboard_url="http://127.0.0.1:8265",
                 )
                 with patch("subprocess.Popen") as mock_popen:
-                    print(
-                        f"  [{(time.time() - start_time)*1000:.1f}ms] Patched subprocess.Popen"
-                    )
                     mock_process = Mock()
                     mock_process.communicate.return_value = (
                         "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
@@ -433,47 +481,64 @@ class TestMultiNodeCluster:
                     mock_process.poll.return_value = 0
                     mock_popen.return_value = mock_process
                     with patch.object(
-                        ray_manager, "_initialize_job_client_with_retry"
+                        RayManager,
+                        "_initialize_job_client_with_retry",
+                        new_callable=AsyncMock,
                     ) as mock_init_job_client:
                         print(
                             f"  [{(time.time() - start_time)*1000:.1f}ms] Patched _initialize_job_client_with_retry"
                         )
-                        mock_init_job_client.return_value = Mock()
+                        mock_init_job_client.return_value = None
                         with patch.object(
-                            ray_manager._worker_manager, "start_worker_nodes"
-                        ) as mock_start_workers:
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] Patched start_worker_nodes"
+                            RayManager,
+                            "_communicate_with_timeout",
+                            new_callable=AsyncMock,
+                        ) as mock_communicate:
+                            mock_communicate.return_value = (
+                                "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                "",
                             )
-                            mock_start_workers.return_value = [
-                                {"status": "started", "node_name": "worker-1"},
-                                {
-                                    "status": "failed",
-                                    "node_name": "worker-2",
-                                    "error": "Connection timeout",
-                                },
-                                {"status": "started", "node_name": "worker-3"},
-                            ]
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
-                            )
-                            init_start = time.time()
-                            result = await ray_manager.init_cluster(
-                                num_cpus=4,
-                                worker_nodes=[
-                                    {"num_cpus": 2, "node_name": "worker-1"},
-                                    {"num_cpus": 2, "node_name": "worker-2"},
-                                    {"num_cpus": 2, "node_name": "worker-3"},
-                                ],
-                            )
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
-                            )
-                            assert result["status"] == "started"
-                            assert len(result["worker_nodes"]) == 3
-                            assert any(
-                                w["status"] == "failed" for w in result["worker_nodes"]
-                            )
+                            with patch.object(
+                                ray_manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] Patched start_worker_nodes"
+                                )
+                                mock_start_workers.return_value = [
+                                    {"status": "started", "node_name": "worker-1"},
+                                    {
+                                        "status": "failed",
+                                        "node_name": "worker-2",
+                                        "error": "Connection timeout",
+                                    },
+                                    {"status": "started", "node_name": "worker-3"},
+                                ]
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
+                                )
+                                init_start = time.time()
+                                result = await ray_manager.init_cluster(
+                                    num_cpus=4,
+                                    head_node_port=20000,
+                                    dashboard_port=8265,
+                                    worker_nodes=[
+                                        {"num_cpus": 2, "node_name": "worker-1"},
+                                        {"num_cpus": 2, "node_name": "worker-2"},
+                                        {"num_cpus": 2, "node_name": "worker-3"},
+                                    ],
+                                )
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
+                                )
+                                assert result["status"] == "success"
+                                assert result.get("result_type") == "started"
+                                assert len(result["worker_nodes"]) == 3
+                                assert any(
+                                    w["status"] == "failed"
+                                    for w in result["worker_nodes"]
+                                )
         print(f"  [{(time.time() - start_time)*1000:.1f}ms] Test completed")
         print("=== End test_worker_node_failure_handling ===\n")
 
@@ -493,9 +558,6 @@ class TestMultiNodeCluster:
                     dashboard_url="http://127.0.0.1:8265",
                 )
                 with patch("subprocess.Popen") as mock_popen:
-                    print(
-                        f"  [{(time.time() - start_time)*1000:.1f}ms] Patched subprocess.Popen"
-                    )
                     mock_process = Mock()
                     mock_process.communicate.return_value = (
                         "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
@@ -504,55 +566,72 @@ class TestMultiNodeCluster:
                     mock_process.poll.return_value = 0
                     mock_popen.return_value = mock_process
                     with patch.object(
-                        ray_manager, "_initialize_job_client_with_retry"
+                        RayManager,
+                        "_initialize_job_client_with_retry",
+                        new_callable=AsyncMock,
                     ) as mock_init_job_client:
                         print(
                             f"  [{(time.time() - start_time)*1000:.1f}ms] Patched _initialize_job_client_with_retry"
                         )
-                        mock_init_job_client.return_value = Mock()
+                        mock_init_job_client.return_value = None
                         with patch.object(
-                            ray_manager._worker_manager, "start_worker_nodes"
-                        ) as mock_start_workers:
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] Patched start_worker_nodes"
+                            RayManager,
+                            "_communicate_with_timeout",
+                            new_callable=AsyncMock,
+                        ) as mock_communicate:
+                            mock_communicate.return_value = (
+                                "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                                "",
                             )
-                            mock_start_workers.return_value = [
-                                {"status": "started", "node_name": "cpu-worker"},
-                                {"status": "started", "node_name": "gpu-worker"},
-                            ]
-                            worker_config = [
-                                {
-                                    "num_cpus": 4,
-                                    "num_gpus": 0,
-                                    "node_name": "cpu-worker",
-                                    "memory": 8000000000,
-                                },
-                                {
-                                    "num_cpus": 2,
-                                    "num_gpus": 1,
-                                    "node_name": "gpu-worker",
-                                    "memory": 16000000000,
-                                },
-                            ]
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
-                            )
-                            init_start = time.time()
-                            result = await ray_manager.init_cluster(
-                                num_cpus=4, worker_nodes=worker_config
-                            )
-                            print(
-                                f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
-                            )
-                            assert result["status"] == "started"
-                            assert len(result["worker_nodes"]) == 2
-                            mock_start_workers.assert_called_once()
-                            call_args = mock_start_workers.call_args[0][0]
-                            assert len(call_args) == 2
-                            assert call_args[0]["num_cpus"] == 4
-                            assert call_args[0]["num_gpus"] == 0
-                            assert call_args[1]["num_cpus"] == 2
-                            assert call_args[1]["num_gpus"] == 1
+                            with patch.object(
+                                ray_manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] Patched start_worker_nodes"
+                                )
+                                mock_start_workers.return_value = [
+                                    {"status": "started", "node_name": "cpu-worker"},
+                                    {"status": "started", "node_name": "gpu-worker"},
+                                ]
+                                worker_config = [
+                                    {
+                                        "num_cpus": 4,
+                                        "num_gpus": 0,
+                                        "node_name": "cpu-worker",
+                                        "memory": 8000000000,
+                                    },
+                                    {
+                                        "num_cpus": 2,
+                                        "num_gpus": 1,
+                                        "node_name": "gpu-worker",
+                                        "memory": 16000000000,
+                                    },
+                                ]
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] About to call init_cluster"
+                                )
+                                init_start = time.time()
+                                result = await ray_manager.init_cluster(
+                                    num_cpus=4,
+                                    head_node_port=20000,
+                                    dashboard_port=8265,
+                                    worker_nodes=worker_config,
+                                )
+                                print(
+                                    f"  [{(time.time() - start_time)*1000:.1f}ms] init_cluster took {(time.time() - init_start)*1000:.1f}ms"
+                                )
+                                assert result["status"] == "success"
+                                assert result.get("result_type") == "started"
+                                assert len(result["worker_nodes"]) == 2
+                                mock_start_workers.assert_called_once()
+                                call_args = mock_start_workers.call_args[0][0]
+                                assert len(call_args) == 2
+                                assert call_args[0]["num_cpus"] == 4
+                                assert call_args[0]["num_gpus"] == 0
+                                assert call_args[1]["num_cpus"] == 2
+                                assert call_args[1]["num_gpus"] == 1
         print(f"  [{(time.time() - start_time)*1000:.1f}ms] Test completed")
         print("=== End test_worker_node_resource_allocation ===\n")
 
