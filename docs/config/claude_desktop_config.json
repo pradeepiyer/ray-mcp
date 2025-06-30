@@ -1,12 +1,13 @@
 {
   "mcpServers": {
     "ray-mcp": {
-      "command": "/path/to/your/venv/bin/ray-mcp",
+      "command": "/path/to/your/ray-mcp/.venv/bin/ray-mcp",
       "args": [],
+      "cwd": "/path/to/your/ray-mcp",
       "env": {
         "RAY_ADDRESS": "",
         "RAY_DASHBOARD_HOST": "0.0.0.0",
-        "RAY_MCP_ENHANCED_OUTPUT": "false"
+        "RAY_MCP_ENHANCED_OUTPUT": "true"
       }
     }
   }
