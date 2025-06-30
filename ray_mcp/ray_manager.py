@@ -1,16 +1,16 @@
 """Ray cluster management functionality."""
 
 import asyncio
+import fcntl
 import inspect
 import io
 import json
 import logging
 import os
 import socket
+import tempfile
 import threading
 import time
-import fcntl
-import tempfile
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -281,53 +281,55 @@ class RayManager:
 
     async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:
         """Find a free port with atomic reservation to prevent race conditions.
-        
+
         Uses file locking to ensure that only one process can reserve a port at a time,
         eliminating the race condition where multiple processes might try to use the same port.
         Falls back to simple socket binding if file locking is not available.
-        
+
         Args:
             start_port: Starting port number to check from
             max_tries: Maximum number of ports to try
-            
+
         Returns:
             int: A free port number
-            
+
         Raises:
             RuntimeError: If no free port is found in the given range
         """
         # Clean up any stale lock files before starting
         self._cleanup_stale_lock_files()
-        
+
         port = start_port
-        
+
         # Try to get temp directory, fallback to current directory if not available
         try:
             temp_dir = tempfile.gettempdir()
         except (OSError, IOError):
             temp_dir = "."
-        
+
         for attempt in range(max_tries):
             # Try file locking approach first
             try:
                 lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
-                
+
                 # Check if this port already has an active lock file
                 if os.path.exists(lock_file_path):
                     try:
                         # Try to read and validate the existing lock file
-                        with open(lock_file_path, 'r') as f:
+                        with open(lock_file_path, "r") as f:
                             content = f.read().strip()
-                            if ',' in content:
-                                pid_str, timestamp_str = content.split(',', 1)
+                            if "," in content:
+                                pid_str, timestamp_str = content.split(",", 1)
                                 pid = int(pid_str)
                                 timestamp = int(timestamp_str)
                                 current_time = int(time.time())
-                                
+
                                 # Check if the process still exists and lock is recent
                                 try:
                                     os.kill(pid, 0)  # Check if process exists
-                                    if current_time - timestamp < 300:  # Less than 5 minutes old
+                                    if (
+                                        current_time - timestamp < 300
+                                    ):  # Less than 5 minutes old
                                         # Active lock exists, skip this port
                                         port += 1
                                         continue
@@ -337,7 +339,9 @@ class RayManager:
                             else:
                                 # Old format or corrupted, check file age
                                 stat = os.stat(lock_file_path)
-                                if time.time() - stat.st_mtime < 300:  # Less than 5 minutes old
+                                if (
+                                    time.time() - stat.st_mtime < 300
+                                ):  # Less than 5 minutes old
                                     # Skip this port, lock might still be valid
                                     port += 1
                                     continue
@@ -350,13 +354,13 @@ class RayManager:
                             os.unlink(lock_file_path)
                         except OSError:
                             pass
-                
+
                 # Try to acquire exclusive lock on this port
                 try:
-                    lock_file = open(lock_file_path, 'w')
+                    lock_file = open(lock_file_path, "w")
                     # Non-blocking exclusive lock
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    
+
                     # Now try to bind to the port while holding the lock
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -369,10 +373,10 @@ class RayManager:
                             # Keep the file open to maintain the lock
                             # The lock will be released when the file is closed by the OS
                             # after the process exits or explicitly closed
-                            
+
                             LoggingUtility.log_info(
-                                "port_allocation", 
-                                f"Successfully allocated port {port} with lock file {lock_file_path}"
+                                "port_allocation",
+                                f"Successfully allocated port {port} with lock file {lock_file_path}",
                             )
                             return port
                         except OSError:
@@ -382,15 +386,15 @@ class RayManager:
                                 os.unlink(lock_file_path)
                             except OSError:
                                 pass
-                        
+
                 except OSError:
                     # Lock is already held by another process or file error, try next port
                     try:
-                        if 'lock_file' in locals():
+                        if "lock_file" in locals():
                             lock_file.close()
                     except:
                         pass
-                        
+
             except (OSError, IOError):
                 # File locking failed, fall back to simple socket binding
                 try:
@@ -399,20 +403,20 @@ class RayManager:
                         s.bind(("", port))
                         # Success without locking (less safe but better than failing)
                         LoggingUtility.log_info(
-                            "port_allocation", 
-                            f"Successfully allocated port {port} without lock (fallback)"
+                            "port_allocation",
+                            f"Successfully allocated port {port} without lock (fallback)",
                         )
                         return port
                 except OSError:
                     # Port is in use, try next port
                     pass
-            
+
             # Clean up lock file if we created it but didn't use the port
             try:
                 lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
                 if os.path.exists(lock_file_path):
                     # Only remove if we can acquire the lock (meaning no one else is using it)
-                    with open(lock_file_path, 'w') as f:
+                    with open(lock_file_path, "w") as f:
                         try:
                             fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                             # We got the lock, safe to remove
@@ -423,16 +427,16 @@ class RayManager:
             except (OSError, IOError):
                 # Error cleaning up, not critical
                 pass
-            
+
             port += 1
-        
+
         raise RuntimeError(
             f"No free port found in range {start_port}-{start_port + max_tries - 1}"
         )
 
     def _cleanup_port_lock(self, port: int) -> None:
         """Clean up the lock file for a successfully used port.
-        
+
         Args:
             port: The port number whose lock file should be cleaned up
         """
@@ -442,13 +446,11 @@ class RayManager:
             if os.path.exists(lock_file_path):
                 os.unlink(lock_file_path)
                 LoggingUtility.log_info(
-                    "port_allocation", 
-                    f"Cleaned up lock file for port {port}"
+                    "port_allocation", f"Cleaned up lock file for port {port}"
                 )
         except (OSError, IOError) as e:
             LoggingUtility.log_warning(
-                "port_allocation", 
-                f"Could not clean up lock file for port {port}: {e}"
+                "port_allocation", f"Could not clean up lock file for port {port}: {e}"
             )
 
     def _cleanup_stale_lock_files(self) -> None:
@@ -456,35 +458,37 @@ class RayManager:
         try:
             temp_dir = tempfile.gettempdir()
             current_time = int(time.time())
-            
+
             # Look for ray port lock files
             for filename in os.listdir(temp_dir):
                 if filename.startswith("ray_port_") and filename.endswith(".lock"):
                     lock_file_path = os.path.join(temp_dir, filename)
                     try:
                         # Try to read the PID and timestamp from the lock file
-                        with open(lock_file_path, 'r') as f:
+                        with open(lock_file_path, "r") as f:
                             content = f.read().strip()
-                            if ',' in content:
-                                pid_str, timestamp_str = content.split(',', 1)
+                            if "," in content:
+                                pid_str, timestamp_str = content.split(",", 1)
                                 pid = int(pid_str)
                                 timestamp = int(timestamp_str)
-                                
+
                                 # Check if the process still exists
                                 try:
-                                    os.kill(pid, 0)  # Signal 0 just checks if process exists
+                                    os.kill(
+                                        pid, 0
+                                    )  # Signal 0 just checks if process exists
                                     # Process exists, check if lock file is too old (older than 5 minutes)
                                     if current_time - timestamp > 300:  # 5 minutes
                                         LoggingUtility.log_warning(
                                             "port_allocation",
-                                            f"Found stale lock file {filename} (>5min old), cleaning up"
+                                            f"Found stale lock file {filename} (>5min old), cleaning up",
                                         )
                                         os.unlink(lock_file_path)
                                 except OSError:
                                     # Process doesn't exist, safe to remove lock file
                                     LoggingUtility.log_info(
                                         "port_allocation",
-                                        f"Cleaning up orphaned lock file {filename} (process {pid} gone)"
+                                        f"Cleaning up orphaned lock file {filename} (process {pid} gone)",
                                     )
                                     os.unlink(lock_file_path)
                             else:
@@ -493,7 +497,7 @@ class RayManager:
                                 if current_time - stat.st_mtime > 300:
                                     LoggingUtility.log_info(
                                         "port_allocation",
-                                        f"Cleaning up old format lock file {filename}"
+                                        f"Cleaning up old format lock file {filename}",
                                     )
                                     os.unlink(lock_file_path)
                     except (OSError, IOError, ValueError):
@@ -684,8 +688,6 @@ class RayManager:
                     "init cluster",
                     Exception("Ray is not available. Please install Ray."),
                 )
-
-
 
             def parse_dashboard_url(stdout: str) -> Optional[str]:
                 """Parse dashboard URL from Ray start output."""
