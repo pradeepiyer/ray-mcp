@@ -291,6 +291,194 @@ class TestRayManager:
         mock_process.kill.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_stream_process_output_normal_operation(self, manager):
+        """Test _stream_process_output with normal operation."""
+        mock_process = Mock()
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+
+        stdout_lines = [b"Ray started\n", b"Dashboard: http://127.0.0.1:8265\n"]
+        stderr_lines = [b"Warning: deprecated\n"]
+
+        stdout_call_count = 0
+        stderr_call_count = 0
+
+        def mock_stdout_readline():
+            nonlocal stdout_call_count
+            if stdout_call_count < len(stdout_lines):
+                result = stdout_lines[stdout_call_count]
+                stdout_call_count += 1
+                return result
+            return b""
+
+        def mock_stderr_readline():
+            nonlocal stderr_call_count
+            if stderr_call_count < len(stderr_lines):
+                result = stderr_lines[stderr_call_count]
+                stderr_call_count += 1
+                return result
+            return b""
+
+        mock_process.stdout.readline.side_effect = mock_stdout_readline
+        mock_process.stderr.readline.side_effect = mock_stderr_readline
+
+        call_count = 0
+
+        def mock_poll():
+            nonlocal call_count
+            call_count += 1
+            return 0 if call_count > 3 else None
+
+        mock_process.poll.side_effect = mock_poll
+
+        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
+
+        assert "Ray started" in stdout
+        assert "Dashboard: http://127.0.0.1:8265" in stdout
+        assert "Warning: deprecated" in stderr
+
+    @pytest.mark.asyncio
+    async def test_stream_process_output_memory_limits(self, manager):
+        """Test _stream_process_output respects memory limits."""
+        mock_process = Mock()
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+
+        # Create large output that exceeds limits
+        large_line = "x" * 900  # Smaller per line to account for newlines
+        stdout_lines = [large_line.encode() + b"\n"] * 100  # Large total
+        stderr_lines = [b"error line\n"] * 50
+
+        stdout_call_count = 0
+        stderr_call_count = 0
+
+        def mock_stdout_readline():
+            nonlocal stdout_call_count
+            if stdout_call_count < len(stdout_lines):
+                result = stdout_lines[stdout_call_count]
+                stdout_call_count += 1
+                return result
+            return b""
+
+        def mock_stderr_readline():
+            nonlocal stderr_call_count
+            if stderr_call_count < len(stderr_lines):
+                result = stderr_lines[stderr_call_count]
+                stderr_call_count += 1
+                return result
+            return b""
+
+        mock_process.stdout.readline.side_effect = mock_stdout_readline
+        mock_process.stderr.readline.side_effect = mock_stderr_readline
+
+        call_count = 0
+
+        def mock_poll():
+            nonlocal call_count
+            call_count += 1
+            return 0 if call_count > 10 else None
+
+        mock_process.poll.side_effect = mock_poll
+
+        # Test with smaller limits
+        stdout, stderr = await manager._stream_process_output(
+            mock_process,
+            timeout=10,
+            max_lines=8,
+            max_output_size=8000,  # 8KB limit, 8 lines max
+        )
+
+        # Should respect both line and size limits
+        stdout_line_count = (
+            len([line for line in stdout.split("\n") if line]) if stdout else 0
+        )
+        stderr_line_count = (
+            len([line for line in stderr.split("\n") if line]) if stderr else 0
+        )
+
+        assert stdout_line_count <= 8  # Line limit respected
+        assert (
+            len(stdout.encode("utf-8")) <= 8000
+        )  # Size limit respected (allowing for newlines)
+        assert stderr_line_count <= 8  # Line limit respected
+        assert len(stderr.encode("utf-8")) <= 8000  # Size limit respected
+
+    @pytest.mark.asyncio
+    async def test_stream_process_output_timeout_handling(self, manager):
+        """Test _stream_process_output timeout behavior."""
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process never completes
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+        mock_process.kill = Mock()
+
+        # Simulate slow/hanging process
+        mock_process.stdout.readline.side_effect = lambda: b"slow output\n"
+        mock_process.stderr.readline.side_effect = lambda: b""
+
+        with pytest.raises(RuntimeError, match="Process startup timed out"):
+            await manager._stream_process_output(mock_process, timeout=0.1)
+
+        # Verify process was killed on timeout
+        mock_process.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stream_process_output_error_handling(self, manager):
+        """Test _stream_process_output handles stream errors gracefully."""
+        mock_process = Mock()
+        mock_process.poll.return_value = None
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+
+        # Simulate stream read errors
+        def mock_stdout_readline():
+            raise OSError("Stream error")
+
+        def mock_stderr_readline():
+            return b"normal error line\n"
+
+        mock_process.stdout.readline.side_effect = mock_stdout_readline
+        mock_process.stderr.readline.side_effect = mock_stderr_readline
+
+        call_count = 0
+
+        def mock_poll():
+            nonlocal call_count
+            call_count += 1
+            return 0 if call_count > 2 else None
+
+        mock_process.poll.side_effect = mock_poll
+
+        # Should handle stream errors without crashing
+        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
+
+        # stdout should be empty due to errors, stderr should work
+        assert stdout == ""
+        assert "normal error line" in stderr
+
+    @pytest.mark.asyncio
+    async def test_stream_process_output_no_streams(self, manager):
+        """Test _stream_process_output with no streams available."""
+        mock_process = Mock()
+        mock_process.poll.return_value = None
+        mock_process.stdout = None
+        mock_process.stderr = None
+
+        call_count = 0
+
+        def mock_poll():
+            nonlocal call_count
+            call_count += 1
+            return 0 if call_count > 2 else None
+
+        mock_process.poll.side_effect = mock_poll
+
+        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
+
+        assert stdout == ""
+        assert stderr == ""
+
+    @pytest.mark.asyncio
     async def test_find_free_port_error_handling(self, manager):
         """Test find_free_port error handling and fallback scenarios."""
         # Test 1: No available ports (should raise RuntimeError)
