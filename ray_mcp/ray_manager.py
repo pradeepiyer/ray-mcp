@@ -1992,15 +1992,31 @@ class RayManager:
                     if not chunk:
                         break
 
-                    chunk_size = len(chunk)
+                    # Calculate chunk size in bytes for limit checking
+                    if isinstance(chunk, str):
+                        chunk_size = len(chunk.encode("utf-8"))
+                    else:
+                        chunk_size = len(chunk)
+
                     if stream == process.stdout:
                         if stdout_size + chunk_size > max_output_size:
                             # Truncate to stay within limit
                             remaining = max_output_size - stdout_size
                             if remaining > 0:
-                                chunk = chunk[:remaining]
+                                if isinstance(chunk, str):
+                                    # For strings, approximate truncation by character count
+                                    char_remaining = (
+                                        remaining // 2
+                                    )  # Conservative estimate
+                                    chunk = chunk[:char_remaining]
+                                else:
+                                    chunk = chunk[:remaining]
                                 chunks.append(chunk)
-                                stdout_size += len(chunk)
+                                stdout_size += (
+                                    len(chunk.encode("utf-8"))
+                                    if isinstance(chunk, str)
+                                    else len(chunk)
+                                )
                             break
                         stdout_size += chunk_size
                     else:  # stderr
@@ -2008,9 +2024,20 @@ class RayManager:
                             # Truncate to stay within limit
                             remaining = max_output_size - stderr_size
                             if remaining > 0:
-                                chunk = chunk[:remaining]
+                                if isinstance(chunk, str):
+                                    # For strings, approximate truncation by character count
+                                    char_remaining = (
+                                        remaining // 2
+                                    )  # Conservative estimate
+                                    chunk = chunk[:char_remaining]
+                                else:
+                                    chunk = chunk[:remaining]
                                 chunks.append(chunk)
-                                stderr_size += len(chunk)
+                                stderr_size += (
+                                    len(chunk.encode("utf-8"))
+                                    if isinstance(chunk, str)
+                                    else len(chunk)
+                                )
                             break
                         stderr_size += chunk_size
 
@@ -2042,17 +2069,22 @@ class RayManager:
                 asyncio.gather(*tasks, return_exceptions=True), timeout=timeout
             )
 
-            # Decode and join the chunks
-            stdout = (
-                b"".join(stdout_chunks).decode("utf-8", errors="replace")
-                if stdout_chunks
-                else ""
-            )
-            stderr = (
-                b"".join(stderr_chunks).decode("utf-8", errors="replace")
-                if stderr_chunks
-                else ""
-            )
+            # Join the chunks - handle both bytes and string output
+            if stdout_chunks:
+                if isinstance(stdout_chunks[0], bytes):
+                    stdout = b"".join(stdout_chunks).decode("utf-8", errors="replace")
+                else:
+                    stdout = "".join(stdout_chunks)
+            else:
+                stdout = ""
+
+            if stderr_chunks:
+                if isinstance(stderr_chunks[0], bytes):
+                    stderr = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+                else:
+                    stderr = "".join(stderr_chunks)
+            else:
+                stderr = ""
 
             return stdout, stderr
 

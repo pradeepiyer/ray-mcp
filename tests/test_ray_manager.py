@@ -213,12 +213,12 @@ class TestRayManager:
         mock_process.stdout = Mock()
         mock_process.stderr = Mock()
 
-        # Mock normal-sized output
-        stdout_chunks = [b"Ray runtime started\n", b"--address='127.0.0.1:10001'\n"]
-        stderr_chunks = [b"Warning: deprecated\n"]
+        # Mock normal-sized output (strings since text=True is used in real subprocess)
+        stdout_chunks = ["Ray runtime started\n", "--address='127.0.0.1:10001'\n"]
+        stderr_chunks = ["Warning: deprecated\n"]
 
-        stdout_iter = iter(stdout_chunks + [b""])  # Empty bytes to signal end
-        stderr_iter = iter(stderr_chunks + [b""])
+        stdout_iter = iter(stdout_chunks + [""])  # Empty string to signal end
+        stderr_iter = iter(stderr_chunks + [""])
 
         mock_process.stdout.read.side_effect = lambda x: next(stdout_iter)
         mock_process.stderr.read.side_effect = lambda x: next(stderr_iter)
@@ -249,16 +249,16 @@ class TestRayManager:
         mock_process.stdout = Mock()
         mock_process.stderr = Mock()
 
-        # Simulate large output that would exceed buffer
-        large_chunk = b"x" * 10240  # 10KB chunk
+        # Simulate large output that would exceed buffer (strings since text=True)
+        large_chunk = "x" * 10240  # 10KB chunk
         stdout_chunks = [large_chunk] * 200  # 2MB total
-        stderr_chunks = [b"error"] * 100
+        stderr_chunks = ["error"] * 100
 
-        stdout_iter = iter(stdout_chunks + [b""])
-        stderr_iter = iter(stderr_chunks + [b""])
+        stdout_iter = iter(stdout_chunks + [""])
+        stderr_iter = iter(stderr_chunks + [""])
 
-        mock_process.stdout.read.side_effect = lambda x: next(stdout_iter, b"")
-        mock_process.stderr.read.side_effect = lambda x: next(stderr_iter, b"")
+        mock_process.stdout.read.side_effect = lambda x: next(stdout_iter, "")
+        mock_process.stderr.read.side_effect = lambda x: next(stderr_iter, "")
 
         # Process completes after a few poll attempts
         call_count = 0
@@ -276,8 +276,8 @@ class TestRayManager:
         )
 
         # Should handle large output without deadlock and respect size limits
-        assert len(stdout.encode()) <= 50000
-        assert len(stderr.encode()) <= 50000
+        assert len(stdout.encode("utf-8")) <= 50000
+        assert len(stderr.encode("utf-8")) <= 50000
         assert "x" in stdout  # Some content should be present
 
     @pytest.mark.asyncio
@@ -289,9 +289,9 @@ class TestRayManager:
         mock_process.stderr = Mock()
         mock_process.kill = Mock()
 
-        # Simulate slow/hanging process
-        mock_process.stdout.read.side_effect = lambda x: b"slow output"
-        mock_process.stderr.read.side_effect = lambda x: b""
+        # Simulate slow/hanging process (strings since text=True)
+        mock_process.stdout.read.side_effect = lambda x: "slow output"
+        mock_process.stderr.read.side_effect = lambda x: ""
 
         with pytest.raises(RuntimeError, match="Process communication timed out"):
             await manager._communicate_with_timeout(mock_process, timeout=0.1)
