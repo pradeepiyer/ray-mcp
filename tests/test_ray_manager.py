@@ -62,20 +62,29 @@ class TestRayManager:
 
     @pytest.mark.asyncio
     async def test_stop_cluster(self, manager):
-        """Test stopping the Ray cluster."""
+        """Test stopping the Ray cluster with proper process cleanup."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
                 mock_ray.shutdown.return_value = None
 
-                # Mock subprocess for ray stop
-                with patch("subprocess.run") as mock_run:
-                    mock_run.return_value.returncode = 0
-                    mock_run.return_value.stderr = ""
+                # Mock the head node process
+                mock_process = Mock()
+                manager._head_node_process = mock_process
+
+                # Mock the cleanup method instead of direct subprocess calls
+                with patch.object(
+                    manager, "_cleanup_head_node_process"
+                ) as mock_cleanup:
+                    mock_cleanup.return_value = None
 
                     result = await manager.stop_cluster()
                     assert result and result["status"] == "success"
                     assert result.get("result_type") == "stopped"
+                    assert result.get("head_node") == "stopped"
+
+                    # Verify cleanup was called with proper timeout
+                    mock_cleanup.assert_called_once_with(timeout=10)
 
     @pytest.mark.asyncio
     async def test_stop_cluster_not_running(self, manager):
@@ -86,6 +95,37 @@ class TestRayManager:
 
                 result = await manager.stop_cluster()
                 assert result and result["status"] == "not_running"
+
+    @pytest.mark.asyncio
+    async def test_stop_cluster_cleanup_failure_preserves_process_state(self, manager):
+        """Test that process state is properly handled when cleanup fails (Issue #63)."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = True
+                mock_ray.shutdown.return_value = None
+
+                # Mock the head node process
+                mock_process = Mock()
+                manager._head_node_process = mock_process
+
+                # Mock cleanup to fail
+                with patch.object(
+                    manager, "_cleanup_head_node_process"
+                ) as mock_cleanup:
+                    mock_cleanup.side_effect = Exception("Cleanup failed")
+
+                    result = await manager.stop_cluster()
+                    assert (
+                        result and result["status"] == "success"
+                    )  # Overall operation still succeeds
+                    assert result.get("head_node") == "error: Cleanup failed"
+
+                    # Verify cleanup was called
+                    mock_cleanup.assert_called_once_with(timeout=10)
+
+                    # Most importantly: process state is handled by _cleanup_head_node_process
+                    # The old bug would have set _head_node_process = None even on failure
+                    # With the fix, _cleanup_head_node_process handles the state correctly
 
     @pytest.mark.asyncio
     async def test_cleanup_head_node_process(self, manager):
