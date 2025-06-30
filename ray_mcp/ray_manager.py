@@ -1955,19 +1955,159 @@ class RayManager:
     async def _communicate_with_timeout(
         self, process, timeout: int = 30, max_output_size: int = 1024 * 1024
     ) -> tuple[str, str]:
-        """Communicate with a process with timeout and output size limits."""
+        """Communicate with a process with timeout and output size limits.
+
+        Uses asynchronous stream reading to avoid deadlocks when subprocess
+        has large output that could fill the pipe buffer.
+
+        Args:
+            process: The subprocess to communicate with
+            timeout: Timeout in seconds for the communication
+            max_output_size: Maximum size of output to read in bytes
+
+        Returns:
+            Tuple of (stdout, stderr) strings
+
+        Raises:
+            RuntimeError: If process communication times out
+        """
+        stdout_chunks = []
+        stderr_chunks = []
+        stdout_size = 0
+        stderr_size = 0
+
+        async def read_stream(stream, chunks, size_tracker):
+            """Read from a stream asynchronously with size limits."""
+            nonlocal stdout_size, stderr_size
+
+            if not stream or not hasattr(stream, "read"):
+                return
+
+            try:
+                while True:
+                    # Read in small chunks to avoid blocking
+                    chunk = await asyncio.get_event_loop().run_in_executor(
+                        None, stream.read, 8192
+                    )
+                    if not chunk:
+                        break
+
+                    # Calculate chunk size in bytes for limit checking
+                    if isinstance(chunk, str):
+                        chunk_size = len(chunk.encode("utf-8"))
+                    else:
+                        chunk_size = len(chunk)
+
+                    if stream == process.stdout:
+                        if stdout_size + chunk_size > max_output_size:
+                            # Truncate to stay within limit
+                            remaining = max_output_size - stdout_size
+                            if remaining > 0:
+                                if isinstance(chunk, str):
+                                    # For strings, approximate truncation by character count
+                                    char_remaining = (
+                                        remaining // 2
+                                    )  # Conservative estimate
+                                    chunk = chunk[:char_remaining]
+                                else:
+                                    chunk = chunk[:remaining]
+                                chunks.append(chunk)
+                                stdout_size += (
+                                    len(chunk.encode("utf-8"))
+                                    if isinstance(chunk, str)
+                                    else len(chunk)
+                                )
+                            break
+                        stdout_size += chunk_size
+                    else:  # stderr
+                        if stderr_size + chunk_size > max_output_size:
+                            # Truncate to stay within limit
+                            remaining = max_output_size - stderr_size
+                            if remaining > 0:
+                                if isinstance(chunk, str):
+                                    # For strings, approximate truncation by character count
+                                    char_remaining = (
+                                        remaining // 2
+                                    )  # Conservative estimate
+                                    chunk = chunk[:char_remaining]
+                                else:
+                                    chunk = chunk[:remaining]
+                                chunks.append(chunk)
+                                stderr_size += (
+                                    len(chunk.encode("utf-8"))
+                                    if isinstance(chunk, str)
+                                    else len(chunk)
+                                )
+                            break
+                        stderr_size += chunk_size
+
+                    chunks.append(chunk)
+
+            except Exception:
+                # Stream might be closed or unavailable
+                pass
+
+        async def wait_for_process():
+            """Wait for the process to complete."""
+            while process.poll() is None:
+                await asyncio.sleep(0.1)
+
         try:
-            # Run the synchronous communicate() method in an executor
-            loop = asyncio.get_event_loop()
-            stdout, stderr = await asyncio.wait_for(
-                loop.run_in_executor(None, process.communicate), timeout=timeout
+            # Start reading both streams and wait for process completion
+            tasks = [
+                asyncio.create_task(
+                    read_stream(process.stdout, stdout_chunks, stdout_size)
+                ),
+                asyncio.create_task(
+                    read_stream(process.stderr, stderr_chunks, stderr_size)
+                ),
+                asyncio.create_task(wait_for_process()),
+            ]
+
+            # Wait for all tasks to complete or timeout
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=timeout
             )
-            return stdout or "", stderr or ""
+
+            # Join the chunks - handle both bytes and string output
+            if stdout_chunks:
+                if isinstance(stdout_chunks[0], bytes):
+                    stdout = b"".join(stdout_chunks).decode("utf-8", errors="replace")
+                else:
+                    stdout = "".join(stdout_chunks)
+            else:
+                stdout = ""
+
+            if stderr_chunks:
+                if isinstance(stderr_chunks[0], bytes):
+                    stderr = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+                else:
+                    stderr = "".join(stderr_chunks)
+            else:
+                stderr = ""
+
+            return stdout, stderr
+
         except asyncio.TimeoutError:
-            process.kill()
+            # Cancel all tasks and kill the process
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+            try:
+                process.kill()
+            except:
+                pass
+
             raise RuntimeError(
                 f"Process communication timed out after {timeout} seconds"
             )
+        except Exception as e:
+            # Cancel all tasks on any error
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            raise RuntimeError(f"Process communication failed: {str(e)}")
 
     async def _initialize_job_client_with_retry(
         self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0

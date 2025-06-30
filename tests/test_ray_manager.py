@@ -205,6 +205,92 @@ class TestRayManager:
             assert 21001 <= ports[1] < 21004
 
     @pytest.mark.asyncio
+    async def test_communicate_with_timeout_output_handling(self, manager):
+        """Test _communicate_with_timeout with various output scenarios."""
+        # Test 1: Normal operation
+        mock_process = Mock()
+        mock_process.poll.return_value = None
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+
+        stdout_chunks = ["Ray runtime started\n", "--address='127.0.0.1:10001'\n"]
+        stderr_chunks = ["Warning: deprecated\n"]
+        stdout_iter = iter(stdout_chunks + [""])
+        stderr_iter = iter(stderr_chunks + [""])
+
+        mock_process.stdout.read.side_effect = lambda x: next(stdout_iter)
+        mock_process.stderr.read.side_effect = lambda x: next(stderr_iter)
+
+        call_count = 0
+
+        def mock_poll():
+            nonlocal call_count
+            call_count += 1
+            return 0 if call_count > 3 else None
+
+        mock_process.poll.side_effect = mock_poll
+
+        stdout, stderr = await manager._communicate_with_timeout(
+            mock_process, timeout=5
+        )
+
+        assert "Ray runtime started" in stdout
+        assert "--address='127.0.0.1:10001'" in stdout
+        assert "Warning: deprecated" in stderr
+
+        # Test 2: Large output with size limits
+        mock_process2 = Mock()
+        mock_process2.poll.return_value = None
+        mock_process2.stdout = Mock()
+        mock_process2.stderr = Mock()
+
+        large_chunk = "x" * 10240  # 10KB chunk
+        stdout_chunks2 = [large_chunk] * 200  # 2MB total
+        stderr_chunks2 = ["error"] * 100
+        stdout_iter2 = iter(stdout_chunks2 + [""])
+        stderr_iter2 = iter(stderr_chunks2 + [""])
+
+        mock_process2.stdout.read.side_effect = lambda x: next(stdout_iter2, "")
+        mock_process2.stderr.read.side_effect = lambda x: next(stderr_iter2, "")
+
+        call_count2 = 0
+
+        def mock_poll2():
+            nonlocal call_count2
+            call_count2 += 1
+            return 0 if call_count2 > 5 else None
+
+        mock_process2.poll.side_effect = mock_poll2
+
+        stdout2, stderr2 = await manager._communicate_with_timeout(
+            mock_process2, timeout=10, max_output_size=50000  # 50KB limit
+        )
+
+        # Should handle large output without deadlock and respect size limits
+        assert len(stdout2.encode("utf-8")) <= 50000
+        assert len(stderr2.encode("utf-8")) <= 50000
+        assert "x" in stdout2
+
+    @pytest.mark.asyncio
+    async def test_communicate_with_timeout_timeout_handling(self, manager):
+        """Test _communicate_with_timeout timeout behavior."""
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process never completes
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+        mock_process.kill = Mock()
+
+        # Simulate slow/hanging process (strings since text=True)
+        mock_process.stdout.read.side_effect = lambda x: "slow output"
+        mock_process.stderr.read.side_effect = lambda x: ""
+
+        with pytest.raises(RuntimeError, match="Process communication timed out"):
+            await manager._communicate_with_timeout(mock_process, timeout=0.1)
+
+        # Verify process was killed on timeout
+        mock_process.kill.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_find_free_port_error_handling(self, manager):
         """Test find_free_port error handling and fallback scenarios."""
         # Test 1: No available ports (should raise RuntimeError)
