@@ -222,14 +222,18 @@ class TestRayManager:
         mock_process.stderr.read.side_effect = lambda x: next(stderr_iter)
 
         call_count = 0
+
         def mock_poll():
             nonlocal call_count
             call_count += 1
             return 0 if call_count > 3 else None
+
         mock_process.poll.side_effect = mock_poll
 
-        stdout, stderr = await manager._communicate_with_timeout(mock_process, timeout=5)
-        
+        stdout, stderr = await manager._communicate_with_timeout(
+            mock_process, timeout=5
+        )
+
         assert "Ray runtime started" in stdout
         assert "--address='127.0.0.1:10001'" in stdout
         assert "Warning: deprecated" in stderr
@@ -250,10 +254,12 @@ class TestRayManager:
         mock_process2.stderr.read.side_effect = lambda x: next(stderr_iter2, "")
 
         call_count2 = 0
+
         def mock_poll2():
             nonlocal call_count2
             call_count2 += 1
             return 0 if call_count2 > 5 else None
+
         mock_process2.poll.side_effect = mock_poll2
 
         stdout2, stderr2 = await manager._communicate_with_timeout(
