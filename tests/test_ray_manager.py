@@ -195,7 +195,7 @@ class TestExceptionHandling:
 
             # Test with whitespace-only job_id
             result = await ray_manager.cancel_job("   ")
-            assert result["status"] == "error" 
+            assert result["status"] == "error"
             assert "Job ID cannot be empty" in result["message"]
         finally:
             self._restore_is_initialized(ray_manager, original_property)
@@ -335,8 +335,8 @@ class TestStateManagement:
         # Test state update
         manager._update_state(
             initialized=True,
-            cluster_address="ray://localhost:10001", 
-            dashboard_url="http://localhost:8265"
+            cluster_address="ray://localhost:10001",
+            dashboard_url="http://localhost:8265",
         )
         assert manager.is_initialized is True
         assert manager.cluster_address == "ray://localhost:10001"

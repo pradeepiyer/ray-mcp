@@ -33,8 +33,12 @@ class TestMCPIntegration:
         with patch.object(registry.ray_manager, "init_cluster") as mock_init:
             with patch.object(registry.ray_manager, "submit_job") as mock_submit:
                 with patch.object(registry.ray_manager, "inspect_job") as mock_inspect:
-                    with patch.object(registry.ray_manager, "cancel_job") as mock_cancel:
-                        with patch.object(registry.ray_manager, "stop_cluster") as mock_stop:
+                    with patch.object(
+                        registry.ray_manager, "cancel_job"
+                    ) as mock_cancel:
+                        with patch.object(
+                            registry.ray_manager, "stop_cluster"
+                        ) as mock_stop:
                             # Setup mock responses
                             mock_init.return_value = {
                                 "status": "connected",
@@ -72,7 +76,9 @@ class TestMCPIntegration:
 
                                     # Test complete workflow
                                     # 1. Initialize cluster
-                                    result = await registry.execute_tool("init_ray", {"num_cpus": 4})
+                                    result = await registry.execute_tool(
+                                        "init_ray", {"num_cpus": 4}
+                                    )
                                     assert result["status"] == "connected"
                                     mock_init.assert_called_once()
 
@@ -287,7 +293,7 @@ class TestMCPIntegration:
     async def test_unknown_tool_and_response_format(self):
         """Test unknown tool handling and response format consistency."""
         registry = ToolRegistry(RayManager())
-        
+
         # Test unknown tool
         result = await registry.execute_tool("unknown_tool", {})
         assert result["status"] == "error"

@@ -25,7 +25,7 @@ class TestE2EIntegration:
     @pytest.mark.slow
     async def test_complete_ray_workflow(self, e2e_ray_manager: RayManager):
         """Test the complete Ray workflow: start cluster, submit job, verify results, cleanup."""
-        
+
         # Step 1: Start Ray cluster using MCP tools
         await start_ray_cluster()
 
@@ -34,8 +34,7 @@ class TestE2EIntegration:
 
         # Step 3: Submit and wait for job completion
         job_id, job_status = await submit_and_wait_for_job(
-            TestScripts.QUICK_SUCCESS,
-            expected_status="SUCCEEDED"
+            TestScripts.QUICK_SUCCESS, expected_status="SUCCEEDED"
         )
         print(f"Job {job_id} completed successfully!")
 
@@ -53,7 +52,9 @@ class TestE2EIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.slow
-    async def test_job_failure_and_debugging_workflow(self, e2e_ray_manager: RayManager):
+    async def test_job_failure_and_debugging_workflow(
+        self, e2e_ray_manager: RayManager
+    ):
         """Test job failure handling, debugging, and recovery workflows."""
 
         # Step 1: Start Ray cluster
@@ -63,8 +64,7 @@ class TestE2EIntegration:
         # Step 2: Submit a job that will fail
         print("Submitting a job designed to fail...")
         fail_job_id, fail_status = await submit_and_wait_for_job(
-            TestScripts.INTENTIONAL_FAILURE,
-            expected_status="FAILED"
+            TestScripts.INTENTIONAL_FAILURE, expected_status="FAILED"
         )
         print(f"Failing job {fail_job_id} failed as expected")
 
@@ -90,9 +90,7 @@ class TestE2EIntegration:
         # Step 5: Test a lightweight success job to verify cluster health
         print("Testing lightweight success job...")
         success_job_id, success_status = await submit_and_wait_for_job(
-            TestScripts.LIGHTWEIGHT_SUCCESS,
-            expected_status="SUCCEEDED",
-            runtime_env={}
+            TestScripts.LIGHTWEIGHT_SUCCESS, expected_status="SUCCEEDED", runtime_env={}
         )
         print(f"Success job {success_job_id} completed successfully!")
 

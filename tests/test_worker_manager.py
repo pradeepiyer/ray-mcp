@@ -63,7 +63,9 @@ class TestWorkerManager:
         assert "--resources" in command
 
     @pytest.mark.asyncio
-    async def test_start_worker_nodes_success(self, worker_manager, mock_cluster_startup):
+    async def test_start_worker_nodes_success(
+        self, worker_manager, mock_cluster_startup
+    ):
         """Test successful worker node startup."""
         worker_configs = [
             {"num_cpus": 2, "node_name": "worker-1"},
@@ -338,16 +340,21 @@ class TestMultiNodeIntegration:
                                         mock_stop_workers.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_worker_config_validation_integration(self, ray_manager, mock_cluster_startup):
+    async def test_worker_config_validation_integration(
+        self, ray_manager, mock_cluster_startup
+    ):
         """Test worker configuration validation during cluster initialization."""
         # Test with both valid and invalid worker configs
         mixed_worker_config = [
             {"num_cpus": 2, "node_name": "valid-worker"},
             {"num_cpus": -1, "node_name": "invalid-worker-1"},  # Invalid negative CPUs
             {"num_cpus": 4, "node_name": "valid-worker-2"},
-            {"invalid_param": "value", "node_name": "invalid-worker-2"},  # Invalid param
+            {
+                "invalid_param": "value",
+                "node_name": "invalid-worker-2",
+            },  # Invalid param
         ]
-        
+
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = False
