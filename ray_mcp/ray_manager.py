@@ -743,46 +743,7 @@ class RayManager:
                 )
 
                 # Initialize job client with retry logic - this must complete before returning success
-                job_client_status = "ready"
-                if JobSubmissionClient is not None and self.cluster_address:
-                    # Use the stored dashboard URL for job client
-                    if self.dashboard_url:
-                        LoggingUtility.log_info(
-                            "job_client",
-                            f"Initializing job client with dashboard URL: {self.dashboard_url}",
-                        )
-                        job_client = await self._initialize_job_client_with_retry(
-                            self.dashboard_url
-                        )
-                        self._update_state(job_client=job_client)
-                        if self.job_client is None:
-                            job_client_status = "unavailable"
-                            LoggingUtility.log_warning(
-                                "job_client",
-                                "Job client initialization failed after retries",
-                            )
-                        else:
-                            LoggingUtility.log_info(
-                                "job_client", "Job client initialized successfully"
-                            )
-                    else:
-                        LoggingUtility.log_warning(
-                            "job_client",
-                            "Dashboard URL not available for job client initialization",
-                        )
-                        job_client_status = "unavailable"
-                else:
-                    if JobSubmissionClient is None:
-                        LoggingUtility.log_warning(
-                            "job_client", "JobSubmissionClient not available"
-                        )
-                        job_client_status = "unavailable"
-                    elif not self.cluster_address:
-                        LoggingUtility.log_warning(
-                            "job_client",
-                            "Cluster address not available for job client initialization",
-                        )
-                        job_client_status = "unavailable"
+                job_client_status = await self._initialize_job_client_if_available()
 
                 return ResponseFormatter.format_success_response(
                     result_type="connected",
@@ -923,46 +884,7 @@ class RayManager:
                     )
 
             # Initialize job client with retry logic - this must complete before returning success
-            job_client_status = "ready"
-            if JobSubmissionClient is not None and self.cluster_address:
-                # Use the stored dashboard URL for job client
-                if self.dashboard_url:
-                    LoggingUtility.log_info(
-                        "job_client",
-                        f"Initializing job client with dashboard URL: {self.dashboard_url}",
-                    )
-                    job_client = await self._initialize_job_client_with_retry(
-                        self.dashboard_url
-                    )
-                    self._update_state(job_client=job_client)
-                    if self.job_client is None:
-                        job_client_status = "unavailable"
-                        LoggingUtility.log_warning(
-                            "job_client",
-                            "Job client initialization failed after retries",
-                        )
-                    else:
-                        LoggingUtility.log_info(
-                            "job_client", "Job client initialized successfully"
-                        )
-                else:
-                    LoggingUtility.log_warning(
-                        "job_client",
-                        "Dashboard URL not available for job client initialization",
-                    )
-                    job_client_status = "unavailable"
-            else:
-                if JobSubmissionClient is None:
-                    LoggingUtility.log_warning(
-                        "job_client", "JobSubmissionClient not available"
-                    )
-                    job_client_status = "unavailable"
-                elif not self.cluster_address:
-                    LoggingUtility.log_warning(
-                        "job_client",
-                        "Cluster address not available for job client initialization",
-                    )
-                    job_client_status = "unavailable"
+            job_client_status = await self._initialize_job_client_if_available()
 
             # Set default worker nodes if none specified and not connecting to existing cluster
             if worker_nodes is None and address is None:
@@ -2083,6 +2005,52 @@ class RayManager:
                         ),
                     )
                     return None
+
+    async def _initialize_job_client_if_available(self) -> str:
+        """Initialize job client with retry logic if conditions are met.
+
+        Returns:
+            str: Status of job client initialization ("ready", "unavailable")
+        """
+        if JobSubmissionClient is not None and self.cluster_address:
+            # Use the stored dashboard URL for job client
+            if self.dashboard_url:
+                LoggingUtility.log_info(
+                    "job_client",
+                    f"Initializing job client with dashboard URL: {self.dashboard_url}",
+                )
+                job_client = await self._initialize_job_client_with_retry(
+                    self.dashboard_url
+                )
+                self._update_state(job_client=job_client)
+                if self.job_client is None:
+                    LoggingUtility.log_warning(
+                        "job_client",
+                        "Job client initialization failed after retries",
+                    )
+                    return "unavailable"
+                else:
+                    LoggingUtility.log_info(
+                        "job_client", "Job client initialized successfully"
+                    )
+                    return "ready"
+            else:
+                LoggingUtility.log_warning(
+                    "job_client",
+                    "Dashboard URL not available for job client initialization",
+                )
+                return "unavailable"
+        else:
+            if JobSubmissionClient is None:
+                LoggingUtility.log_warning(
+                    "job_client", "JobSubmissionClient not available"
+                )
+            elif not self.cluster_address:
+                LoggingUtility.log_warning(
+                    "job_client",
+                    "Cluster address not available for job client initialization",
+                )
+            return "unavailable"
 
     async def _stream_process_output(
         self, process, timeout: int = 30, max_lines: int = 1000
