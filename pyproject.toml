@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ray-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP (Model Context Protocol) server for Ray distributed computing"
 authors = [
     {name = "claude 4 sonnet", email = "ray-mcp@example.com"}
