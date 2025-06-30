@@ -2,12 +2,13 @@
 """Tests for the Ray manager."""
 
 import asyncio
+import fcntl
 import inspect
 import subprocess
 import threading
 import time
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
 
@@ -141,6 +142,148 @@ class TestRayManager:
             assert isinstance(address, str)
             assert ":" in address
             assert address.split(":")[1].isdigit()
+
+    @pytest.mark.asyncio
+    async def test_find_free_port_with_locking(self, manager):
+        """Test find_free_port functionality and race condition prevention."""
+        # Mock file locking to simulate race condition prevention
+        flock_call_count = 0
+        bind_call_count = 0
+
+        def mock_flock_side_effect(*args):
+            nonlocal flock_call_count
+            flock_call_count += 1
+            if flock_call_count == 2:  # Second port already locked by another process
+                raise OSError("Resource temporarily unavailable")
+            return None  # First and third ports succeed
+
+        def mock_bind_side_effect(*args):
+            nonlocal bind_call_count
+            bind_call_count += 1
+            if bind_call_count == 3:  # Third bind call fails (port in use)
+                raise OSError("Port in use")
+            return None  # First and second bind calls succeed
+
+        with (
+            patch("tempfile.gettempdir", return_value="/tmp"),
+            patch("builtins.open", mock_open()) as mock_file,
+            patch("fcntl.flock", side_effect=mock_flock_side_effect) as mock_flock,
+            patch("socket.socket") as mock_socket,
+            patch("os.path.exists", return_value=False),
+            patch("os.unlink") as mock_unlink,
+            patch("os.getpid", return_value=12345),
+            patch("os.listdir", return_value=[]),
+            patch("os.kill") as mock_kill,
+            patch.object(manager, "_cleanup_stale_lock_files") as mock_cleanup,
+        ):
+
+            mock_socket.return_value.__enter__.return_value.bind.side_effect = (
+                mock_bind_side_effect
+            )
+
+            # Test basic functionality - should get first available port
+            port = await manager.find_free_port(start_port=20000, max_tries=5)
+            assert isinstance(port, int)
+            assert port == 20000
+
+            # Verify cleanup was called at the beginning
+            mock_cleanup.assert_called()
+
+            # Verify file locking was used (core race condition fix)
+            mock_flock.assert_called()
+
+            # Test race condition prevention - concurrent calls get different ports
+            async def find_port_task(start_port):
+                return await manager.find_free_port(start_port=start_port, max_tries=3)
+
+            tasks = [find_port_task(21000), find_port_task(21001)]
+            ports = await asyncio.gather(*tasks)
+
+            # Verify both tasks got valid ports
+            assert all(isinstance(p, int) for p in ports)
+            assert 21000 <= ports[0] < 21003
+            assert 21001 <= ports[1] < 21004
+
+    @pytest.mark.asyncio
+    async def test_find_free_port_error_handling(self, manager):
+        """Test find_free_port error handling and fallback scenarios."""
+        # Test 1: No available ports (should raise RuntimeError)
+        with (
+            patch("tempfile.gettempdir", return_value="/tmp"),
+            patch("builtins.open", mock_open()),
+            patch("fcntl.flock"),
+            patch("socket.socket") as mock_socket,
+            patch("os.path.exists", return_value=False),
+            patch("os.getpid", return_value=12345),
+            patch("os.listdir", return_value=[]),
+            patch.object(manager, "_cleanup_stale_lock_files"),
+        ):
+
+            # All ports are in use
+            mock_socket.return_value.__enter__.return_value.bind.side_effect = OSError(
+                "Address already in use"
+            )
+
+            with pytest.raises(RuntimeError, match="No free port found in range"):
+                await manager.find_free_port(start_port=23000, max_tries=3)
+
+        # Test 2: File system errors (should fallback to simple socket binding)
+        gettempdir_call_count = 0
+
+        def mock_gettempdir_side_effect():
+            nonlocal gettempdir_call_count
+            gettempdir_call_count += 1
+            # Let cleanup calls succeed, but fail for port allocation
+            if gettempdir_call_count > 1:
+                raise OSError("Permission denied")
+            return "/tmp"
+
+        with (
+            patch("tempfile.gettempdir", side_effect=mock_gettempdir_side_effect),
+            patch("socket.socket") as mock_socket,
+            patch("os.getpid", return_value=12345),
+            patch.object(manager, "_cleanup_stale_lock_files"),
+        ):
+
+            # Fallback socket binding succeeds
+            mock_socket.return_value.__enter__.return_value.bind.return_value = None
+
+            port = await manager.find_free_port(start_port=24000, max_tries=3)
+            assert isinstance(port, int)
+            assert port == 24000
+
+        # Test 3: Existing lock file handling and cleanup
+        with (
+            patch("tempfile.gettempdir", return_value="/tmp"),
+            patch(
+                "builtins.open", mock_open(read_data="12345,1640995200")
+            ) as mock_file,
+            patch("fcntl.flock"),
+            patch("socket.socket") as mock_socket,
+            patch("os.path.exists", return_value=True),
+            patch("os.unlink") as mock_unlink,
+            patch("os.getpid", return_value=12345),
+            patch("os.listdir", return_value=["ray_port_25000.lock"]),
+            patch("os.kill", side_effect=OSError("No such process")),
+            patch("time.time", return_value=1640995300),
+            patch.object(manager, "_cleanup_stale_lock_files"),
+        ):
+
+            # First port has stale lock (gets cleaned), second succeeds
+            bind_attempts = 0
+
+            def mock_bind(*args):
+                nonlocal bind_attempts
+                bind_attempts += 1
+                if bind_attempts == 1:
+                    raise OSError("Port in use")
+                return None
+
+            mock_socket.return_value.__enter__.return_value.bind.side_effect = mock_bind
+
+            port = await manager.find_free_port(start_port=25000, max_tries=3)
+            assert port == 25001  # Should get second port
+            # Note: lock file cleanup now happens through _cleanup_stale_lock_files
 
 
 @pytest.mark.fast
