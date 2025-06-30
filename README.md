@@ -1,71 +1,121 @@
 # Ray MCP Server
 
-A fast, standardized server for managing Ray clusters and distributed jobs via the Model Context Protocol (MCP).
+Model Context Protocol (MCP) server for Ray distributed computing. Enables LLM agents to programmatically manage Ray clusters, submit jobs, and monitor distributed workloads.
+
+## Overview
+
+Ray MCP provides a bridge between LLM agents and Ray distributed computing through the MCP protocol. It exposes Ray's cluster management, job submission, and monitoring capabilities as structured tools that AI agents can call directly.
 
 ## Features
-- Start, monitor, and stop Ray clusters (single or multi-node)
-- Submit, track, and debug distributed jobs
-- Retrieve logs and cluster health info
-- Optimized for CI and local development
+
+- **Cluster Management**: Initialize, connect to, and stop Ray clusters
+- **Job Operations**: Submit, monitor, cancel, and inspect distributed jobs
+- **Worker Node Control**: Manage worker nodes with custom resource configurations
+- **Comprehensive Logging**: Retrieve and analyze logs with error detection
+- **Resource Monitoring**: Real-time cluster health and performance metrics
+- **Multi-Node Support**: Handle head-only or multi-worker cluster topologies
+
+## Installation
+
+```bash
+# Install with uv (recommended)
+git clone https://github.com/pradeepiyer/ray-mcp.git
+cd ray-mcp
+uv sync
+
+# Or with pip
+pip install -e .
+```
 
 ## Quick Start
 
-```bash
-# Clone and install
- git clone https://github.com/pradeepiyer/ray-mcp
- cd ray-mcp
- uv sync --all-extras --dev
-```
+### 1. Configure MCP Client
 
-### Example Usage
+Add to your MCP client configuration (e.g., Claude Desktop):
 
 ```json
 {
-  "tool": "init_ray",
-  "arguments": {"num_cpus": 4}
-}
-{
-  "tool": "submit_job",
-  "arguments": {"entrypoint": "python examples/simple_job.py"}
-}
-{
-  "tool": "inspect_ray",
-  "arguments": {}
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "uv",
+      "args": ["run", "ray-mcp"],
+      "cwd": "/path/to/ray-mcp"
+    }
+  }
 }
 ```
 
-## Testing
+### 2. Basic Usage
 
-- Run all tests: `uv run pytest tests/`
-- Unit only: `uv run pytest tests/ -k "not e2e"`
-- E2E only: `uv run pytest tests/test_e2e_integration.py`
-- Coverage: `uv run pytest tests/ --cov=ray_mcp --cov-report=html`
+```python
+# Initialize a Ray cluster
+init_ray()
 
-## Project Structure
+# Submit a distributed job
+submit_job(entrypoint="python my_script.py")
 
+# Monitor cluster status
+inspect_ray()
+
+# Retrieve job logs
+retrieve_logs(identifier="job_123")
 ```
-mcp/
-├── ray_mcp/      # Core server code
-├── tests/        # Test suite
-├── examples/     # Example scripts (simple_job.py)
-├── docs/         # Documentation
-└── scripts/      # Utilities
-```
+
+## Available Tools
+
+- `init_ray` - Initialize or connect to Ray cluster
+- `stop_ray` - Stop Ray cluster
+- `inspect_ray` - Get cluster status and metrics
+- `submit_job` - Submit jobs to the cluster
+- `list_jobs` - List all jobs
+- `inspect_job` - Inspect specific job with logs/debug info
+- `cancel_job` - Cancel running jobs
+- `retrieve_logs` - Get logs with error analysis
+- `retrieve_logs_paginated` - Get logs with pagination support
 
 ## Documentation
-- [Tools Reference](docs/TOOLS.md)
-- [Configuration Guide](docs/CONFIGURATION.md)
-- [Development Guide](docs/DEVELOPMENT.md)
-- [Examples](docs/EXAMPLES.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
 
-## Contributing
-- Fork, branch, and submit a PR
-- Run all tests before submitting
+- [Configuration Guide](docs/CONFIGURATION.md) - Setup and configuration options
+- [Tools Reference](docs/TOOLS.md) - Complete tool documentation
+- [Examples](docs/EXAMPLES.md) - Usage examples and patterns
+- [Development](docs/DEVELOPMENT.md) - Development setup and testing
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+
+## Architecture
+
+```
+┌─────────────────┐    MCP Protocol    ┌─────────────────┐
+│   LLM Agent     │◄──────────────────►│   Ray MCP       │
+│                 │                    │   Server        │
+└─────────────────┘                    └─────────┬───────┘
+                                                 │
+                                       Ray API   │
+                                                 ▼
+                                       ┌─────────────────┐
+                                       │   Ray Cluster   │
+                                       │                 │
+                                       │  ┌──────────┐   │
+                                       │  │Head Node │   │
+                                       │  └──────────┘   │
+                                       │  ┌──────────┐   │
+                                       │  │Worker 1  │   │
+                                       │  └──────────┘   │
+                                       │  ┌──────────┐   │
+                                       │  │Worker N  │   │
+                                       │  └──────────┘   │
+                                       └─────────────────┘
+```
+
+## Requirements
+
+- Python ≥ 3.10
+- Ray ≥ 2.47.0
+- MCP ≥ 1.0.0
 
 ## License
-See LICENSE file.
 
-## Support
-- See [Troubleshooting](docs/TROUBLESHOOTING.md)
-- Open an issue on GitHub
+Apache-2.0 License
+
+## Contributing
+
+Contributions welcome! See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup instructions. 

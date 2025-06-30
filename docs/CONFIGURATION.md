@@ -1,75 +1,117 @@
-# Ray MCP Server: Configuration Guide
+# Configuration Guide
 
-This guide covers the most common configuration options for the Ray MCP Server.
+## MCP Client Configuration
 
-## Environment Variables
-- `RAY_ADDRESS`: Ray cluster address (e.g. "127.0.0.1:10001")
-- `RAY_DASHBOARD_HOST`: Dashboard host (default: "0.0.0.0")
-- `RAY_MCP_ENHANCED_OUTPUT`: Enable enhanced output ("true"/"false")
+### Claude Desktop
 
-## MCP Client Example
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "ray-mcp": {
-      "command": "/path/to/venv/bin/ray-mcp",
-      "env": {
-        "RAY_ADDRESS": "",
-        "RAY_DASHBOARD_HOST": "0.0.0.0",
-        "RAY_MCP_ENHANCED_OUTPUT": "true"
-      }
+      "command": "uv",
+      "args": ["run", "ray-mcp"],
+      "cwd": "/path/to/ray-mcp"
     }
   }
 }
 ```
 
-## Cluster Configuration
+### Alternative Command Options
 
-### Basic
 ```json
 {
-  "tool": "init_ray",
-  "arguments": {"num_cpus": 4}
-}
-```
-
-### Multi-Node
-```json
-{
-  "tool": "init_ray",
-  "arguments": {
-    "num_cpus": 2,
-    "worker_nodes": [
-      {"num_cpus": 4, "node_name": "worker-1"}
-    ]
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "python",
+      "args": ["-m", "ray_mcp.main"],
+      "cwd": "/path/to/ray-mcp"
+    }
   }
 }
 ```
 
-## Job Runtime Environment
+Or with direct script execution:
 
 ```json
 {
-  "tool": "submit_job",
-  "arguments": {
-    "entrypoint": "python examples/simple_job.py",
-    "runtime_env": {"pip": ["numpy", "pandas"]}
+  "mcpServers": {
+    "ray-mcp": {
+      "command": "ray-mcp",
+      "args": []
+    }
   }
 }
 ```
 
-## Network & Resource Options
-- `head_node_host`: Host for head node (default: 127.0.0.1)
-- `head_node_port`: Port for head node (default: auto)
-- `dashboard_port`: Port for dashboard (default: auto)
-- `object_store_memory`: Memory for Ray object store (bytes)
+## Environment Variables
 
-## Best Practices
-- Use minimal resources in CI: `{ "num_cpus": 1, "worker_nodes": [] }`
-- Use full cluster for local dev: `{ "num_cpus": 2, "worker_nodes": null }`
-- Always stop clusters after use
+### Ray Configuration
 
----
+- `RAY_DISABLE_USAGE_STATS=1` - Disable Ray usage statistics
+- `RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1` - Enable multi-node on Windows/macOS
 
-For more, see [TOOLS.md](TOOLS.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+### MCP Server Options
+
+- `RAY_MCP_ENHANCED_OUTPUT=true` - Enable enhanced LLM-friendly output formatting
+- `RAY_MCP_LOG_LEVEL=INFO` - Set logging level (DEBUG, INFO, WARNING, ERROR)
+
+### Example Environment Setup
+
+```bash
+export RAY_DISABLE_USAGE_STATS=1
+export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
+export RAY_MCP_ENHANCED_OUTPUT=true
+ray-mcp
+```
+
+## Resource Configuration
+
+### Default Cluster Settings
+
+- Head node: 1 CPU, 0 GPUs
+- Worker nodes: 2 workers with 1 CPU each (when not specified)
+- Object store memory: Ray defaults (minimum 75MB per node)
+
+### Custom Worker Configuration
+
+```python
+# Head-node only cluster
+init_ray(worker_nodes=[])
+
+# Custom worker setup
+init_ray(worker_nodes=[
+    {"num_cpus": 2, "num_gpus": 1},
+    {"num_cpus": 1, "object_store_memory": 1000000000}
+])
+```
+
+## Logging Configuration
+
+Ray MCP uses Python's logging module. Configure via environment or code:
+
+```python
+import logging
+logging.getLogger('ray_mcp').setLevel(logging.DEBUG)
+```
+
+## Troubleshooting Configuration
+
+### Port Conflicts
+
+Ray MCP automatically finds free ports for:
+- Ray head node (starts at 10001)
+- Ray dashboard (starts at 8265)
+
+### File Permissions
+
+Ensure the MCP client can execute the ray-mcp command and access the working directory.
+
+### Ray Installation
+
+Verify Ray is properly installed:
+
+```bash
+python -c "import ray; print(ray.__version__)"
+``` 
