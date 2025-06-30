@@ -211,17 +211,25 @@ class TestRayManagerStateManagement:
         manager._state_manager.update_state(initialized=True)
         assert manager.is_initialized is True
 
-    def test_backward_compatibility_properties(self):
-        """Test backward compatibility with _is_initialized property."""
+    def test_consolidated_state_properties(self):
+        """Test consolidated state management properties."""
         manager = RayManager()
 
-        # Test getter
-        assert manager._is_initialized is False
+        # Test initial state through properties
+        assert manager.is_initialized is False
+        assert manager.cluster_address is None
+        assert manager.dashboard_url is None
+        assert manager.job_client is None
 
-        # Test setter
-        manager._is_initialized = True
-        assert manager._is_initialized is True
+        # Test state update through consolidated interface
+        manager._update_state(
+            initialized=True,
+            cluster_address="ray://localhost:10001", 
+            dashboard_url="http://localhost:8265"
+        )
         assert manager.is_initialized is True
+        assert manager.cluster_address == "ray://localhost:10001"
+        assert manager.dashboard_url == "http://localhost:8265"
 
     def test_update_state_method(self):
         """Test the _update_state method."""

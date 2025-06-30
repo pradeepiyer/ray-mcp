@@ -32,7 +32,7 @@ class TestRayManager:
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
-                manager._is_initialized = True
+                manager._update_state(initialized=True)
                 assert manager.is_initialized
 
     def test_ensure_initialized(self):
@@ -63,7 +63,8 @@ class TestRayManager:
                     mock_run.return_value.stderr = ""
 
                     result = await manager.stop_cluster()
-                    assert result["status"] == "stopped"
+                    assert result["status"] == "success"
+                    assert result.get("result_type") == "stopped"
 
     @pytest.mark.asyncio
     async def test_stop_cluster_not_running(self, manager):

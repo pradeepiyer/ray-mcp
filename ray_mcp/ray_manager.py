@@ -41,6 +41,7 @@ except ImportError:
     ray = None  # type: ignore
     JobSubmissionClient = None  # type: ignore
 
+from .logging_utils import LoggingUtility, LogProcessor, ResponseFormatter
 from .worker_manager import WorkerManager
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,9 @@ class RayStateManager:
                 )
 
         except Exception as e:
-            logger.error(f"State validation failed: {e}")
+            LoggingUtility.log_error(
+                "state_validation", f"State validation failed: {e}"
+            )
             self._state["initialized"] = False
 
     def _validate_ray_state(self) -> bool:
@@ -158,13 +161,15 @@ class RayStateManager:
                     return False
 
             except Exception as e:
-                logger.warning(f"Failed to validate Ray runtime context: {e}")
+                LoggingUtility.log_warning(
+                    "ray_state", f"Failed to validate Ray runtime context: {e}"
+                )
                 return False
 
             return True
 
         except Exception as e:
-            logger.error(f"Error validating Ray state: {e}")
+            LoggingUtility.log_error("ray_state", f"Error validating Ray state: {e}")
             return False
 
     def update_state(self, **kwargs) -> None:
@@ -198,12 +203,16 @@ class RayManager:
     """Manages Ray cluster operations with robust state management."""
 
     def __init__(self) -> None:
+        """Initialize the Ray manager with state tracking."""
         self._state_manager = RayStateManager()
         self._worker_manager = WorkerManager()
+        self.log_processor = LogProcessor()
+        self.response_formatter = ResponseFormatter()
         self._head_node_process: Optional[Any] = None
-        self._state_lock = threading.Lock()  # Thread safety
-        self._last_state_check = 0.0
-        self._state_cache_duration = 1.0  # Cache state for 1 second
+        # Cache for state to avoid repeated validation within single method calls
+        self._cached_state: Optional[Dict[str, Any]] = None
+        self._cache_timestamp: float = 0.0
+        self._cache_duration: float = 0.1  # Cache for 100ms within method calls
 
     @property
     def is_initialized(self) -> bool:
@@ -211,272 +220,52 @@ class RayManager:
         return self._state_manager.is_initialized()
 
     @property
-    def _is_initialized(self) -> bool:
-        """Get the _is_initialized flag for backward compatibility."""
-        return self.is_initialized
+    def cluster_address(self) -> Optional[str]:
+        """Get cluster address from cached state."""
+        return self._get_cached_state()["cluster_address"]
 
-    @_is_initialized.setter
-    def _is_initialized(self, value: bool) -> None:
-        """Set the _is_initialized flag for backward compatibility."""
-        self._state_manager.update_state(initialized=value)
+    @property
+    def dashboard_url(self) -> Optional[str]:
+        """Get dashboard URL from cached state."""
+        return self._get_cached_state()["dashboard_url"]
+
+    @property
+    def job_client(self) -> Optional[Any]:
+        """Get job client from cached state."""
+        return self._get_cached_state()["job_client"]
+
+    def _get_cached_state(self) -> Dict[str, Any]:
+        """Get state with short-term caching to avoid repeated validation within method calls."""
+        current_time = time.time()
+        if (
+            self._cached_state is None
+            or (current_time - self._cache_timestamp) > self._cache_duration
+        ):
+            self._cached_state = self._state_manager.get_state()
+            self._cache_timestamp = current_time
+        return self._cached_state
+
+    def _invalidate_cache(self) -> None:
+        """Invalidate the state cache to force refresh on next access."""
+        self._cached_state = None
+        self._cache_timestamp = 0.0
 
     def _ensure_initialized(self) -> None:
         """Ensure Ray is initialized with proper error handling."""
         if not self.is_initialized:
-            # Try to refresh state before failing
-            state = self._state_manager.get_state()
-            if not state["initialized"]:
+            # Invalidate cache and refresh state before failing
+            self._invalidate_cache()
+            if not self.is_initialized:
                 raise RuntimeError(
-                    "Ray is not initialized. Please start Ray first. "
-                    f"Internal state: {state['initialized']}, "
+                    f"Ray is not initialized. Please start Ray first. "
                     f"RAY_AVAILABLE: {RAY_AVAILABLE}, "
                     f"ray.is_initialized(): {ray.is_initialized() if ray else False}"
                 )
 
-    def _update_state(self, initialized: bool, **kwargs) -> None:
-        """Update internal state atomically."""
-        self._state_manager.update_state(initialized=initialized, **kwargs)
-
-    def _validate_log_parameters(
-        self, num_lines: int, max_size_mb: int
-    ) -> Optional[Dict[str, Any]]:
-        """Validate log retrieval parameters and return error if invalid."""
-        if num_lines <= 0:
-            return {"status": "error", "message": "num_lines must be positive"}
-        if num_lines > 10000:  # Reasonable upper limit
-            return {"status": "error", "message": "num_lines cannot exceed 10000"}
-        if max_size_mb <= 0 or max_size_mb > 100:  # 100MB max
-            return {
-                "status": "error",
-                "message": "max_size_mb must be between 1 and 100",
-            }
-        return None
-
-    def _truncate_logs_to_size(self, logs: str, max_size_mb: int) -> str:
-        """Truncate logs to specified size limit while preserving line boundaries."""
-        max_bytes = max_size_mb * 1024 * 1024
-        logs_bytes = logs.encode("utf-8")
-
-        if len(logs_bytes) <= max_bytes:
-            return logs
-
-        # Truncate to size limit, trying to break at line boundaries
-        truncated_bytes = logs_bytes[:max_bytes]
-        truncated_text = truncated_bytes.decode("utf-8", errors="ignore")
-
-        # Try to break at a line boundary
-        last_newline = truncated_text.rfind("\n")
-        if last_newline > 0:
-            truncated_text = truncated_text[:last_newline]
-
-        return truncated_text + f"\n... (truncated at {max_size_mb}MB limit)"
-
-    def _stream_logs_with_limits(
-        self,
-        log_source: Union[str, List[str]],
-        max_lines: int = 100,
-        max_size_mb: int = 10,
-    ) -> str:
-        """Stream logs with line and size limits to prevent memory exhaustion."""
-        lines = []
-        current_size = 0
-        max_size_bytes = max_size_mb * 1024 * 1024
-
-        try:
-            # Handle both string and list inputs
-            if isinstance(log_source, str):
-                log_lines = log_source.split("\n")
-            else:
-                log_lines = log_source
-
-            for line in log_lines:
-                line_bytes = line.encode("utf-8")
-
-                # Check size limit
-                if current_size + len(line_bytes) > max_size_bytes:
-                    lines.append(f"... (truncated at {max_size_mb}MB limit)")
-                    break
-
-                # Check line limit
-                if len(lines) >= max_lines:
-                    lines.append(f"... (truncated at {max_lines} lines)")
-                    break
-
-                lines.append(line.rstrip())
-                current_size += len(line_bytes)
-
-        except Exception as e:
-            logger.error(f"Error streaming logs: {e}")
-            lines.append(f"Error reading logs: {str(e)}")
-
-        return "\n".join(lines)
-
-    async def _stream_logs_async(
-        self,
-        log_source: Union[str, List[str]],
-        max_lines: int = 100,
-        max_size_mb: int = 10,
-    ) -> str:
-        """Async version of log streaming for better performance with large logs."""
-        return await asyncio.get_event_loop().run_in_executor(
-            None, self._stream_logs_with_limits, log_source, max_lines, max_size_mb
-        )
-
-    async def _stream_logs_with_pagination(
-        self,
-        log_source: Union[str, List[str]],
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Stream logs with pagination support for large log files."""
-        try:
-            # Handle both string and list inputs
-            if isinstance(log_source, str):
-                log_lines = log_source.split("\n")
-            else:
-                log_lines = log_source
-
-            total_lines = len(log_lines)
-            total_pages = (total_lines + page_size - 1) // page_size
-
-            # Validate page number
-            if page < 1 or page > total_pages:
-                return {
-                    "status": "error",
-                    "message": f"Invalid page number. Available pages: 1-{total_pages}",
-                    "total_pages": total_pages,
-                    "total_lines": total_lines,
-                }
-
-            # Calculate start and end indices
-            start_idx = (page - 1) * page_size
-            end_idx = min(start_idx + page_size, total_lines)
-
-            # Extract page lines
-            page_lines = log_lines[start_idx:end_idx]
-
-            # Apply size limit to the page
-            current_size = 0
-            max_size_bytes = max_size_mb * 1024 * 1024
-            limited_lines = []
-
-            for line in page_lines:
-                line_bytes = line.encode("utf-8")
-                if current_size + len(line_bytes) > max_size_bytes:
-                    limited_lines.append(f"... (truncated at {max_size_mb}MB limit)")
-                    break
-                limited_lines.append(line.rstrip())
-                current_size += len(line_bytes)
-
-            return {
-                "status": "success",
-                "logs": "\n".join(limited_lines),
-                "pagination": {
-                    "current_page": page,
-                    "total_pages": total_pages,
-                    "page_size": page_size,
-                    "total_lines": total_lines,
-                    "lines_in_page": len(limited_lines),
-                    "has_next": page < total_pages,
-                    "has_previous": page > 1,
-                },
-                "size_info": {
-                    "current_size_mb": current_size / (1024 * 1024),
-                    "max_size_mb": max_size_mb,
-                },
-            }
-
-        except Exception as e:
-            logger.error(f"Error in paginated log streaming: {e}")
-            return {
-                "status": "error",
-                "message": f"Error streaming logs with pagination: {str(e)}",
-            }
-
-    async def _initialize_job_client_with_retry(
-        self, address: str, max_retries: int = 8, delay: float = 3.0
-    ):
-        """Initialize job client with retry logic.
-
-        Attempts to create a JobSubmissionClient with retry logic to handle
-        cases where the dashboard might not be immediately available after
-        cluster startup.
-
-        Args:
-            address: Dashboard URL to connect to
-            max_retries: Maximum number of retry attempts
-            delay: Delay between retry attempts in seconds
-
-        Returns:
-            JobSubmissionClient instance if successful, None otherwise
-        """
-        if JobSubmissionClient is None:
-            logger.warning("JobSubmissionClient not available")
-            return None
-
-        for attempt in range(max_retries):
-            try:
-                logger.info(
-                    f"Attempting to initialize job client (attempt {attempt + 1}/{max_retries})"
-                )
-                job_client = JobSubmissionClient(address)
-                logger.info("Job client initialized successfully")
-                return job_client
-            except Exception as e:
-                logger.warning(
-                    f"Job client initialization attempt {attempt + 1} failed: {e}"
-                )
-                if attempt < max_retries - 1:
-                    logger.info(f"Retrying in {delay} seconds...")
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error("Job client initialization failed after all retries")
-                    return None
-
-    def _filter_cluster_starting_parameters(
-        self, kwargs: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Filter out parameters that are only valid for starting new clusters.
-
-        When connecting to an existing cluster (address is provided), these parameters
-        are ignored as they only apply to cluster creation, not connection.
-
-        Args:
-            kwargs: The keyword arguments to filter
-
-        Returns:
-            Filtered kwargs with cluster-starting parameters removed
-        """
-        # Parameters that are only valid for starting new clusters
-        cluster_starting_params = {
-            "num_cpus",
-            "num_gpus",
-            "object_store_memory",
-            "head_node_port",
-            "dashboard_port",
-            "head_node_host",
-            "worker_nodes",
-        }
-
-        filtered_kwargs = {}
-        ignored_params = []
-
-        for key, value in kwargs.items():
-            if key in cluster_starting_params:
-                ignored_params.append(key)
-                logger.info(
-                    f"Ignoring cluster-starting parameter '{key}' when connecting to existing cluster"
-                )
-            else:
-                filtered_kwargs[key] = value
-
-        if ignored_params:
-            logger.info(
-                f"Filtered out cluster-starting parameters when connecting to existing cluster: {ignored_params}"
-            )
-
-        return filtered_kwargs
+    def _update_state(self, **kwargs) -> None:
+        """Update internal state atomically and invalidate cache."""
+        self._state_manager.update_state(**kwargs)
+        self._invalidate_cache()
 
     def _sanitize_init_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize Ray init kwargs to remove None values and invalid parameters."""
@@ -500,7 +289,9 @@ class RayManager:
         """
         if self._head_node_process is not None:
             try:
-                logger.info(f"Cleaning up head node process with {timeout}s timeout")
+                LoggingUtility.log_info(
+                    "cleanup", f"Cleaning up head node process with {timeout}s timeout"
+                )
 
                 # Get process and all its children if psutil is available
                 children = []
@@ -508,19 +299,26 @@ class RayManager:
                     try:
                         parent = psutil.Process(self._head_node_process.pid)
                         children = parent.children(recursive=True)
-                        logger.info(f"Found {len(children)} child processes to cleanup")
+                        LoggingUtility.log_info(
+                            "cleanup",
+                            f"Found {len(children)} child processes to cleanup",
+                        )
                     except (
                         psutil.NoSuchProcess,
                         psutil.AccessDenied,
                         psutil.ZombieProcess,
                     ) as e:
-                        logger.warning(f"Could not enumerate child processes: {e}")
+                        LoggingUtility.log_warning(
+                            "cleanup", f"Could not enumerate child processes: {e}"
+                        )
 
                 # Terminate all child processes gracefully first
                 for child in children:
                     try:
                         child.terminate()
-                        logger.debug(f"Terminated child process {child.pid}")
+                        LoggingUtility.log_debug(
+                            "cleanup", f"Terminated child process {child.pid}"
+                        )
                     except (
                         psutil.NoSuchProcess,
                         psutil.AccessDenied,
@@ -530,7 +328,9 @@ class RayManager:
 
                 # Terminate the main process
                 self._head_node_process.terminate()
-                logger.info("Sent terminate signal to head node process")
+                LoggingUtility.log_info(
+                    "cleanup", "Sent terminate signal to head node process"
+                )
 
                 # Wait for graceful termination with timeout
                 try:
@@ -540,7 +340,9 @@ class RayManager:
                         ),
                         timeout=timeout,
                     )
-                    logger.info("Head node process terminated gracefully")
+                    LoggingUtility.log_info(
+                        "cleanup", "Head node process terminated gracefully"
+                    )
                     # Wait for children to terminate (shorter timeout for children)
                     if children:
                         child_timeout = min(5, timeout // 2)
@@ -552,8 +354,9 @@ class RayManager:
                                     ),
                                     timeout=child_timeout,
                                 )
-                                logger.debug(
-                                    f"Child process {child.pid} terminated gracefully"
+                                LoggingUtility.log_debug(
+                                    "cleanup",
+                                    f"Child process {child.pid} terminated gracefully",
                                 )
                             except (
                                 asyncio.TimeoutError,
@@ -561,18 +364,22 @@ class RayManager:
                                 psutil.AccessDenied,
                                 psutil.ZombieProcess,
                             ):
-                                logger.debug(
-                                    f"Child process {child.pid} cleanup completed (timeout or already terminated)"
+                                LoggingUtility.log_debug(
+                                    "cleanup",
+                                    f"Child process {child.pid} cleanup completed (timeout or already terminated)",
                                 )
                 except asyncio.TimeoutError:
-                    logger.warning(
-                        f"Head node process did not terminate within {timeout}s, force killing"
+                    LoggingUtility.log_warning(
+                        "cleanup",
+                        f"Head node process did not terminate within {timeout}s, force killing",
                     )
                     # Force kill all child processes
                     for child in children:
                         try:
                             child.kill()
-                            logger.debug(f"Force killed child process {child.pid}")
+                            LoggingUtility.log_debug(
+                                "cleanup", f"Force killed child process {child.pid}"
+                            )
                         except (
                             psutil.NoSuchProcess,
                             psutil.AccessDenied,
@@ -586,12 +393,17 @@ class RayManager:
                         await asyncio.get_event_loop().run_in_executor(
                             None, self._head_node_process.wait
                         )
-                        logger.info("Head node process force killed successfully")
+                        LoggingUtility.log_info(
+                            "cleanup", "Head node process force killed successfully"
+                        )
                     except Exception as e:
-                        logger.warning(f"Error waiting for force kill completion: {e}")
+                        LoggingUtility.log_warning(
+                            "cleanup", f"Error waiting for force kill completion: {e}"
+                        )
             finally:
                 self._head_node_process = None
 
+    @ResponseFormatter.handle_exceptions("init cluster")
     async def init_cluster(
         self,
         address: Optional[str] = None,
@@ -640,10 +452,9 @@ class RayManager:
         """
         try:
             if not RAY_AVAILABLE or ray is None:
-                return {
-                    "status": "error",
-                    "message": "Ray is not available. Please install Ray.",
-                }
+                return ResponseFormatter.format_error_response(
+                    "init cluster", "Ray is not available. Please install Ray."
+                )
 
             async def find_free_port(start_port=10001, max_tries=50):
                 """Find a free port with retry logic to handle race conditions."""
@@ -715,8 +526,8 @@ class RayManager:
                 }
                 init_kwargs.update(filtered_kwargs)
                 ray_context = ray.init(**init_kwargs)
-                self._update_state(initialized=True)
-                self._state_manager.update_state(
+                self._update_state(
+                    initialized=True,
                     cluster_address=ray_context.address_info["address"],
                     dashboard_url=ray_context.dashboard_url,
                     gcs_address=address,
@@ -724,56 +535,58 @@ class RayManager:
 
                 # Initialize job client with retry logic - this must complete before returning success
                 job_client_status = "ready"
-                if (
-                    JobSubmissionClient is not None
-                    and self._state_manager.get_state()["cluster_address"]
-                ):
+                if JobSubmissionClient is not None and self.cluster_address:
                     # Use the stored dashboard URL for job client
-                    if self._state_manager.get_state()["dashboard_url"]:
-                        logger.info(
-                            f"Initializing job client with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
+                    if self.dashboard_url:
+                        LoggingUtility.log_info(
+                            "job_client",
+                            f"Initializing job client with dashboard URL: {self.dashboard_url}",
                         )
-                        self._state_manager.update_state(
-                            job_client=await self._initialize_job_client_with_retry(
-                                self._state_manager.get_state()["dashboard_url"]
-                            )
+                        job_client = await self._initialize_job_client_with_retry(
+                            self.dashboard_url
                         )
-                        if self._state_manager.get_state()["job_client"] is None:
+                        self._update_state(job_client=job_client)
+                        if self.job_client is None:
                             job_client_status = "unavailable"
-                            logger.warning(
-                                "Job client initialization failed after retries"
+                            LoggingUtility.log_warning(
+                                "job_client",
+                                "Job client initialization failed after retries",
                             )
                         else:
-                            logger.info("Job client initialized successfully")
+                            LoggingUtility.log_info(
+                                "job_client", "Job client initialized successfully"
+                            )
                     else:
-                        logger.warning(
-                            "Dashboard URL not available for job client initialization"
+                        LoggingUtility.log_warning(
+                            "job_client",
+                            "Dashboard URL not available for job client initialization",
                         )
                         job_client_status = "unavailable"
                 else:
                     if JobSubmissionClient is None:
-                        logger.warning("JobSubmissionClient not available")
+                        LoggingUtility.log_warning(
+                            "job_client", "JobSubmissionClient not available"
+                        )
                         job_client_status = "unavailable"
-                    elif not self._state_manager.get_state()["cluster_address"]:
-                        logger.warning(
-                            "Cluster address not available for job client initialization"
+                    elif not self.cluster_address:
+                        LoggingUtility.log_warning(
+                            "job_client",
+                            "Cluster address not available for job client initialization",
                         )
                         job_client_status = "unavailable"
 
-                return {
-                    "status": "connected",
-                    "message": f"Successfully connected to Ray cluster at {address}",
-                    "cluster_address": self._state_manager.get_state()[
-                        "cluster_address"
-                    ],
-                    "dashboard_url": ray_context.dashboard_url,
-                    "node_id": (
+                return ResponseFormatter.format_success_response(
+                    result_type="connected",
+                    message=f"Successfully connected to Ray cluster at {address}",
+                    cluster_address=self.cluster_address,
+                    dashboard_url=ray_context.dashboard_url,
+                    node_id=(
                         ray.get_runtime_context().get_node_id()
                         if ray is not None
                         else None
                     ),
-                    "job_client_status": job_client_status,
-                }
+                    job_client_status=job_client_status,
+                )
             else:
                 import os
                 import subprocess
@@ -816,9 +629,9 @@ class RayManager:
                 env = os.environ.copy()
                 env["RAY_DISABLE_USAGE_STATS"] = "1"
                 env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
-                logger.info(
-                    "Starting head node with command: %s",
-                    " ".join(head_cmd),
+                LoggingUtility.log_info(
+                    "head_node",
+                    f"Starting head node with command: {' '.join(head_cmd)}",
                 )
                 head_process = subprocess.Popen(
                     head_cmd,
@@ -856,22 +669,17 @@ class RayManager:
                         "status": "error",
                         "message": f"Could not parse GCS address from head node output. stdout: {stdout}, stderr: {stderr}",
                     }
-                # Store GCS address for worker nodes
-                self._state_manager.update_state(gcs_address=gcs_address)
-                # Store dashboard URL for job client operations
-                self._state_manager.update_state(dashboard_url=dashboard_url)
+                # Store GCS address and dashboard URL
+                self._update_state(gcs_address=gcs_address, dashboard_url=dashboard_url)
 
                 # Fallback: If dashboard URL parsing failed, construct it from the known port
-                if (
-                    not self._state_manager.get_state()["dashboard_url"]
-                    and dashboard_port
-                ):
+                if not self.dashboard_url and dashboard_port:
                     # Use localhost for dashboard URL since Ray dashboard typically binds to localhost
-                    self._state_manager.update_state(
-                        dashboard_url=f"http://127.0.0.1:{dashboard_port}"
-                    )
-                    logger.info(
-                        f"Constructed dashboard URL from fallback: {self._state_manager.get_state()['dashboard_url']}"
+                    fallback_url = f"http://127.0.0.1:{dashboard_port}"
+                    self._update_state(dashboard_url=fallback_url)
+                    LoggingUtility.log_info(
+                        "head_node",
+                        f"Constructed dashboard URL from fallback: {fallback_url}",
                     )
 
                 # Use direct connection to head node for better job submission support
@@ -883,56 +691,63 @@ class RayManager:
                 init_kwargs.update(self._sanitize_init_kwargs(kwargs))
                 try:
                     ray_context = ray.init(**init_kwargs)
-                    self._update_state(initialized=True)
-                    self._state_manager.update_state(
+                    self._update_state(
+                        initialized=True,
                         cluster_address=gcs_address,  # Store the direct address
                     )
                 except Exception as e:
-                    logger.error(f"Failed to connect to head node: {e}")
-                    logger.error(f"Head node stdout: {stdout}")
-                    logger.error(f"Head node stderr: {stderr}")
+                    LoggingUtility.log_error(
+                        "head_node", f"Failed to connect to head node: {e}"
+                    )
+                    LoggingUtility.log_error("head_node", f"Head node stdout: {stdout}")
+                    LoggingUtility.log_error("head_node", f"Head node stderr: {stderr}")
 
                     # Clean up the head node process if ray.init() failed
                     await self._cleanup_head_node_process()
 
-                    return {
-                        "status": "error",
-                        "message": f"Failed to connect to head node: {str(e)}",
-                    }
+                    return ResponseFormatter.format_error_response(
+                        "connect to head node", e
+                    )
 
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = "ready"
-            if (
-                JobSubmissionClient is not None
-                and self._state_manager.get_state()["cluster_address"]
-            ):
+            if JobSubmissionClient is not None and self.cluster_address:
                 # Use the stored dashboard URL for job client
-                if self._state_manager.get_state()["dashboard_url"]:
-                    logger.info(
-                        f"Initializing job client with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
+                if self.dashboard_url:
+                    LoggingUtility.log_info(
+                        "job_client",
+                        f"Initializing job client with dashboard URL: {self.dashboard_url}",
                     )
-                    self._state_manager.update_state(
-                        job_client=await self._initialize_job_client_with_retry(
-                            self._state_manager.get_state()["dashboard_url"]
-                        )
+                    job_client = await self._initialize_job_client_with_retry(
+                        self.dashboard_url
                     )
-                    if self._state_manager.get_state()["job_client"] is None:
+                    self._update_state(job_client=job_client)
+                    if self.job_client is None:
                         job_client_status = "unavailable"
-                        logger.warning("Job client initialization failed after retries")
+                        LoggingUtility.log_warning(
+                            "job_client",
+                            "Job client initialization failed after retries",
+                        )
                     else:
-                        logger.info("Job client initialized successfully")
+                        LoggingUtility.log_info(
+                            "job_client", "Job client initialized successfully"
+                        )
                 else:
-                    logger.warning(
-                        "Dashboard URL not available for job client initialization"
+                    LoggingUtility.log_warning(
+                        "job_client",
+                        "Dashboard URL not available for job client initialization",
                     )
                     job_client_status = "unavailable"
             else:
                 if JobSubmissionClient is None:
-                    logger.warning("JobSubmissionClient not available")
+                    LoggingUtility.log_warning(
+                        "job_client", "JobSubmissionClient not available"
+                    )
                     job_client_status = "unavailable"
-                elif not self._state_manager.get_state()["cluster_address"]:
-                    logger.warning(
-                        "Cluster address not available for job client initialization"
+                elif not self.cluster_address:
+                    LoggingUtility.log_warning(
+                        "job_client",
+                        "Cluster address not available for job client initialization",
                     )
                     job_client_status = "unavailable"
 
@@ -949,7 +764,7 @@ class RayManager:
             worker_results = []
             if worker_nodes and address is None:  # Only start workers for new clusters
                 worker_results = await self._worker_manager.start_worker_nodes(
-                    worker_nodes, self._state_manager.get_state()["gcs_address"]
+                    worker_nodes, self._get_cached_state()["gcs_address"]
                 )
 
             # Determine status based on whether we connected or started
@@ -960,20 +775,22 @@ class RayManager:
                 status = "started"
                 message = "Ray cluster started successfully"
 
-            return {
-                "status": status,
-                "message": message,
-                "cluster_address": self._state_manager.get_state()["cluster_address"],
-                "dashboard_url": self._state_manager.get_state()["dashboard_url"],
-                "node_id": (
+            return ResponseFormatter.format_success_response(
+                result_type=status,
+                message=message,
+                cluster_address=self.cluster_address,
+                dashboard_url=self.dashboard_url,
+                node_id=(
                     ray.get_runtime_context().get_node_id() if ray is not None else None
                 ),
-                "job_client_status": job_client_status,
-                "worker_nodes": worker_results if worker_results else None,
-            }
+                job_client_status=job_client_status,
+                worker_nodes=worker_results if worker_results else None,
+            )
 
         except Exception as e:
-            logger.error(f"Failed to initialize Ray cluster: {e}")
+            LoggingUtility.log_error(
+                "init_cluster", f"Failed to initialize Ray cluster: {e}"
+            )
 
             # Clean up the head node process if it was started but initialization failed
             await self._cleanup_head_node_process()
@@ -1004,7 +821,9 @@ class RayManager:
         """Stop the Ray cluster."""
         try:
             if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
+                return ResponseFormatter.format_error_response(
+                    "stop cluster", "Ray is not available"
+                )
 
             if not ray.is_initialized():
                 return {
@@ -1040,19 +859,16 @@ class RayManager:
 
             self._state_manager.reset_state()
 
-            return {
-                "status": "stopped",
-                "message": "Ray cluster stopped successfully",
-                "worker_nodes": worker_stop_results,
-                "head_node": head_stop_result,
-            }
+            return ResponseFormatter.format_success_response(
+                result_type="stopped",
+                message="Ray cluster stopped successfully",
+                worker_nodes=worker_stop_results,
+                head_node=head_stop_result,
+            )
 
         except Exception as e:
-            logger.error(f"Failed to stop Ray cluster: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to stop Ray cluster: {str(e)}",
-            }
+            LoggingUtility.log_error("stop_cluster", f"Failed to stop Ray cluster: {e}")
+            return ResponseFormatter.format_error_response("stop cluster", e)
 
     async def inspect_ray(self) -> Dict[str, Any]:
         """Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations."""
@@ -1211,25 +1027,25 @@ class RayManager:
                     "Cluster configuration appears optimal."
                 )
 
-            return {
-                "status": "success",
-                "timestamp": time.time(),
-                "cluster_overview": {
+            return ResponseFormatter.format_success_response(
+                result_type="success",
+                timestamp=time.time(),
+                cluster_overview={
                     "status": "running",
-                    "address": self._state_manager.get_state()["cluster_address"],
+                    "address": self.cluster_address,
                     "total_nodes": len(nodes),
                     "alive_nodes": len([n for n in nodes if n["Alive"]]),
                     "total_workers": total_workers,
                     "running_workers": running_workers,
                 },
-                "resources": {
+                resources={
                     "cluster_resources": cluster_resources,
                     "available_resources": available_resources,
                     "resource_usage": resource_usage,
                 },
-                "nodes": node_info,
-                "worker_nodes": worker_status,
-                "performance_metrics": {
+                nodes=node_info,
+                worker_nodes=worker_status,
+                performance_metrics={
                     "cluster_overview": {
                         "total_nodes": len(nodes),
                         "alive_nodes": len([n for n in nodes if n.get("Alive", False)]),
@@ -1251,7 +1067,7 @@ class RayManager:
                         if node.get("Alive", False)
                     ],
                 },
-                "health_check": {
+                health_check={
                     "overall_status": overall_status,
                     "health_score": round(health_score, 2),
                     "checks": health_checks,
@@ -1260,22 +1076,20 @@ class RayManager:
                     "active_jobs": 0,  # Would need job client to get this
                     "active_actors": 0,  # Would need to count actors
                 },
-                "optimization_analysis": {
+                optimization_analysis={
                     "cpu_utilization": round(cpu_utilization, 2),
                     "memory_utilization": round(memory_utilization, 2),
                     "node_count": len(nodes),
                     "alive_nodes": alive_nodes,
                 },
-                "optimization_suggestions": optimization_suggestions,
-            }
+                optimization_suggestions=optimization_suggestions,
+            )
 
         except Exception as e:
-            logger.error(f"Failed to get cluster info: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to get cluster info: {str(e)}",
-            }
+            LoggingUtility.log_error("retrieve logs", f"Failed to retrieve logs: {e}")
+            return self.response_formatter.format_error_response("retrieve logs", e)
 
+    @ResponseFormatter.handle_exceptions("submit job")
     async def submit_job(
         self,
         entrypoint: str,
@@ -1292,16 +1106,15 @@ class RayManager:
             if not entrypoint or not entrypoint.strip():
                 raise JobValidationError("Entrypoint cannot be empty")
 
-            if not self._state_manager.get_state()["job_client"]:
+            if not self.job_client:
                 # Try to create a job submission client using the dashboard URL
-                if self._state_manager.get_state()["dashboard_url"]:
+                if self.dashboard_url:
                     try:
-                        logger.info(
-                            f"Creating job submission client with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
+                        LoggingUtility.log_info(
+                            "job submission",
+                            f"Creating job submission client with dashboard URL: {self.dashboard_url}",
                         )
-                        job_client = JobSubmissionClient(
-                            self._state_manager.get_state()["dashboard_url"]
-                        )
+                        job_client = JobSubmissionClient(self.dashboard_url)
 
                         # Prepare submit arguments
                         submit_kwargs: Dict[str, Any] = {
@@ -1320,43 +1133,51 @@ class RayManager:
                             if key not in submit_kwargs and value is not None:
                                 submit_kwargs[key] = value
 
-                        # Submit the job
-                        if self._state_manager.get_state()["job_client"] is None:
-                            raise JobClientError("Job client is not initialized.")
-                        submitted_job_id = self._state_manager.get_state()[
-                            "job_client"
-                        ].submit_job(**submit_kwargs)
-                        return {
-                            "status": "submitted",
-                            "job_id": submitted_job_id,
-                            "message": f"Job {submitted_job_id} submitted successfully using dashboard URL",
-                        }
+                        # Submit the job using the new job client
+                        submitted_job_id = job_client.submit_job(**submit_kwargs)
+                        return ResponseFormatter.format_success_response(
+                            result_type="submitted",
+                            job_id=submitted_job_id,
+                            message=f"Job {submitted_job_id} submitted successfully using dashboard URL",
+                        )
                     except (ImportError, AttributeError) as e:
-                        logger.error(f"Job submission not available: {e}")
+                        LoggingUtility.log_error(
+                            "job submission", f"Job submission not available: {e}"
+                        )
                         return {
                             "status": "error",
                             "message": f"Job submission not available: {str(e)}",
                         }
                     except (ConnectionError, TimeoutError) as e:
-                        logger.error(f"Connection error during job submission: {e}")
+                        LoggingUtility.log_error(
+                            "job submission",
+                            f"Connection error during job submission: {e}",
+                        )
                         return {
                             "status": "error",
                             "message": f"Connection error: {str(e)}",
                         }
                     except (ValueError, TypeError) as e:
-                        logger.error(f"Invalid parameters for job submission: {e}")
+                        LoggingUtility.log_error(
+                            "job submission",
+                            f"Invalid parameters for job submission: {e}",
+                        )
                         return {
                             "status": "error",
                             "message": f"Invalid parameters: {str(e)}",
                         }
                     except RuntimeError as e:
-                        logger.error(f"Runtime error during job submission: {e}")
+                        LoggingUtility.log_error(
+                            "job submission",
+                            f"Runtime error during job submission: {e}",
+                        )
                         return {
                             "status": "error",
                             "message": f"Runtime error: {str(e)}",
                         }
                     except Exception as e:
-                        logger.error(
+                        LoggingUtility.log_error(
+                            "job submission",
                             f"Unexpected error during job submission: {e}",
                             exc_info=True,
                         )
@@ -1388,58 +1209,66 @@ class RayManager:
                     submit_kwargs[key] = value
 
             # Submit the job
-            if self._state_manager.get_state()["job_client"] is None:
+            if self.job_client is None:
                 raise JobClientError("Job client is not initialized.")
-            submitted_job_id = self._state_manager.get_state()["job_client"].submit_job(
-                **submit_kwargs
+            submitted_job_id = self.job_client.submit_job(**submit_kwargs)
+            return ResponseFormatter.format_success_response(
+                result_type="submitted",
+                job_id=submitted_job_id,
+                message=f"Job {submitted_job_id} submitted successfully",
             )
-            return {
-                "status": "submitted",
-                "job_id": submitted_job_id,
-                "message": f"Job {submitted_job_id} submitted successfully",
-            }
 
         except (KeyboardInterrupt, SystemExit):
             # Re-raise shutdown signals
             raise
         except JobSubmissionError as e:
             # Handle known job submission errors
-            logger.error(f"Job submission error: {e}")
+            LoggingUtility.log_error("job submission", f"Job submission error: {e}")
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
-            logger.error(f"Connection error during job submission: {e}")
+            LoggingUtility.log_error(
+                "job submission", f"Connection error during job submission: {e}"
+            )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
-            logger.error(f"Invalid parameters for job submission: {e}")
+            LoggingUtility.log_error(
+                "job submission", f"Invalid parameters for job submission: {e}"
+            )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
-            logger.error(f"Runtime error during job submission: {e}")
+            LoggingUtility.log_error(
+                "job submission", f"Runtime error during job submission: {e}"
+            )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
             # Log unexpected errors but don't mask them
-            logger.error(f"Unexpected error during job submission: {e}", exc_info=True)
+            LoggingUtility.log_error(
+                "job submission",
+                f"Unexpected error during job submission: {e}",
+                exc_info=True,
+            )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
+    @ResponseFormatter.handle_exceptions("list jobs")
     async def list_jobs(self) -> Dict[str, Any]:
         """List all jobs."""
         try:
             self._ensure_initialized()
 
-            if not self._state_manager.get_state()["job_client"]:
+            if not self.job_client:
                 # Try to create a job submission client using the dashboard URL
-                if self._state_manager.get_state()["dashboard_url"]:
+                if self.dashboard_url:
                     try:
-                        logger.info(
-                            f"Creating job submission client for listing jobs with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
+                        LoggingUtility.log_info(
+                            "job listing",
+                            f"Creating job submission client for listing jobs with dashboard URL: {self.dashboard_url}",
                         )
-                        job_client = JobSubmissionClient(
-                            self._state_manager.get_state()["dashboard_url"]
-                        )
+                        job_client = JobSubmissionClient(self.dashboard_url)
                         jobs = job_client.list_jobs()
 
-                        return {
-                            "status": "success",
-                            "jobs": [
+                        return ResponseFormatter.format_success_response(
+                            result_type="success",
+                            jobs=[
                                 {
                                     "job_id": job.job_id,
                                     "status": job.status,
@@ -1451,34 +1280,44 @@ class RayManager:
                                 }
                                 for job in jobs
                             ],
-                        }
+                        )
                     except (ImportError, AttributeError) as e:
-                        logger.error(f"Job listing not available: {e}")
+                        LoggingUtility.log_error(
+                            "job listing", f"Job listing not available: {e}"
+                        )
                         return {
                             "status": "error",
                             "message": f"Job listing not available: {str(e)}",
                         }
                     except (ConnectionError, TimeoutError) as e:
-                        logger.error(f"Connection error during job listing: {e}")
+                        LoggingUtility.log_error(
+                            "job listing", f"Connection error during job listing: {e}"
+                        )
                         return {
                             "status": "error",
                             "message": f"Connection error: {str(e)}",
                         }
                     except (ValueError, TypeError) as e:
-                        logger.error(f"Invalid parameters for job listing: {e}")
+                        LoggingUtility.log_error(
+                            "job listing", f"Invalid parameters for job listing: {e}"
+                        )
                         return {
                             "status": "error",
                             "message": f"Invalid parameters: {str(e)}",
                         }
                     except RuntimeError as e:
-                        logger.error(f"Runtime error during job listing: {e}")
+                        LoggingUtility.log_error(
+                            "job listing", f"Runtime error during job listing: {e}"
+                        )
                         return {
                             "status": "error",
                             "message": f"Runtime error: {str(e)}",
                         }
                     except Exception as e:
-                        logger.error(
-                            f"Unexpected error during job listing: {e}", exc_info=True
+                        LoggingUtility.log_error(
+                            "job listing",
+                            f"Unexpected error during job listing: {e}",
+                            exc_info=True,
                         )
                         return {
                             "status": "error",
@@ -1489,12 +1328,12 @@ class RayManager:
                         "status": "error",
                         "message": "Job listing not available: No dashboard URL available",
                     }
-            if self._state_manager.get_state()["job_client"] is None:
+            if self.job_client is None:
                 raise JobClientError("Job client is not initialized.")
-            jobs = self._state_manager.get_state()["job_client"].list_jobs()
-            return {
-                "status": "success",
-                "jobs": [
+            jobs = self.job_client.list_jobs()
+            return ResponseFormatter.format_success_response(
+                result_type="success",
+                jobs=[
                     {
                         "job_id": job.job_id,
                         "status": job.status,
@@ -1506,29 +1345,40 @@ class RayManager:
                     }
                     for job in jobs
                 ],
-            }
+            )
 
         except (KeyboardInterrupt, SystemExit):
             # Re-raise shutdown signals
             raise
         except JobSubmissionError as e:
             # Handle known job submission errors
-            logger.error(f"Job listing error: {e}")
+            LoggingUtility.log_error("job listing", f"Job listing error: {e}")
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
-            logger.error(f"Connection error during job listing: {e}")
+            LoggingUtility.log_error(
+                "job listing", f"Connection error during job listing: {e}"
+            )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
-            logger.error(f"Invalid parameters for job listing: {e}")
+            LoggingUtility.log_error(
+                "job listing", f"Invalid parameters for job listing: {e}"
+            )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
-            logger.error(f"Runtime error during job listing: {e}")
+            LoggingUtility.log_error(
+                "job listing", f"Runtime error during job listing: {e}"
+            )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
             # Log unexpected errors but don't mask them
-            logger.error(f"Unexpected error during job listing: {e}", exc_info=True)
+            LoggingUtility.log_error(
+                "job listing",
+                f"Unexpected error during job listing: {e}",
+                exc_info=True,
+            )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
+    @ResponseFormatter.handle_exceptions("cancel job")
     async def cancel_job(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job."""
         try:
@@ -1538,24 +1388,23 @@ class RayManager:
             if not job_id or not job_id.strip():
                 raise JobValidationError("Job ID cannot be empty")
 
-            if not self._state_manager.get_state()["job_client"]:
+            if not self.job_client:
                 # Try to create a job submission client using the dashboard URL
-                if self._state_manager.get_state()["dashboard_url"]:
+                if self.dashboard_url:
                     try:
-                        logger.info(
-                            f"Creating job submission client for cancelling job with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
+                        LoggingUtility.log_info(
+                            "job cancellation",
+                            f"Creating job submission client for cancelling job with dashboard URL: {self.dashboard_url}",
                         )
-                        job_client = JobSubmissionClient(
-                            self._state_manager.get_state()["dashboard_url"]
-                        )
+                        job_client = JobSubmissionClient(self.dashboard_url)
                         success = job_client.stop_job(job_id)
 
                         if success:
-                            return {
-                                "status": "cancelled",
-                                "job_id": job_id,
-                                "message": f"Job {job_id} cancelled successfully using dashboard URL",
-                            }
+                            return ResponseFormatter.format_success_response(
+                                result_type="cancelled",
+                                job_id=job_id,
+                                message=f"Job {job_id} cancelled successfully using dashboard URL",
+                            )
                         else:
                             return {
                                 "status": "error",
@@ -1563,31 +1412,43 @@ class RayManager:
                                 "message": f"Failed to cancel job {job_id}",
                             }
                     except (ImportError, AttributeError) as e:
-                        logger.error(f"Job cancellation not available: {e}")
+                        LoggingUtility.log_error(
+                            "job cancellation", f"Job cancellation not available: {e}"
+                        )
                         return {
                             "status": "error",
                             "message": f"Job cancellation not available: {str(e)}",
                         }
                     except (ConnectionError, TimeoutError) as e:
-                        logger.error(f"Connection error during job cancellation: {e}")
+                        LoggingUtility.log_error(
+                            "job cancellation",
+                            f"Connection error during job cancellation: {e}",
+                        )
                         return {
                             "status": "error",
                             "message": f"Connection error: {str(e)}",
                         }
                     except (ValueError, TypeError) as e:
-                        logger.error(f"Invalid parameters for job cancellation: {e}")
+                        LoggingUtility.log_error(
+                            "job cancellation",
+                            f"Invalid parameters for job cancellation: {e}",
+                        )
                         return {
                             "status": "error",
                             "message": f"Invalid parameters: {str(e)}",
                         }
                     except RuntimeError as e:
-                        logger.error(f"Runtime error during job cancellation: {e}")
+                        LoggingUtility.log_error(
+                            "job cancellation",
+                            f"Runtime error during job cancellation: {e}",
+                        )
                         return {
                             "status": "error",
                             "message": f"Runtime error: {str(e)}",
                         }
                     except Exception as e:
-                        logger.error(
+                        LoggingUtility.log_error(
+                            "job cancellation",
                             f"Unexpected error during job cancellation: {e}",
                             exc_info=True,
                         )
@@ -1600,15 +1461,15 @@ class RayManager:
                         "status": "error",
                         "message": "Job cancellation not available: No dashboard URL available",
                     }
-            if self._state_manager.get_state()["job_client"] is None:
+            if self.job_client is None:
                 raise JobClientError("Job client is not initialized.")
-            success = self._state_manager.get_state()["job_client"].stop_job(job_id)
+            success = self.job_client.stop_job(job_id)
             if success:
-                return {
-                    "status": "cancelled",
-                    "job_id": job_id,
-                    "message": f"Job {job_id} cancelled successfully",
-                }
+                return ResponseFormatter.format_success_response(
+                    result_type="cancelled",
+                    job_id=job_id,
+                    message=f"Job {job_id} cancelled successfully",
+                )
             else:
                 return {
                     "status": "error",
@@ -1621,21 +1482,29 @@ class RayManager:
             raise
         except JobSubmissionError as e:
             # Handle known job submission errors
-            logger.error(f"Job cancellation error: {e}")
+            LoggingUtility.log_error("job cancellation", f"Job cancellation error: {e}")
             return {"status": "error", "message": str(e)}
         except (ConnectionError, TimeoutError) as e:
-            logger.error(f"Connection error during job cancellation: {e}")
+            LoggingUtility.log_error(
+                "job cancellation", f"Connection error during job cancellation: {e}"
+            )
             return {"status": "error", "message": f"Connection error: {str(e)}"}
         except (ValueError, TypeError) as e:
-            logger.error(f"Invalid parameters for job cancellation: {e}")
+            LoggingUtility.log_error(
+                "job cancellation", f"Invalid parameters for job cancellation: {e}"
+            )
             return {"status": "error", "message": f"Invalid parameters: {str(e)}"}
         except RuntimeError as e:
-            logger.error(f"Runtime error during job cancellation: {e}")
+            LoggingUtility.log_error(
+                "job cancellation", f"Runtime error during job cancellation: {e}"
+            )
             return {"status": "error", "message": f"Runtime error: {str(e)}"}
         except Exception as e:
             # Log unexpected errors but don't mask them
-            logger.error(
-                f"Unexpected error during job cancellation: {e}", exc_info=True
+            LoggingUtility.log_error(
+                "job cancellation",
+                f"Unexpected error during job cancellation: {e}",
+                exc_info=True,
             )
             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
@@ -1664,7 +1533,9 @@ class RayManager:
             self._ensure_initialized()
 
             # Validate parameters
-            validation_error = self._validate_log_parameters(num_lines, max_size_mb)
+            validation_error = self.log_processor.validate_log_parameters(
+                num_lines, max_size_mb
+            )
             if validation_error:
                 return validation_error
 
@@ -1681,15 +1552,14 @@ class RayManager:
                     identifier, num_lines, max_size_mb
                 )
             else:
-                return {
-                    "status": "error",
-                    "message": f"Unsupported log type: {log_type}",
-                    "suggestion": "Supported types: 'job', 'actor', 'node'",
-                }
+                return self.response_formatter.format_validation_error(
+                    f"Unsupported log type: {log_type}",
+                    suggestion="Supported types: 'job', 'actor', 'node'",
+                )
 
         except Exception as e:
-            logger.error(f"Failed to retrieve logs: {e}")
-            return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
+            LoggingUtility.log_error("retrieve logs", f"Failed to retrieve logs: {e}")
+            return self.response_formatter.format_error_response("retrieve logs", e)
 
     async def _retrieve_job_logs(
         self,
@@ -1700,16 +1570,16 @@ class RayManager:
     ) -> Dict[str, Any]:
         """Retrieve logs for a specific job with streaming and memory protection."""
         try:
-            if self._state_manager.get_state()["job_client"]:
+            if self.job_client:
                 # Get job logs using job client with streaming
-                logs = self._state_manager.get_state()["job_client"].get_job_logs(
-                    job_id
-                )
+                logs = self.job_client.get_job_logs(job_id)
 
                 # Check size before processing
                 if logs and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024:
                     # Truncate logs to size limit
-                    truncated_logs = self._truncate_logs_to_size(logs, max_size_mb)
+                    truncated_logs = self.log_processor.truncate_logs_to_size(
+                        logs, max_size_mb
+                    )
                     response = {
                         "status": "success",
                         "log_type": "job",
@@ -1728,7 +1598,9 @@ class RayManager:
 
                 # Apply line limit if specified
                 if num_lines > 0:
-                    logs = await self._stream_logs_async(logs, num_lines, max_size_mb)
+                    logs = await self.log_processor.stream_logs_async(
+                        logs, num_lines, max_size_mb
+                    )
 
                 response: Dict[str, Any] = {
                     "status": "success",
@@ -1752,7 +1624,7 @@ class RayManager:
 
                     # Apply streaming with limits
                     if num_lines > 0:
-                        logs = await self._stream_logs_async(
+                        logs = await self.log_processor.stream_logs_async(
                             logs, num_lines, max_size_mb
                         )
                     else:
@@ -1761,7 +1633,9 @@ class RayManager:
                             logs
                             and len(logs.encode("utf-8")) > max_size_mb * 1024 * 1024
                         ):
-                            logs = self._truncate_logs_to_size(logs, max_size_mb)
+                            logs = self.log_processor.truncate_logs_to_size(
+                                logs, max_size_mb
+                            )
 
                     response: Dict[str, Any] = {
                         "status": "success",
@@ -1776,31 +1650,27 @@ class RayManager:
                     return response
 
                 except Exception as e:
-                    logger.error(f"Failed to retrieve job logs using Ray client: {e}")
-                    return {
-                        "status": "error",
-                        "message": f"Failed to retrieve job logs: {str(e)}",
-                        "suggestion": "Check if job exists and Ray is properly initialized",
-                    }
+                    LoggingUtility.log_error(
+                        "job logs", f"Failed to retrieve job logs using Ray client: {e}"
+                    )
+                    return self.response_formatter.format_error_response(
+                        "retrieve job logs using Ray client", e
+                    )
 
         except Exception as e:
-            logger.error(f"Failed to retrieve job logs: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve job logs: {str(e)}",
-            }
+            LoggingUtility.log_error("job logs", f"Failed to retrieve job logs: {e}")
+            return self.response_formatter.format_error_response("retrieve job logs", e)
 
+    @ResponseFormatter.handle_exceptions("retrieve actor logs")
     async def _retrieve_actor_logs(
         self, actor_identifier: str, num_lines: int = 100, max_size_mb: int = 10
     ) -> Dict[str, Any]:
         """Retrieve logs for a specific actor with streaming support."""
         try:
-            # Note: Ray doesn't provide direct actor log access through Python API
-            # This is a placeholder for future implementation
-            # For now, we can try to get actor information and suggest alternatives
-
             if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
+                return ResponseFormatter.format_error_response(
+                    "retrieve actor logs", "Ray is not available"
+                )
 
             # Try to get actor information
             try:
@@ -1833,26 +1703,29 @@ class RayManager:
                 }
 
             except ValueError:
-                return {
-                    "status": "error",
-                    "message": f"Actor {actor_identifier} not found",
-                    "suggestion": "Check Ray dashboard for available actors",
-                }
+                return ResponseFormatter.format_validation_error(
+                    f"Actor {actor_identifier} not found",
+                    suggestion="Check Ray dashboard for available actors",
+                )
 
         except Exception as e:
-            logger.error(f"Failed to retrieve actor logs: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve actor logs: {str(e)}",
-            }
+            LoggingUtility.log_error(
+                "actor logs", f"Failed to retrieve actor logs: {e}"
+            )
+            return self.response_formatter.format_error_response(
+                "retrieve actor logs", e
+            )
 
+    @ResponseFormatter.handle_exceptions("retrieve node logs")
     async def _retrieve_node_logs(
         self, node_id: str, num_lines: int = 100, max_size_mb: int = 10
     ) -> Dict[str, Any]:
         """Retrieve logs for a specific node with streaming support."""
         try:
             if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
+                return ResponseFormatter.format_error_response(
+                    "retrieve node logs", "Ray is not available"
+                )
 
             # Get node information
             nodes = ray.nodes()
@@ -1864,11 +1737,10 @@ class RayManager:
                     break
 
             if not target_node:
-                return {
-                    "status": "error",
-                    "message": f"Node {node_id} not found",
-                    "suggestion": "Use inspect_ray tool to see available nodes",
-                }
+                return ResponseFormatter.format_validation_error(
+                    f"Node {node_id} not found",
+                    suggestion="Use inspect_ray tool to see available nodes",
+                )
 
             # Note: Ray doesn't provide direct node log access through Python API
             # This is a placeholder for future implementation
@@ -1893,11 +1765,10 @@ class RayManager:
             }
 
         except Exception as e:
-            logger.error(f"Failed to retrieve node logs: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve node logs: {str(e)}",
-            }
+            LoggingUtility.log_error("node logs", f"Failed to retrieve node logs: {e}")
+            return self.response_formatter.format_error_response(
+                "retrieve node logs", e
+            )
 
     def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
         """Analyze job logs for errors and provide debugging suggestions."""
@@ -2043,6 +1914,7 @@ class RayManager:
 
         return suggestions
 
+    @ResponseFormatter.handle_exceptions("inspect job")
     async def inspect_job(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
         """
         Inspect a job with different modes: 'status', 'logs', or 'debug'.
@@ -2057,16 +1929,15 @@ class RayManager:
         try:
             self._ensure_initialized()
 
-            if not self._state_manager.get_state()["job_client"]:
+            if not self.job_client:
                 # Try to create a job submission client using the dashboard URL
-                if self._state_manager.get_state()["dashboard_url"]:
+                if self.dashboard_url:
                     try:
-                        logger.info(
-                            f"Creating job submission client for inspection with dashboard URL: {self._state_manager.get_state()['dashboard_url']}"
+                        LoggingUtility.log_info(
+                            "inspect job",
+                            f"Creating job submission client for inspection with dashboard URL: {self.dashboard_url}",
                         )
-                        job_client = JobSubmissionClient(
-                            self._state_manager.get_state()["dashboard_url"]
-                        )
+                        job_client = JobSubmissionClient(self.dashboard_url)
                         job_info = job_client.get_job_info(job_id)
 
                         # Base response with job status
@@ -2117,23 +1988,24 @@ class RayManager:
                         return response
 
                     except Exception as e:
-                        logger.error(f"Failed to inspect job using dashboard URL: {e}")
-                        return {
-                            "status": "error",
-                            "message": f"Job inspection failed: {str(e)}",
-                        }
+                        LoggingUtility.log_error(
+                            "inspect job",
+                            f"Failed to inspect job using dashboard URL: {e}",
+                        )
+                        return self.response_formatter.format_error_response(
+                            "inspect job using dashboard URL", e
+                        )
                 else:
-                    return {
-                        "status": "error",
-                        "message": "Job inspection not available: No dashboard URL available",
-                    }
+                    return self.response_formatter.format_error_response(
+                        "inspect job using dashboard URL", "No dashboard URL available"
+                    )
 
             # Use job client if available
-            if self._state_manager.get_state()["job_client"] is None:
-                return {"status": "error", "message": "Job client is not initialized."}
-            job_info = self._state_manager.get_state()["job_client"].get_job_info(
-                job_id
-            )
+            if self.job_client is None:
+                return self.response_formatter.format_error_response(
+                    "inspect job", "Job client is not initialized."
+                )
+            job_info = self.job_client.get_job_info(job_id)
 
             # Base response with job status
             response = {
@@ -2154,9 +2026,7 @@ class RayManager:
             # Add logs if requested
             if mode in ["logs", "debug"]:
                 try:
-                    job_logs = self._state_manager.get_state()[
-                        "job_client"
-                    ].get_job_logs(job_id)
+                    job_logs = self.job_client.get_job_logs(job_id)
                     response["logs"] = job_logs
                 except Exception as e:
                     response["logs"] = f"Failed to retrieve logs: {str(e)}"
@@ -2182,8 +2052,8 @@ class RayManager:
             return response
 
         except Exception as e:
-            logger.error(f"Failed to inspect job: {e}")
-            return {"status": "error", "message": f"Failed to inspect job: {str(e)}"}
+            LoggingUtility.log_error("inspect job", f"Failed to inspect job: {e}")
+            return self.response_formatter.format_error_response("inspect job", e)
 
     async def retrieve_logs_paginated(
         self,
@@ -2213,13 +2083,17 @@ class RayManager:
 
             # Validate parameters
             if page < 1:
-                return {"status": "error", "message": "page must be positive"}
+                return self.response_formatter.format_error_response(
+                    "retrieve logs with pagination", "page must be positive"
+                )
             if page_size <= 0 or page_size > 1000:
-                return {
-                    "status": "error",
-                    "message": "page_size must be between 1 and 1000",
-                }
-            validation_error = self._validate_log_parameters(page_size, max_size_mb)
+                return self.response_formatter.format_error_response(
+                    "retrieve logs with pagination",
+                    "page_size must be between 1 and 1000",
+                )
+            validation_error = self.log_processor.validate_log_parameters(
+                page_size, max_size_mb
+            )
             if validation_error:
                 return validation_error
 
@@ -2236,15 +2110,18 @@ class RayManager:
                     identifier, page, page_size, max_size_mb
                 )
             else:
-                return {
-                    "status": "error",
-                    "message": f"Unsupported log type: {log_type}",
-                    "suggestion": "Supported types: 'job', 'actor', 'node'",
-                }
+                return self.response_formatter.format_error_response(
+                    "retrieve logs with pagination", f"Unsupported log type: {log_type}"
+                )
 
         except Exception as e:
-            logger.error(f"Failed to retrieve logs with pagination: {e}")
-            return {"status": "error", "message": f"Failed to retrieve logs: {str(e)}"}
+            LoggingUtility.log_error(
+                "retrieve logs with pagination",
+                f"Failed to retrieve logs with pagination: {e}",
+            )
+            return self.response_formatter.format_error_response(
+                "retrieve logs with pagination", e
+            )
 
     async def _retrieve_job_logs_paginated(
         self,
@@ -2256,14 +2133,12 @@ class RayManager:
     ) -> Dict[str, Any]:
         """Retrieve job logs with pagination support."""
         try:
-            if self._state_manager.get_state()["job_client"]:
+            if self.job_client:
                 # Get job logs using job client
-                logs = self._state_manager.get_state()["job_client"].get_job_logs(
-                    job_id
-                )
+                logs = self.job_client.get_job_logs(job_id)
 
                 # Use paginated streaming
-                result = await self._stream_logs_with_pagination(
+                result = await self.log_processor.stream_logs_with_pagination(
                     logs, page, page_size, max_size_mb
                 )
 
@@ -2294,7 +2169,7 @@ class RayManager:
                     logs = job_client.get_job_logs(job_id)
 
                     # Use paginated streaming
-                    result = await self._stream_logs_with_pagination(
+                    result = await self.log_processor.stream_logs_with_pagination(
                         logs, page, page_size, max_size_mb
                     )
 
@@ -2318,19 +2193,22 @@ class RayManager:
                         return result
 
                 except Exception as e:
-                    logger.error(f"Failed to retrieve job logs using Ray client: {e}")
-                    return {
-                        "status": "error",
-                        "message": f"Failed to retrieve job logs: {str(e)}",
-                        "suggestion": "Check if job exists and Ray is properly initialized",
-                    }
+                    LoggingUtility.log_error(
+                        "job logs paginated",
+                        f"Failed to retrieve job logs using Ray client: {e}",
+                    )
+                    return self.response_formatter.format_error_response(
+                        "retrieve job logs using Ray client", e
+                    )
 
         except Exception as e:
-            logger.error(f"Failed to retrieve job logs with pagination: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve job logs: {str(e)}",
-            }
+            LoggingUtility.log_error(
+                "job logs paginated",
+                f"Failed to retrieve job logs with pagination: {e}",
+            )
+            return self.response_formatter.format_error_response(
+                "retrieve job logs with pagination", e
+            )
 
     async def _retrieve_actor_logs_paginated(
         self,
@@ -2343,14 +2221,16 @@ class RayManager:
         try:
             # Note: Ray doesn't provide direct actor log access through Python API
             # This is a placeholder for future implementation
-            if not RAY_AVAILABLE or ray is None:
-                return {"status": "error", "message": "Ray is not available"}
-
             return {
                 "status": "partial",
                 "log_type": "actor",
                 "identifier": actor_identifier,
                 "message": "Actor logs are not directly accessible through Ray Python API",
+                "suggestions": [
+                    "Check Ray dashboard for actor logs",
+                    "Use Ray CLI: ray logs --actor-id <actor_id>",
+                    "Monitor actor through dashboard at http://localhost:8265",
+                ],
                 "pagination": {
                     "current_page": page,
                     "total_pages": 0,
@@ -2360,20 +2240,17 @@ class RayManager:
                     "has_next": False,
                     "has_previous": False,
                 },
-                "suggestions": [
-                    "Check Ray dashboard for actor logs",
-                    "Use Ray CLI: ray logs --actor-id <actor_id>",
-                    "Monitor actor through dashboard at http://localhost:8265",
-                ],
                 "note": f"Pagination parameters (page={page}, page_size={page_size}, max_size_mb={max_size_mb}) will be applied when direct access is implemented",
             }
 
         except Exception as e:
-            logger.error(f"Failed to retrieve actor logs with pagination: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve actor logs: {str(e)}",
-            }
+            LoggingUtility.log_error(
+                "actor logs paginated",
+                f"Failed to retrieve actor logs with pagination: {e}",
+            )
+            return self.response_formatter.format_error_response(
+                "retrieve actor logs with pagination", e
+            )
 
     async def _retrieve_node_logs_paginated(
         self, node_id: str, page: int = 1, page_size: int = 100, max_size_mb: int = 10
@@ -2430,51 +2307,65 @@ class RayManager:
             }
 
         except Exception as e:
-            logger.error(f"Failed to retrieve node logs with pagination: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to retrieve node logs: {str(e)}",
-            }
+            LoggingUtility.log_error(
+                "node logs paginated",
+                f"Failed to retrieve node logs with pagination: {e}",
+            )
+            return self.response_formatter.format_error_response(
+                "retrieve node logs with pagination", e
+            )
 
     async def _communicate_with_timeout(
         self, process, timeout: int = 30, max_output_size: int = 1024 * 1024
     ) -> tuple[str, str]:
-        """Communicate with process with timeout and memory limits.
-
-        Args:
-            process: The subprocess to communicate with
-            timeout: Timeout in seconds for the communication
-            max_output_size: Maximum output size in bytes before truncation
-
-        Returns:
-            Tuple of (stdout, stderr) strings
-
-        Raises:
-            RuntimeError: If process communication times out
-        """
+        """Communicate with a process with timeout and output size limits."""
         try:
-            # Use asyncio.wait_for with timeout
+            # Run the synchronous communicate() method in an executor
+            loop = asyncio.get_event_loop()
             stdout, stderr = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, process.communicate),
-                timeout=timeout,
+                loop.run_in_executor(None, process.communicate), timeout=timeout
             )
-
-            # Limit output size to prevent memory issues
-            if stdout and len(stdout) > max_output_size:
-                stdout = stdout[:max_output_size] + "\n... (truncated)"
-            if stderr and len(stderr) > max_output_size:
-                stderr = stderr[:max_output_size] + "\n... (truncated)"
-
-            return stdout, stderr
+            return stdout or "", stderr or ""
         except asyncio.TimeoutError:
-            # Kill process if it hangs
-            try:
-                process.kill()
-            except Exception:
-                pass  # Process might already be dead
+            process.kill()
             raise RuntimeError(
                 f"Process communication timed out after {timeout} seconds"
             )
+
+    async def _initialize_job_client_with_retry(
+        self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
+    ) -> Optional[Any]:
+        """Initialize job client with retry logic."""
+        if JobSubmissionClient is None:
+            LoggingUtility.log_warning(
+                "job_client", "JobSubmissionClient not available"
+            )
+            return None
+
+        for attempt in range(max_retries):
+            try:
+                LoggingUtility.log_info(
+                    "job_client",
+                    f"Attempting to initialize job client (attempt {attempt + 1}/{max_retries})",
+                )
+                job_client = JobSubmissionClient(dashboard_url)
+                LoggingUtility.log_info(
+                    "job_client", "Job client initialized successfully"
+                )
+                return job_client
+            except Exception as e:
+                LoggingUtility.log_warning(
+                    "job_client",
+                    f"Job client initialization attempt {attempt + 1} failed: {e}",
+                )
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    LoggingUtility.log_error(
+                        "job_client",
+                        f"Job client initialization failed after {max_retries} attempts",
+                    )
+                    return None
 
     async def _stream_process_output(
         self, process, timeout: int = 30, max_lines: int = 1000

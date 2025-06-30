@@ -22,7 +22,7 @@ class TestExceptionHandling:
         """Create a RayManager instance for testing."""
         manager = RayManager()
         # Set internal state to avoid actual Ray setup
-        manager._is_initialized = True
+        manager._update_state(initialized=True)
         manager._job_client = Mock()
         return manager
 
