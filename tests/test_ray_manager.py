@@ -423,60 +423,60 @@ class TestRayManager:
         mock_process.kill.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_stream_process_output_error_handling(self, manager):
-        """Test _stream_process_output handles stream errors gracefully."""
-        mock_process = Mock()
-        mock_process.poll.return_value = None
-        mock_process.stdout = Mock()
-        mock_process.stderr = Mock()
+    async def test_stream_process_output_edge_cases(self, manager):
+        """Test _stream_process_output handles various edge cases gracefully."""
 
-        # Simulate stream read errors
+        # Test Case 1: Stream read errors
+        mock_process1 = Mock()
+        mock_process1.stdout = Mock()
+        mock_process1.stderr = Mock()
+
         def mock_stdout_readline():
             raise OSError("Stream error")
 
         def mock_stderr_readline():
             return b"normal error line\n"
 
-        mock_process.stdout.readline.side_effect = mock_stdout_readline
-        mock_process.stderr.readline.side_effect = mock_stderr_readline
+        mock_process1.stdout.readline.side_effect = mock_stdout_readline
+        mock_process1.stderr.readline.side_effect = mock_stderr_readline
 
-        call_count = 0
+        call_count1 = 0
 
-        def mock_poll():
-            nonlocal call_count
-            call_count += 1
-            return 0 if call_count > 2 else None
+        def mock_poll1():
+            nonlocal call_count1
+            call_count1 += 1
+            return 0 if call_count1 > 2 else None
 
-        mock_process.poll.side_effect = mock_poll
+        mock_process1.poll.side_effect = mock_poll1
 
-        # Should handle stream errors without crashing
-        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
+        stdout1, stderr1 = await manager._stream_process_output(
+            mock_process1, timeout=5
+        )
 
         # stdout should be empty due to errors, stderr should work
-        assert stdout == ""
-        assert "normal error line" in stderr
+        assert stdout1 == ""
+        assert "normal error line" in stderr1
 
-    @pytest.mark.asyncio
-    async def test_stream_process_output_no_streams(self, manager):
-        """Test _stream_process_output with no streams available."""
-        mock_process = Mock()
-        mock_process.poll.return_value = None
-        mock_process.stdout = None
-        mock_process.stderr = None
+        # Test Case 2: No streams available
+        mock_process2 = Mock()
+        mock_process2.stdout = None
+        mock_process2.stderr = None
 
-        call_count = 0
+        call_count2 = 0
 
-        def mock_poll():
-            nonlocal call_count
-            call_count += 1
-            return 0 if call_count > 2 else None
+        def mock_poll2():
+            nonlocal call_count2
+            call_count2 += 1
+            return 0 if call_count2 > 2 else None
 
-        mock_process.poll.side_effect = mock_poll
+        mock_process2.poll.side_effect = mock_poll2
 
-        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
+        stdout2, stderr2 = await manager._stream_process_output(
+            mock_process2, timeout=5
+        )
 
-        assert stdout == ""
-        assert stderr == ""
+        assert stdout2 == ""
+        assert stderr2 == ""
 
     @pytest.mark.asyncio
     async def test_find_free_port_error_handling(self, manager):
