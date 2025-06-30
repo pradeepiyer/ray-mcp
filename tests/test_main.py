@@ -36,6 +36,7 @@ class TestMain:
                     await main()
 
 
+@pytest.mark.fast
 class TestToolRegistry:
     """Test cases for ToolRegistry."""
 
@@ -44,13 +45,12 @@ class TestToolRegistry:
         self.mock_ray_manager = Mock()
         self.registry = ToolRegistry(self.mock_ray_manager)
 
-    def test_tool_registry_initialization(self):
-        """Test ToolRegistry initialization."""
+    def test_tool_registry_initialization_and_structure(self):
+        """Test ToolRegistry initialization and basic structure."""
         assert self.registry.ray_manager == self.mock_ray_manager
         assert len(self.registry._tools) > 0
 
-    def test_get_tool_list(self):
-        """Test get_tool_list returns proper Tool objects."""
+        # Test get_tool_list returns proper Tool objects
         tools = self.registry.get_tool_list()
         assert len(tools) > 0
 
@@ -60,8 +60,7 @@ class TestToolRegistry:
             assert hasattr(tool, "description")
             assert hasattr(tool, "inputSchema")
 
-    def test_get_tool_handler(self):
-        """Test get_tool_handler returns correct handlers."""
+        # Test tool handler functionality
         handler = self.registry.get_tool_handler("init_ray")
         assert handler is not None
         assert callable(handler)
@@ -69,23 +68,21 @@ class TestToolRegistry:
         handler = self.registry.get_tool_handler("unknown_tool")
         assert handler is None
 
-    def test_list_tool_names(self):
-        """Test list_tool_names returns all tool names."""
+        # Test list_tool_names
         names = self.registry.list_tool_names()
         assert len(names) > 0
         assert "init_ray" in names
         assert "stop_ray" in names
 
     @pytest.mark.asyncio
-    async def test_execute_tool_unknown_tool(self):
-        """Test execute_tool with unknown tool."""
+    async def test_execute_tool_scenarios(self):
+        """Test various execute_tool scenarios."""
+        # Test unknown tool
         result = await self.registry.execute_tool("unknown_tool", {})
         assert result["status"] == "error"
         assert "Unknown tool" in result["message"]
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_success(self):
-        """Test execute_tool with valid tool."""
+        # Test successful tool execution
         self.mock_ray_manager.init_cluster = AsyncMock(
             return_value={
                 "status": "success",
@@ -103,9 +100,7 @@ class TestToolRegistry:
         assert result.get("result_type") == "connected"
         self.mock_ray_manager.init_cluster.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_error(self):
-        """Test execute_tool with tool that raises exception."""
+        # Test tool execution with exception
         self.mock_ray_manager.init_cluster = AsyncMock(
             side_effect=Exception("Test error")
         )
