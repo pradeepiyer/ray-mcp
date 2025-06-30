@@ -296,6 +296,9 @@ class RayManager:
         Raises:
             RuntimeError: If no free port is found in the given range
         """
+        # Clean up any stale lock files before starting
+        self._cleanup_stale_lock_files()
+        
         port = start_port
         
         # Try to get temp directory, fallback to current directory if not available
@@ -309,33 +312,83 @@ class RayManager:
             try:
                 lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
                 
-                # Try to acquire exclusive lock on this port
-                with open(lock_file_path, 'w') as lock_file:
+                # Check if this port already has an active lock file
+                if os.path.exists(lock_file_path):
                     try:
-                        # Non-blocking exclusive lock
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        
-                        # Now try to bind to the port while holding the lock
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        # Try to read and validate the existing lock file
+                        with open(lock_file_path, 'r') as f:
+                            content = f.read().strip()
+                            if ',' in content:
+                                pid_str, timestamp_str = content.split(',', 1)
+                                pid = int(pid_str)
+                                timestamp = int(timestamp_str)
+                                current_time = int(time.time())
+                                
+                                # Check if the process still exists and lock is recent
+                                try:
+                                    os.kill(pid, 0)  # Check if process exists
+                                    if current_time - timestamp < 300:  # Less than 5 minutes old
+                                        # Active lock exists, skip this port
+                                        port += 1
+                                        continue
+                                except OSError:
+                                    # Process doesn't exist, lock is stale, remove it
+                                    os.unlink(lock_file_path)
+                            else:
+                                # Old format or corrupted, check file age
+                                stat = os.stat(lock_file_path)
+                                if time.time() - stat.st_mtime < 300:  # Less than 5 minutes old
+                                    # Skip this port, lock might still be valid
+                                    port += 1
+                                    continue
+                                else:
+                                    # Old lock file, remove it
+                                    os.unlink(lock_file_path)
+                    except (OSError, IOError, ValueError):
+                        # Error reading/parsing lock file, remove it and try to use the port
+                        try:
+                            os.unlink(lock_file_path)
+                        except OSError:
+                            pass
+                
+                # Try to acquire exclusive lock on this port
+                try:
+                    lock_file = open(lock_file_path, 'w')
+                    # Non-blocking exclusive lock
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    
+                    # Now try to bind to the port while holding the lock
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        try:
+                            s.bind(("", port))
+                            # Success! We have the port and the lock
+                            # Write the PID and timestamp to the lock file for debugging
+                            lock_file.write(f"{os.getpid()},{int(time.time())}\n")
+                            lock_file.flush()
+                            # Keep the file open to maintain the lock
+                            # The lock will be released when the file is closed by the OS
+                            # after the process exits or explicitly closed
+                            
+                            LoggingUtility.log_info(
+                                "port_allocation", 
+                                f"Successfully allocated port {port} with lock file {lock_file_path}"
+                            )
+                            return port
+                        except OSError:
+                            # Port is in use, close the lock file and try next port
+                            lock_file.close()
                             try:
-                                s.bind(("", port))
-                                # Success! We have the port and the lock
-                                # Write the PID to the lock file for debugging
-                                lock_file.write(f"{os.getpid()}\n")
-                                lock_file.flush()
-                                
-                                LoggingUtility.log_info(
-                                    "port_allocation", 
-                                    f"Successfully allocated port {port} with lock"
-                                )
-                                return port
+                                os.unlink(lock_file_path)
                             except OSError:
-                                # Port is in use, try next port
                                 pass
-                                
-                    except OSError:
-                        # Lock is already held by another process, try next port
+                        
+                except OSError:
+                    # Lock is already held by another process or file error, try next port
+                    try:
+                        if 'lock_file' in locals():
+                            lock_file.close()
+                    except:
                         pass
                         
             except (OSError, IOError):
@@ -376,6 +429,79 @@ class RayManager:
         raise RuntimeError(
             f"No free port found in range {start_port}-{start_port + max_tries - 1}"
         )
+
+    def _cleanup_port_lock(self, port: int) -> None:
+        """Clean up the lock file for a successfully used port.
+        
+        Args:
+            port: The port number whose lock file should be cleaned up
+        """
+        try:
+            temp_dir = tempfile.gettempdir()
+            lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
+            if os.path.exists(lock_file_path):
+                os.unlink(lock_file_path)
+                LoggingUtility.log_info(
+                    "port_allocation", 
+                    f"Cleaned up lock file for port {port}"
+                )
+        except (OSError, IOError) as e:
+            LoggingUtility.log_warning(
+                "port_allocation", 
+                f"Could not clean up lock file for port {port}: {e}"
+            )
+
+    def _cleanup_stale_lock_files(self) -> None:
+        """Clean up stale lock files from processes that no longer exist."""
+        try:
+            temp_dir = tempfile.gettempdir()
+            current_time = int(time.time())
+            
+            # Look for ray port lock files
+            for filename in os.listdir(temp_dir):
+                if filename.startswith("ray_port_") and filename.endswith(".lock"):
+                    lock_file_path = os.path.join(temp_dir, filename)
+                    try:
+                        # Try to read the PID and timestamp from the lock file
+                        with open(lock_file_path, 'r') as f:
+                            content = f.read().strip()
+                            if ',' in content:
+                                pid_str, timestamp_str = content.split(',', 1)
+                                pid = int(pid_str)
+                                timestamp = int(timestamp_str)
+                                
+                                # Check if the process still exists
+                                try:
+                                    os.kill(pid, 0)  # Signal 0 just checks if process exists
+                                    # Process exists, check if lock file is too old (older than 5 minutes)
+                                    if current_time - timestamp > 300:  # 5 minutes
+                                        LoggingUtility.log_warning(
+                                            "port_allocation",
+                                            f"Found stale lock file {filename} (>5min old), cleaning up"
+                                        )
+                                        os.unlink(lock_file_path)
+                                except OSError:
+                                    # Process doesn't exist, safe to remove lock file
+                                    LoggingUtility.log_info(
+                                        "port_allocation",
+                                        f"Cleaning up orphaned lock file {filename} (process {pid} gone)"
+                                    )
+                                    os.unlink(lock_file_path)
+                            else:
+                                # Old format or corrupted file, remove if older than 5 minutes
+                                stat = os.stat(lock_file_path)
+                                if current_time - stat.st_mtime > 300:
+                                    LoggingUtility.log_info(
+                                        "port_allocation",
+                                        f"Cleaning up old format lock file {filename}"
+                                    )
+                                    os.unlink(lock_file_path)
+                    except (OSError, IOError, ValueError):
+                        # Error reading file or invalid format, skip
+                        pass
+        except (OSError, IOError):
+            # Error listing directory, not critical
+            pass
 
     async def _cleanup_head_node_process(self, timeout: int = 10) -> None:
         """Terminate and reset the head node process with configurable timeout.
@@ -859,6 +985,13 @@ class RayManager:
             else:
                 status = "started"
                 message = "Ray cluster started successfully"
+
+            # Clean up port lock files now that the cluster is successfully running
+            if not address:  # Only clean up for new clusters, not connections
+                if head_node_port:
+                    self._cleanup_port_lock(head_node_port)
+                if dashboard_port:
+                    self._cleanup_port_lock(dashboard_port)
 
             return ResponseFormatter.format_success_response(
                 result_type=status,

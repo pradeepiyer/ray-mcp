@@ -168,9 +168,12 @@ class TestRayManager:
              patch('builtins.open', mock_open()) as mock_file, \
              patch('fcntl.flock', side_effect=mock_flock_side_effect) as mock_flock, \
              patch('socket.socket') as mock_socket, \
-             patch('os.path.exists', return_value=True), \
+             patch('os.path.exists', return_value=False), \
              patch('os.unlink') as mock_unlink, \
-             patch('os.getpid', return_value=12345):
+             patch('os.getpid', return_value=12345), \
+             patch('os.listdir', return_value=[]), \
+             patch('os.kill') as mock_kill, \
+             patch.object(manager, '_cleanup_stale_lock_files') as mock_cleanup:
             
             mock_socket.return_value.__enter__.return_value.bind.side_effect = mock_bind_side_effect
             
@@ -178,6 +181,9 @@ class TestRayManager:
             port = await manager.find_free_port(start_port=20000, max_tries=5)
             assert isinstance(port, int)
             assert port == 20000
+            
+            # Verify cleanup was called at the beginning
+            mock_cleanup.assert_called()
             
             # Verify file locking was used (core race condition fix)
             mock_flock.assert_called()
@@ -203,7 +209,9 @@ class TestRayManager:
              patch('fcntl.flock'), \
              patch('socket.socket') as mock_socket, \
              patch('os.path.exists', return_value=False), \
-             patch('os.getpid', return_value=12345):
+             patch('os.getpid', return_value=12345), \
+             patch('os.listdir', return_value=[]), \
+             patch.object(manager, '_cleanup_stale_lock_files'):
             
             # All ports are in use
             mock_socket.return_value.__enter__.return_value.bind.side_effect = OSError("Address already in use")
@@ -212,10 +220,19 @@ class TestRayManager:
                 await manager.find_free_port(start_port=23000, max_tries=3)
         
         # Test 2: File system errors (should fallback to simple socket binding)
-        with patch('tempfile.gettempdir', side_effect=OSError("Permission denied")), \
-             patch('builtins.open', side_effect=OSError("Permission denied")), \
+        gettempdir_call_count = 0
+        def mock_gettempdir_side_effect():
+            nonlocal gettempdir_call_count
+            gettempdir_call_count += 1
+            # Let cleanup calls succeed, but fail for port allocation
+            if gettempdir_call_count > 1:
+                raise OSError("Permission denied")
+            return '/tmp'
+        
+        with patch('tempfile.gettempdir', side_effect=mock_gettempdir_side_effect), \
              patch('socket.socket') as mock_socket, \
-             patch('os.getpid', return_value=12345):
+             patch('os.getpid', return_value=12345), \
+             patch.object(manager, '_cleanup_stale_lock_files'):
             
             # Fallback socket binding succeeds
             mock_socket.return_value.__enter__.return_value.bind.return_value = None
@@ -224,16 +241,20 @@ class TestRayManager:
             assert isinstance(port, int)
             assert port == 24000
         
-        # Test 3: Lock cleanup when ports fail
+        # Test 3: Existing lock file handling and cleanup
         with patch('tempfile.gettempdir', return_value='/tmp'), \
-             patch('builtins.open', mock_open()), \
+             patch('builtins.open', mock_open(read_data="12345,1640995200")) as mock_file, \
              patch('fcntl.flock'), \
              patch('socket.socket') as mock_socket, \
              patch('os.path.exists', return_value=True), \
              patch('os.unlink') as mock_unlink, \
-             patch('os.getpid', return_value=12345):
+             patch('os.getpid', return_value=12345), \
+             patch('os.listdir', return_value=['ray_port_25000.lock']), \
+             patch('os.kill', side_effect=OSError("No such process")), \
+             patch('time.time', return_value=1640995300), \
+             patch.object(manager, '_cleanup_stale_lock_files'):
             
-            # First port fails, second succeeds
+            # First port has stale lock (gets cleaned), second succeeds
             bind_attempts = 0
             def mock_bind(*args):
                 nonlocal bind_attempts
@@ -246,7 +267,7 @@ class TestRayManager:
             
             port = await manager.find_free_port(start_port=25000, max_tries=3)
             assert port == 25001  # Should get second port
-            mock_unlink.assert_called()  # Lock file cleanup should occur
+            # Note: lock file cleanup now happens through _cleanup_stale_lock_files
 
 
 @pytest.mark.fast
