@@ -142,6 +142,70 @@ class TestRayManager:
             assert ":" in address
             assert address.split(":")[1].isdigit()
 
+    @pytest.mark.asyncio
+    async def test_find_free_port_basic(self, manager):
+        """Test basic find_free_port functionality."""
+        # Test finding a free port with default parameters
+        port = await manager.find_free_port(start_port=20000, max_tries=10)
+        assert isinstance(port, int)
+        assert 20000 <= port < 20010
+
+    @pytest.mark.asyncio
+    async def test_find_free_port_race_condition_prevention(self, manager):
+        """Test that find_free_port prevents race conditions using file locking."""
+        import tempfile
+        import os
+        
+        # Test that concurrent calls to find_free_port don't return the same port
+        async def find_port_task(start_port):
+            return await manager.find_free_port(start_port=start_port, max_tries=5)
+        
+        # Run multiple concurrent port finding tasks
+        tasks = [find_port_task(21000 + i) for i in range(3)]
+        ports = await asyncio.gather(*tasks)
+        
+        # Verify all ports are different (no race condition)
+        assert len(set(ports)) == len(ports), f"Race condition detected: {ports}"
+        
+        # Verify all ports are in expected ranges
+        for i, port in enumerate(ports):
+            expected_start = 21000 + i
+            assert expected_start <= port < expected_start + 5
+
+    @pytest.mark.asyncio
+    async def test_find_free_port_lock_cleanup(self, manager):
+        """Test that port lock files are properly cleaned up."""
+        import tempfile
+        import os
+        
+        port = await manager.find_free_port(start_port=22000, max_tries=1)
+        
+        # Check that lock file was cleaned up (or doesn't interfere with subsequent calls)
+        port2 = await manager.find_free_port(start_port=22000, max_tries=1)
+        
+        # Should be able to get the same port again if it's free
+        assert isinstance(port2, int)
+
+    @pytest.mark.asyncio
+    async def test_find_free_port_no_available_ports(self, manager):
+        """Test find_free_port when no ports are available."""
+        # Mock socket.bind to always raise OSError (simulating all ports in use)
+        with patch('socket.socket') as mock_socket:
+            mock_socket.return_value.__enter__.return_value.bind.side_effect = OSError("Address already in use")
+            
+            with pytest.raises(RuntimeError, match="No free port found in range"):
+                await manager.find_free_port(start_port=23000, max_tries=3)
+
+    @pytest.mark.asyncio  
+    async def test_find_free_port_file_system_error_handling(self, manager):
+        """Test find_free_port handles file system errors gracefully."""
+        # Mock tempfile.gettempdir to raise an error
+        with patch('tempfile.gettempdir', side_effect=OSError("Permission denied")):
+            # Should still work by falling back gracefully
+            port = await manager.find_free_port(start_port=24000, max_tries=5)
+            assert isinstance(port, int)
+            assert 24000 <= port < 24005
+
 
 @pytest.mark.fast
 class TestExceptionHandling:

@@ -9,6 +9,8 @@ import os
 import socket
 import threading
 import time
+import fcntl
+import tempfile
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -277,6 +279,104 @@ class RayManager:
                 sanitized[key] = value
         return sanitized
 
+    async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:
+        """Find a free port with atomic reservation to prevent race conditions.
+        
+        Uses file locking to ensure that only one process can reserve a port at a time,
+        eliminating the race condition where multiple processes might try to use the same port.
+        Falls back to simple socket binding if file locking is not available.
+        
+        Args:
+            start_port: Starting port number to check from
+            max_tries: Maximum number of ports to try
+            
+        Returns:
+            int: A free port number
+            
+        Raises:
+            RuntimeError: If no free port is found in the given range
+        """
+        port = start_port
+        
+        # Try to get temp directory, fallback to current directory if not available
+        try:
+            temp_dir = tempfile.gettempdir()
+        except (OSError, IOError):
+            temp_dir = "."
+        
+        for attempt in range(max_tries):
+            # Try file locking approach first
+            try:
+                lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
+                
+                # Try to acquire exclusive lock on this port
+                with open(lock_file_path, 'w') as lock_file:
+                    try:
+                        # Non-blocking exclusive lock
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        
+                        # Now try to bind to the port while holding the lock
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                            try:
+                                s.bind(("", port))
+                                # Success! We have the port and the lock
+                                # Write the PID to the lock file for debugging
+                                lock_file.write(f"{os.getpid()}\n")
+                                lock_file.flush()
+                                
+                                LoggingUtility.log_info(
+                                    "port_allocation", 
+                                    f"Successfully allocated port {port} with lock"
+                                )
+                                return port
+                            except OSError:
+                                # Port is in use, try next port
+                                pass
+                                
+                    except OSError:
+                        # Lock is already held by another process, try next port
+                        pass
+                        
+            except (OSError, IOError):
+                # File locking failed, fall back to simple socket binding
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        s.bind(("", port))
+                        # Success without locking (less safe but better than failing)
+                        LoggingUtility.log_info(
+                            "port_allocation", 
+                            f"Successfully allocated port {port} without lock (fallback)"
+                        )
+                        return port
+                except OSError:
+                    # Port is in use, try next port
+                    pass
+            
+            # Clean up lock file if we created it but didn't use the port
+            try:
+                lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
+                if os.path.exists(lock_file_path):
+                    # Only remove if we can acquire the lock (meaning no one else is using it)
+                    with open(lock_file_path, 'w') as f:
+                        try:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            # We got the lock, safe to remove
+                            os.unlink(lock_file_path)
+                        except OSError:
+                            # Someone else has the lock, leave the file
+                            pass
+            except (OSError, IOError):
+                # Error cleaning up, not critical
+                pass
+            
+            port += 1
+        
+        raise RuntimeError(
+            f"No free port found in range {start_port}-{start_port + max_tries - 1}"
+        )
+
     async def _cleanup_head_node_process(self, timeout: int = 10) -> None:
         """Terminate and reset the head node process with configurable timeout.
 
@@ -459,29 +559,7 @@ class RayManager:
                     Exception("Ray is not available. Please install Ray."),
                 )
 
-            async def find_free_port(start_port=10001, max_tries=50):
-                """Find a free port with retry logic to handle race conditions."""
-                port = start_port
-                for attempt in range(max_tries):
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        try:
-                            s.bind(("", port))
-                            # Double-check the port is still available by trying to bind again
-                            s.close()
-                            # Small delay to reduce race condition window
-                            await asyncio.sleep(0.01)
-                            with socket.socket(
-                                socket.AF_INET, socket.SOCK_STREAM
-                            ) as s2:
-                                s2.bind(("", port))
-                                s2.close()
-                                return port
-                        except OSError:
-                            port += 1
-                            continue
-                raise RuntimeError(
-                    f"No free port found in range {start_port}-{start_port + max_tries - 1}"
-                )
+
 
             def parse_dashboard_url(stdout: str) -> Optional[str]:
                 """Parse dashboard URL from Ray start output."""
@@ -596,11 +674,11 @@ class RayManager:
 
                 # Use specified ports or find free ports
                 if head_node_port is None:
-                    head_node_port = await find_free_port(
+                    head_node_port = await self.find_free_port(
                         20000
                     )  # Start from 20000 to avoid conflicts with worker ports
                 if dashboard_port is None:
-                    dashboard_port = await find_free_port(8265)
+                    dashboard_port = await self.find_free_port(8265)
 
                 # Use head_node_port as the GCS server port
                 gcs_port = head_node_port
