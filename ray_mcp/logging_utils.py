@@ -55,30 +55,53 @@ class LogProcessor:
         log_source: Union[str, List[str]],
         max_lines: int = 100,
         max_size_mb: int = 10,
+        max_line_size_kb: int = 1024,  # Add per-line size limit (1MB default)
     ) -> str:
-        """Stream logs with line and size limits to prevent memory exhaustion."""
+        """Stream logs with line and size limits to prevent memory exhaustion.
+
+        Args:
+            log_source: String or list of log lines to process
+            max_lines: Maximum number of lines to return
+            max_size_mb: Maximum total size in MB
+            max_line_size_kb: Maximum size per line in KB to prevent memory exhaustion
+
+        Returns:
+            Processed log string with appropriate truncation messages
+        """
         lines = []
         current_size = 0
         max_size_bytes = max_size_mb * 1024 * 1024
+        max_line_bytes = max_line_size_kb * 1024
 
         try:
-            # Handle both string and list inputs
+            # Handle both string and list inputs with streaming approach
             if isinstance(log_source, str):
                 log_lines = log_source.split("\n")
             else:
                 log_lines = log_source
 
-            for line in log_lines:
-                line_bytes = line.encode("utf-8")
-
-                # Check size limit
-                if current_size + len(line_bytes) > max_size_bytes:
-                    lines.append(f"... (truncated at {max_size_mb}MB limit)")
-                    break
-
-                # Check line limit
+            for line_idx, line in enumerate(log_lines):
+                # Early exit if we've reached the line limit
                 if len(lines) >= max_lines:
                     lines.append(f"... (truncated at {max_lines} lines)")
+                    break
+
+                # Check per-line size limit first to prevent memory exhaustion
+                line_bytes = line.encode("utf-8")
+                if len(line_bytes) > max_line_bytes:
+                    # Truncate the individual line if it's too large
+                    truncated_line = (
+                        line[:max_line_size_kb]
+                        .encode("utf-8", errors="ignore")
+                        .decode("utf-8", errors="ignore")
+                    )
+                    truncated_line += f"... (line truncated at {max_line_size_kb}KB)"
+                    line_bytes = truncated_line.encode("utf-8")
+                    line = truncated_line
+
+                # Check total size limit
+                if current_size + len(line_bytes) > max_size_bytes:
+                    lines.append(f"... (truncated at {max_size_mb}MB limit)")
                     break
 
                 lines.append(line.rstrip())
@@ -95,6 +118,7 @@ class LogProcessor:
         log_source: Union[str, List[str]],
         max_lines: int = 100,
         max_size_mb: int = 10,
+        max_line_size_kb: int = 1024,
     ) -> str:
         """Async version of log streaming for better performance with large logs."""
         return await asyncio.get_event_loop().run_in_executor(
@@ -103,6 +127,7 @@ class LogProcessor:
             log_source,
             max_lines,
             max_size_mb,
+            max_line_size_kb,
         )
 
     @staticmethod
@@ -111,6 +136,7 @@ class LogProcessor:
         page: int = 1,
         page_size: int = 100,
         max_size_mb: int = 10,
+        max_line_size_kb: int = 1024,
     ) -> Dict[str, Any]:
         """Stream logs with pagination support for large log files."""
         try:
@@ -139,16 +165,31 @@ class LogProcessor:
             # Extract page lines
             page_lines = log_lines[start_idx:end_idx]
 
-            # Apply size limit to the page
+            # Apply size limits to the page with per-line size checking
             current_size = 0
             max_size_bytes = max_size_mb * 1024 * 1024
+            max_line_bytes = max_line_size_kb * 1024
             limited_lines = []
 
             for line in page_lines:
+                # Check per-line size limit first to prevent memory exhaustion
                 line_bytes = line.encode("utf-8")
+                if len(line_bytes) > max_line_bytes:
+                    # Truncate the individual line if it's too large
+                    truncated_line = (
+                        line[:max_line_size_kb]
+                        .encode("utf-8", errors="ignore")
+                        .decode("utf-8", errors="ignore")
+                    )
+                    truncated_line += f"... (line truncated at {max_line_size_kb}KB)"
+                    line_bytes = truncated_line.encode("utf-8")
+                    line = truncated_line
+
+                # Check total size limit
                 if current_size + len(line_bytes) > max_size_bytes:
                     limited_lines.append(f"... (truncated at {max_size_mb}MB limit)")
                     break
+
                 limited_lines.append(line.rstrip())
                 current_size += len(line_bytes)
 
@@ -166,6 +207,7 @@ class LogProcessor:
                 size_info={
                     "current_size_mb": current_size / (1024 * 1024),
                     "max_size_mb": max_size_mb,
+                    "max_line_size_kb": max_line_size_kb,
                 },
             )
 

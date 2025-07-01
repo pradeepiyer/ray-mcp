@@ -729,6 +729,7 @@ class TestStreamingLogs:
         assert "... (truncated at 1MB limit)" in result
 
     def test_stream_logs_with_limits_string_input(self):
+        """Test log streaming with line limits and basic per-line size limits."""
         logs = "line1\nline2\nline3\nline4\nline5"
         result = LogProcessor.stream_logs_with_limits(logs, max_lines=3, max_size_mb=1)
         lines = result.split("\n")
@@ -737,6 +738,64 @@ class TestStreamingLogs:
         assert lines[1] == "line2"
         assert lines[2] == "line3"
         assert "... (truncated at 3 lines)" in lines[3]
+
+        # Test basic per-line size limit with a moderately large line
+        large_line = "x" * (2 * 1024)  # 2KB line
+        logs_with_large = f"normal\n{large_line}\nend"
+        result = LogProcessor.stream_logs_with_limits(
+            logs_with_large, max_lines=10, max_size_mb=1, max_line_size_kb=1
+        )
+        lines = result.split("\n")
+        assert "normal" in lines[0]
+        assert "... (line truncated at 1KB)" in lines[1]
+        assert "end" in lines[2]
+
+    def test_stream_logs_memory_exhaustion_protection(self):
+        """Comprehensive test for memory exhaustion protection (Issue #69)."""
+        # Test 1: Multiple large lines with per-line truncation
+        large_line = "y" * (300 * 1024)  # 300KB each
+        logs = [large_line, large_line, "small_line"]
+        result = LogProcessor.stream_logs_with_limits(
+            logs, max_lines=10, max_size_mb=1, max_line_size_kb=200
+        )
+        lines = result.split("\n")
+        assert "... (line truncated at 200KB)" in lines[0]
+        assert "... (line truncated at 200KB)" in lines[1]
+        assert "small_line" in lines[2]
+
+        # Test 2: Line limit takes precedence over large lines
+        mixed_logs = ["normal"] * 3 + ["z" * (1024 * 1024)]
+        result = LogProcessor.stream_logs_with_limits(
+            mixed_logs, max_lines=2, max_size_mb=10, max_line_size_kb=512
+        )
+        lines = result.split("\n")
+        assert len(lines) == 3  # 2 lines + truncation message
+        assert lines[2] == "... (truncated at 2 lines)"
+
+        # Test 3: Async version with per-line limits
+        import asyncio
+
+        async def test_async():
+            large_line = "x" * (2 * 1024)  # 2KB
+            logs = f"normal_line\n{large_line}"
+            return await LogProcessor.stream_logs_async(
+                logs, max_lines=10, max_size_mb=1, max_line_size_kb=1
+            )
+
+        result = asyncio.run(test_async())
+        lines = result.split("\n")
+        assert "normal_line" in lines[0]
+        assert "... (line truncated at 1KB)" in lines[1]
+
+        # Test 4: Edge cases - empty input and boundary conditions
+        assert LogProcessor.stream_logs_with_limits([], max_line_size_kb=1) == ""
+
+        # Boundary condition: just under limit should not be truncated
+        boundary_line = "a" * (1024 * 1024 - 100)  # Just under 1MB
+        result = LogProcessor.stream_logs_with_limits(
+            [boundary_line], max_line_size_kb=1024
+        )
+        assert boundary_line in result  # Should not be truncated
 
     def test_analyze_job_logs_with_streaming(self, ray_manager):
         """Test log analysis with streaming approach."""
