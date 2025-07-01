@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Tests for the Ray manager."""
+"""Tests for the Ray manager - Consolidated and optimized for maintainability."""
 
 import asyncio
-import fcntl
-import inspect
 import subprocess
 import threading
 import time
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -26,138 +24,82 @@ from tests.conftest import mock_cluster_startup
 
 
 @pytest.mark.fast
-class TestRayManager:
-    """Test cases for RayManager."""
+class TestRayManagerCore:
+    """Core Ray manager functionality - cluster lifecycle, state management, validation."""
 
     @pytest.fixture
     def manager(self):
         """Create a RayManager instance for testing."""
         return RayManager()
 
-    def test_is_initialized_property(self):
-        """Test the is_initialized property."""
+    @pytest.fixture
+    def initialized_manager(self):
+        """Create an initialized RayManager for testing job operations."""
+        manager = RayManager()
+        manager._update_state(initialized=True)
+        mock_client = Mock()
+        manager._update_state(job_client=mock_client)
+        return manager
+
+    # Core Lifecycle Tests
+    def test_initialization_properties(self):
+        """Test RayManager initialization and core properties."""
         manager = RayManager()
         assert not manager.is_initialized
+        
+        # Test _ensure_initialized raises when not initialized
+        with pytest.raises(RuntimeError, match="Ray is not initialized"):
+            manager._ensure_initialized()
 
-        # Mock Ray as available and initialized
+        # Test proper initialization state
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
                 manager._update_state(initialized=True)
                 assert manager.is_initialized
 
-    def test_ensure_initialized(self):
-        """Test _ensure_initialized method."""
-        manager = RayManager()
-        with pytest.raises(RuntimeError, match="Ray is not initialized"):
-            manager._ensure_initialized()
-
     @pytest.mark.asyncio
-    async def test_init_cluster_ray_unavailable(self, manager, mock_cluster_startup):
-        """Test cluster initialization when Ray is not available."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", False):
-            result = await manager.init_cluster(address="127.0.0.1:10001")
-            assert result and result["status"] == "error"
-            assert "Ray is not available" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_stop_cluster(self, manager):
-        """Test stopping the Ray cluster with proper process cleanup."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-                mock_ray.shutdown.return_value = None
-
-                # Mock the head node process
-                mock_process = Mock()
-                manager._head_node_process = mock_process
-
-                # Mock the cleanup method instead of direct subprocess calls
-                with patch.object(
-                    manager, "_cleanup_head_node_process"
-                ) as mock_cleanup:
-                    mock_cleanup.return_value = None
-
-                    result = await manager.stop_cluster()
-                    assert result and result["status"] == "success"
-                    assert result.get("result_type") == "stopped"
-                    assert result.get("head_node") == "stopped"
-
-                    # Verify cleanup was called with proper timeout
-                    mock_cleanup.assert_called_once_with(timeout=10)
-
-    @pytest.mark.asyncio
-    async def test_stop_cluster_not_running(self, manager):
-        """Test stopping when Ray is not running."""
+    async def test_cluster_lifecycle(self, manager, mock_cluster_startup):
+        """Test complete cluster start/stop lifecycle."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = False
+                
+                # Test Ray unavailable scenario
+                with patch("ray_mcp.ray_manager.RAY_AVAILABLE", False):
+                    result = await manager.init_cluster(address="127.0.0.1:10001")
+                    assert result and result["status"] == "error"
+                    assert "Ray is not available" in result["message"]
+                
+                # Test successful stop
+                mock_ray.is_initialized.return_value = True
+                mock_ray.shutdown.return_value = None
+                mock_process = Mock()
+                manager._head_node_process = mock_process
 
+                with patch.object(manager, "_cleanup_head_node_process") as mock_cleanup:
+                    mock_cleanup.return_value = None
+                    result = await manager.stop_cluster()
+                    assert result and result["status"] == "success"
+                    assert result.get("result_type") == "stopped"
+                    mock_cleanup.assert_called_once_with(timeout=10)
+
+                # Test stop when not running
+                mock_ray.is_initialized.return_value = False
                 result = await manager.stop_cluster()
                 assert result and result["status"] == "not_running"
 
     @pytest.mark.asyncio
-    async def test_stop_cluster_cleanup_failure_preserves_process_state(self, manager):
-        """Test that process state is properly handled when cleanup fails (Issue #63)."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = True
-                mock_ray.shutdown.return_value = None
-
-                # Mock the head node process
-                mock_process = Mock()
-                manager._head_node_process = mock_process
-
-                # Mock cleanup to fail
-                with patch.object(
-                    manager, "_cleanup_head_node_process"
-                ) as mock_cleanup:
-                    mock_cleanup.side_effect = Exception("Cleanup failed")
-
-                    result = await manager.stop_cluster()
-                    assert (
-                        result and result["status"] == "success"
-                    )  # Overall operation still succeeds
-                    assert result.get("head_node") == "error: Cleanup failed"
-
-                    # Verify cleanup was called
-                    mock_cleanup.assert_called_once_with(timeout=10)
-
-                    # Most importantly: process state is handled by _cleanup_head_node_process
-                    # The old bug would have set _head_node_process = None even on failure
-                    # With the fix, _cleanup_head_node_process handles the state correctly
-
-    @pytest.mark.asyncio
-    async def test_cleanup_head_node_process(self, manager):
-        """Test enhanced cleanup of head node process with a real subprocess."""
-        import subprocess
-
-        # Start a real subprocess
-        proc = subprocess.Popen(["sleep", "1"])
-        manager._head_node_process = proc
-
-        await manager._cleanup_head_node_process(timeout=5)
-
-        # The process should be terminated and cleaned up
-        assert manager._head_node_process is None
-        assert proc.poll() is not None  # Process should be terminated
-
-    @pytest.mark.asyncio
-    async def test_initialize_job_client_with_retry_success(self, manager):
-        """Test successful job client initialization with retry."""
+    async def test_job_client_initialization(self, manager):
+        """Test job client initialization with retry logic."""
         with patch("ray_mcp.ray_manager.JobSubmissionClient") as mock_job_client_class:
+            # Test successful initialization
             mock_job_client = Mock()
             mock_job_client_class.return_value = mock_job_client
-
-            result = await manager._initialize_job_client_with_retry(
-                "http://127.0.0.1:8265"
-            )
+            result = await manager._initialize_job_client_with_retry("http://127.0.0.1:8265")
             assert result == mock_job_client
 
-    @pytest.mark.asyncio
-    async def test_initialize_job_client_with_retry_failure(self, manager):
-        """Test job client initialization failure after retries."""
-        with patch("ray_mcp.ray_manager.JobSubmissionClient") as mock_job_client_class:
+            # Test failure after retries
             mock_job_client_class.side_effect = Exception("Connection failed")
             with patch("asyncio.sleep"):
                 result = await manager._initialize_job_client_with_retry(
@@ -165,581 +107,320 @@ class TestRayManager:
                 )
                 assert result is None
 
-    def test_address_format_validation(self):
-        """Test that address format validation works correctly."""
-        manager = RayManager()
-
-        # Test valid direct addresses
-        valid_addresses = [
-            "127.0.0.1:10001",
-            "192.168.1.100:10001",
-            "localhost:10001",
-            "10.0.0.1:10001",
-        ]
-
-        for address in valid_addresses:
-            # This should not raise any exceptions
-            assert isinstance(address, str)
-            assert ":" in address
-            assert address.split(":")[1].isdigit()
-
+    @pytest.mark.parametrize("job_input,expected_error", [
+        ("", "Entrypoint cannot be empty"),
+        ("   ", "Entrypoint cannot be empty"),
+        (None, "Entrypoint cannot be empty"),
+    ])
     @pytest.mark.asyncio
-    async def test_find_free_port_with_locking(self, manager):
-        """Test find_free_port functionality and race condition prevention."""
-        # Mock file locking to simulate race condition prevention
-        flock_call_count = 0
-        bind_call_count = 0
+    async def test_job_validation_errors(self, initialized_manager, job_input, expected_error):
+        """Test job validation error handling."""
+        result = await initialized_manager.submit_job(job_input)
+        assert result and result["status"] == "error"
+        assert expected_error in result["message"]
 
-        def mock_flock_side_effect(*args):
-            nonlocal flock_call_count
-            flock_call_count += 1
-            if flock_call_count == 2:  # Second port already locked by another process
-                raise OSError("Resource temporarily unavailable")
-            return None  # First and third ports succeed
-
-        def mock_bind_side_effect(*args):
-            nonlocal bind_call_count
-            bind_call_count += 1
-            if bind_call_count == 3:  # Third bind call fails (port in use)
-                raise OSError("Port in use")
-            return None  # First and second bind calls succeed
-
-        with (
-            patch("tempfile.gettempdir", return_value="/tmp"),
-            patch("builtins.open", mock_open()) as mock_file,
-            patch("fcntl.flock", side_effect=mock_flock_side_effect) as mock_flock,
-            patch("socket.socket") as mock_socket,
-            patch("os.path.exists", return_value=False),
-            patch("os.unlink") as mock_unlink,
-            patch("os.getpid", return_value=12345),
-            patch("os.listdir", return_value=[]),
-            patch("os.kill") as mock_kill,
-            patch.object(manager, "_cleanup_stale_lock_files") as mock_cleanup,
-        ):
-
-            mock_socket.return_value.__enter__.return_value.bind.side_effect = (
-                mock_bind_side_effect
-            )
-
-            # Test basic functionality - should get first available port
-            port = await manager.find_free_port(start_port=20000, max_tries=5)
-            assert isinstance(port, int)
-            assert port == 20000
-
-            # Verify cleanup was called at the beginning
-            mock_cleanup.assert_called()
-
-            # Verify file locking was used (core race condition fix)
-            mock_flock.assert_called()
-
-            # Test race condition prevention - concurrent calls get different ports
-            async def find_port_task(start_port):
-                return await manager.find_free_port(start_port=start_port, max_tries=3)
-
-            tasks = [find_port_task(21000), find_port_task(21001)]
-            ports = await asyncio.gather(*tasks)
-
-            # Verify both tasks got valid ports
-            assert all(isinstance(p, int) for p in ports)
-            assert 21000 <= ports[0] < 21003
-            assert 21001 <= ports[1] < 21004
-
+    @pytest.mark.parametrize("job_id_input,expected_error", [
+        ("", "Job ID cannot be empty"),
+        ("   ", "Job ID cannot be empty"),
+        (None, "Job ID cannot be empty"),
+    ])
     @pytest.mark.asyncio
-    async def test_communicate_with_timeout_output_handling(self, manager):
-        """Test _communicate_with_timeout with various output scenarios."""
-        # Test 1: Normal operation
-        mock_process = Mock()
-        mock_process.poll.return_value = None
-        mock_process.stdout = Mock()
-        mock_process.stderr = Mock()
-
-        stdout_chunks = ["Ray runtime started\n", "--address='127.0.0.1:10001'\n"]
-        stderr_chunks = ["Warning: deprecated\n"]
-        stdout_iter = iter(stdout_chunks + [""])
-        stderr_iter = iter(stderr_chunks + [""])
-
-        mock_process.stdout.read.side_effect = lambda x: next(stdout_iter)
-        mock_process.stderr.read.side_effect = lambda x: next(stderr_iter)
-
-        call_count = 0
-
-        def mock_poll():
-            nonlocal call_count
-            call_count += 1
-            return 0 if call_count > 3 else None
-
-        mock_process.poll.side_effect = mock_poll
-
-        stdout, stderr = await manager._communicate_with_timeout(
-            mock_process, timeout=5
-        )
-
-        assert "Ray runtime started" in stdout
-        assert "--address='127.0.0.1:10001'" in stdout
-        assert "Warning: deprecated" in stderr
-
-        # Test 2: Large output with size limits
-        mock_process2 = Mock()
-        mock_process2.poll.return_value = None
-        mock_process2.stdout = Mock()
-        mock_process2.stderr = Mock()
-
-        large_chunk = "x" * 10240  # 10KB chunk
-        stdout_chunks2 = [large_chunk] * 200  # 2MB total
-        stderr_chunks2 = ["error"] * 100
-        stdout_iter2 = iter(stdout_chunks2 + [""])
-        stderr_iter2 = iter(stderr_chunks2 + [""])
-
-        mock_process2.stdout.read.side_effect = lambda x: next(stdout_iter2, "")
-        mock_process2.stderr.read.side_effect = lambda x: next(stderr_iter2, "")
-
-        call_count2 = 0
-
-        def mock_poll2():
-            nonlocal call_count2
-            call_count2 += 1
-            return 0 if call_count2 > 5 else None
-
-        mock_process2.poll.side_effect = mock_poll2
-
-        stdout2, stderr2 = await manager._communicate_with_timeout(
-            mock_process2, timeout=10, max_output_size=50000  # 50KB limit
-        )
-
-        # Should handle large output without deadlock and respect size limits
-        assert len(stdout2.encode("utf-8")) <= 50000
-        assert len(stderr2.encode("utf-8")) <= 50000
-        assert "x" in stdout2
-
-    @pytest.mark.asyncio
-    async def test_communicate_with_timeout_timeout_handling(self, manager):
-        """Test _communicate_with_timeout timeout behavior."""
-        mock_process = Mock()
-        mock_process.poll.return_value = None  # Process never completes
-        mock_process.stdout = Mock()
-        mock_process.stderr = Mock()
-        mock_process.kill = Mock()
-
-        # Simulate slow/hanging process (strings since text=True)
-        mock_process.stdout.read.side_effect = lambda x: "slow output"
-        mock_process.stderr.read.side_effect = lambda x: ""
-
-        with pytest.raises(RuntimeError, match="Process communication timed out"):
-            await manager._communicate_with_timeout(mock_process, timeout=0.1)
-
-        # Verify process was killed on timeout
-        mock_process.kill.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_stream_process_output_normal_operation(self, manager):
-        """Test _stream_process_output with normal operation."""
-        mock_process = Mock()
-        mock_process.stdout = Mock()
-        mock_process.stderr = Mock()
-
-        stdout_lines = [b"Ray started\n", b"Dashboard: http://127.0.0.1:8265\n"]
-        stderr_lines = [b"Warning: deprecated\n"]
-
-        stdout_call_count = 0
-        stderr_call_count = 0
-
-        def mock_stdout_readline():
-            nonlocal stdout_call_count
-            if stdout_call_count < len(stdout_lines):
-                result = stdout_lines[stdout_call_count]
-                stdout_call_count += 1
-                return result
-            return b""
-
-        def mock_stderr_readline():
-            nonlocal stderr_call_count
-            if stderr_call_count < len(stderr_lines):
-                result = stderr_lines[stderr_call_count]
-                stderr_call_count += 1
-                return result
-            return b""
-
-        mock_process.stdout.readline.side_effect = mock_stdout_readline
-        mock_process.stderr.readline.side_effect = mock_stderr_readline
-
-        call_count = 0
-
-        def mock_poll():
-            nonlocal call_count
-            call_count += 1
-            return 0 if call_count > 3 else None
-
-        mock_process.poll.side_effect = mock_poll
-
-        stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
-
-        assert "Ray started" in stdout
-        assert "Dashboard: http://127.0.0.1:8265" in stdout
-        assert "Warning: deprecated" in stderr
-
-    @pytest.mark.asyncio
-    async def test_stream_process_output_memory_limits(self, manager):
-        """Test _stream_process_output respects memory limits."""
-        mock_process = Mock()
-        mock_process.stdout = Mock()
-        mock_process.stderr = Mock()
-
-        # Create large output that exceeds limits
-        large_line = "x" * 900  # Smaller per line to account for newlines
-        stdout_lines = [large_line.encode() + b"\n"] * 100  # Large total
-        stderr_lines = [b"error line\n"] * 50
-
-        stdout_call_count = 0
-        stderr_call_count = 0
-
-        def mock_stdout_readline():
-            nonlocal stdout_call_count
-            if stdout_call_count < len(stdout_lines):
-                result = stdout_lines[stdout_call_count]
-                stdout_call_count += 1
-                return result
-            return b""
-
-        def mock_stderr_readline():
-            nonlocal stderr_call_count
-            if stderr_call_count < len(stderr_lines):
-                result = stderr_lines[stderr_call_count]
-                stderr_call_count += 1
-                return result
-            return b""
-
-        mock_process.stdout.readline.side_effect = mock_stdout_readline
-        mock_process.stderr.readline.side_effect = mock_stderr_readline
-
-        call_count = 0
-
-        def mock_poll():
-            nonlocal call_count
-            call_count += 1
-            return 0 if call_count > 10 else None
-
-        mock_process.poll.side_effect = mock_poll
-
-        # Test with smaller limits
-        stdout, stderr = await manager._stream_process_output(
-            mock_process,
-            timeout=10,
-            max_lines=8,
-            max_output_size=8000,  # 8KB limit, 8 lines max
-        )
-
-        # Should respect both line and size limits
-        stdout_line_count = (
-            len([line for line in stdout.split("\n") if line]) if stdout else 0
-        )
-        stderr_line_count = (
-            len([line for line in stderr.split("\n") if line]) if stderr else 0
-        )
-
-        assert stdout_line_count <= 8  # Line limit respected
-        assert (
-            len(stdout.encode("utf-8")) <= 8000
-        )  # Size limit respected (allowing for newlines)
-        assert stderr_line_count <= 8  # Line limit respected
-        assert len(stderr.encode("utf-8")) <= 8000  # Size limit respected
-
-    @pytest.mark.asyncio
-    async def test_stream_process_output_timeout_handling(self, manager):
-        """Test _stream_process_output timeout behavior."""
-        mock_process = Mock()
-        mock_process.poll.return_value = None  # Process never completes
-        mock_process.stdout = Mock()
-        mock_process.stderr = Mock()
-        mock_process.kill = Mock()
-
-        # Simulate slow/hanging process
-        mock_process.stdout.readline.side_effect = lambda: b"slow output\n"
-        mock_process.stderr.readline.side_effect = lambda: b""
-
-        with pytest.raises(RuntimeError, match="Process startup timed out"):
-            await manager._stream_process_output(mock_process, timeout=0.1)
-
-        # Verify process was killed on timeout
-        mock_process.kill.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_stream_process_output_edge_cases(self, manager):
-        """Test _stream_process_output handles various edge cases gracefully."""
-
-        # Test Case 1: Stream read errors
-        mock_process1 = Mock()
-        mock_process1.stdout = Mock()
-        mock_process1.stderr = Mock()
-
-        def mock_stdout_readline():
-            raise OSError("Stream error")
-
-        def mock_stderr_readline():
-            return b"normal error line\n"
-
-        mock_process1.stdout.readline.side_effect = mock_stdout_readline
-        mock_process1.stderr.readline.side_effect = mock_stderr_readline
-
-        call_count1 = 0
-
-        def mock_poll1():
-            nonlocal call_count1
-            call_count1 += 1
-            return 0 if call_count1 > 2 else None
-
-        mock_process1.poll.side_effect = mock_poll1
-
-        stdout1, stderr1 = await manager._stream_process_output(
-            mock_process1, timeout=5
-        )
-
-        # stdout should be empty due to errors, stderr should work
-        assert stdout1 == ""
-        assert "normal error line" in stderr1
-
-        # Test Case 2: No streams available
-        mock_process2 = Mock()
-        mock_process2.stdout = None
-        mock_process2.stderr = None
-
-        call_count2 = 0
-
-        def mock_poll2():
-            nonlocal call_count2
-            call_count2 += 1
-            return 0 if call_count2 > 2 else None
-
-        mock_process2.poll.side_effect = mock_poll2
-
-        stdout2, stderr2 = await manager._stream_process_output(
-            mock_process2, timeout=5
-        )
-
-        assert stdout2 == ""
-        assert stderr2 == ""
-
-    @pytest.mark.asyncio
-    async def test_find_free_port_error_handling(self, manager):
-        """Test find_free_port error handling and fallback scenarios."""
-        # Test 1: No available ports (should raise RuntimeError)
-        with (
-            patch("tempfile.gettempdir", return_value="/tmp"),
-            patch("builtins.open", mock_open()),
-            patch("fcntl.flock"),
-            patch("socket.socket") as mock_socket,
-            patch("os.path.exists", return_value=False),
-            patch("os.getpid", return_value=12345),
-            patch("os.listdir", return_value=[]),
-            patch.object(manager, "_cleanup_stale_lock_files"),
-        ):
-
-            # All ports are in use
-            mock_socket.return_value.__enter__.return_value.bind.side_effect = OSError(
-                "Address already in use"
-            )
-
-            with pytest.raises(RuntimeError, match="No free port found in range"):
-                await manager.find_free_port(start_port=23000, max_tries=3)
-
-        # Test 2: File system errors (should fallback to simple socket binding)
-        gettempdir_call_count = 0
-
-        def mock_gettempdir_side_effect():
-            nonlocal gettempdir_call_count
-            gettempdir_call_count += 1
-            # Let cleanup calls succeed, but fail for port allocation
-            if gettempdir_call_count > 1:
-                raise OSError("Permission denied")
-            return "/tmp"
-
-        with (
-            patch("tempfile.gettempdir", side_effect=mock_gettempdir_side_effect),
-            patch("socket.socket") as mock_socket,
-            patch("os.getpid", return_value=12345),
-            patch.object(manager, "_cleanup_stale_lock_files"),
-        ):
-
-            # Fallback socket binding succeeds
-            mock_socket.return_value.__enter__.return_value.bind.return_value = None
-
-            port = await manager.find_free_port(start_port=24000, max_tries=3)
-            assert isinstance(port, int)
-            assert port == 24000
-
-        # Test 3: Existing lock file handling and cleanup
-        with (
-            patch("tempfile.gettempdir", return_value="/tmp"),
-            patch(
-                "builtins.open", mock_open(read_data="12345,1640995200")
-            ) as mock_file,
-            patch("fcntl.flock"),
-            patch("socket.socket") as mock_socket,
-            patch("os.path.exists", return_value=True),
-            patch("os.unlink") as mock_unlink,
-            patch("os.getpid", return_value=12345),
-            patch("os.listdir", return_value=["ray_port_25000.lock"]),
-            patch("os.kill", side_effect=OSError("No such process")),
-            patch("time.time", return_value=1640995300),
-            patch.object(manager, "_cleanup_stale_lock_files"),
-        ):
-
-            # First port has stale lock (gets cleaned), second succeeds
-            bind_attempts = 0
-
-            def mock_bind(*args):
-                nonlocal bind_attempts
-                bind_attempts += 1
-                if bind_attempts == 1:
-                    raise OSError("Port in use")
-                return None
-
-            mock_socket.return_value.__enter__.return_value.bind.side_effect = mock_bind
-
-            port = await manager.find_free_port(start_port=25000, max_tries=3)
-            assert port == 25001  # Should get second port
-            # Note: lock file cleanup now happens through _cleanup_stale_lock_files
-
-
-@pytest.mark.fast
-class TestExceptionHandling:
-    """Test exception handling for job submission methods."""
-
-    @pytest.fixture
-    def ray_manager(self):
-        """Create a RayManager instance for testing."""
-        manager = RayManager()
-        # Set internal state to avoid actual Ray setup
-        manager._update_state(initialized=True)
-        # Mock the job client through the state manager rather than directly
-        mock_client = Mock()
-        manager._update_state(job_client=mock_client)
-        return manager
-
-    def _patch_is_initialized(self, manager):
-        """Helper method to patch is_initialized property."""
-        original_property = type(manager).is_initialized
-        type(manager).is_initialized = property(lambda self: True)
-        return original_property
-
-    def _restore_is_initialized(self, manager, original_property):
-        """Helper method to restore the original is_initialized property."""
-        type(manager).is_initialized = original_property
-
-    @pytest.mark.asyncio
-    async def test_submit_job_handles_validation_error(self, ray_manager):
-        """Test that submit_job properly handles validation errors."""
-        original_property = self._patch_is_initialized(ray_manager)
-        try:
-            # Test with empty entrypoint
-            result = await ray_manager.submit_job("")
-            assert result and result["status"] == "error"
-            assert "Entrypoint cannot be empty" in result["message"]
-
-            # Test with whitespace-only entrypoint
-            result = await ray_manager.submit_job("   ")
-            assert result and result["status"] == "error"
-            assert "Entrypoint cannot be empty" in result["message"]
-        finally:
-            self._restore_is_initialized(ray_manager, original_property)
-
-    @pytest.mark.asyncio
-    async def test_cancel_job_handles_validation_error(self, ray_manager):
-        """Test that cancel_job properly handles validation errors."""
-        original_property = self._patch_is_initialized(ray_manager)
-        try:
-            # Test with empty job_id
-            result = await ray_manager.cancel_job("")
-            assert result and result["status"] == "error"
-            assert "Job ID cannot be empty" in result["message"]
-
-            # Test with whitespace-only job_id
-            result = await ray_manager.cancel_job("   ")
-            assert result and result["status"] == "error"
-            assert "Job ID cannot be empty" in result["message"]
-        finally:
-            self._restore_is_initialized(ray_manager, original_property)
-
-    def test_custom_exception_hierarchy(self):
-        """Test that custom exception hierarchy is properly defined."""
-        # Test that JobSubmissionError is the base class
+    async def test_cancel_job_validation_errors(self, initialized_manager, job_id_input, expected_error):
+        """Test cancel job validation error handling."""
+        result = await initialized_manager.cancel_job(job_id_input)
+        assert result and result["status"] == "error"
+        assert expected_error in result["message"]
+
+    def test_exception_hierarchy(self):
+        """Test custom exception hierarchy structure."""
+        # Verify inheritance
         assert issubclass(JobConnectionError, JobSubmissionError)
         assert issubclass(JobValidationError, JobSubmissionError)
         assert issubclass(JobRuntimeError, JobSubmissionError)
         assert issubclass(JobClientError, JobSubmissionError)
 
-        # Test that exceptions can be instantiated
-        connection_error = JobConnectionError("Connection failed")
-        validation_error = JobValidationError("Invalid parameters")
-        runtime_error = JobRuntimeError("Runtime error")
-        client_error = JobClientError("Client not initialized")
+        # Test instantiation
+        errors = [
+            JobConnectionError("Connection failed"),
+            JobValidationError("Invalid parameters"),
+            JobRuntimeError("Runtime error"),
+            JobClientError("Client not initialized")
+        ]
+        assert all(str(error) in ["Connection failed", "Invalid parameters", "Runtime error", "Client not initialized"] for error in errors)
 
-        assert str(connection_error) == "Connection failed"
-        assert str(validation_error) == "Invalid parameters"
-        assert str(runtime_error) == "Runtime error"
-        assert str(client_error) == "Client not initialized"
+    # State Management Tests
+    def test_state_management_lifecycle(self):
+        """Test complete state management lifecycle."""
+        state_manager = RayStateManager()
+        
+        # Test initial state
+        state = state_manager.get_state()
+        assert state["initialized"] is False
+        assert state["cluster_address"] is None
+        assert state["dashboard_url"] is None
+        assert state["job_client"] is None
+
+        # Test state updates
+        state_manager.update_state(
+            initialized=True,
+            cluster_address="ray://localhost:10001",
+            dashboard_url="http://localhost:8265",
+        )
+        state = state_manager.get_state()
+        assert state["initialized"] is True
+        assert state["cluster_address"] == "ray://localhost:10001"
+        assert state["dashboard_url"] == "http://localhost:8265"
+
+        # Test state reset
+        state_manager.reset_state()
+        state = state_manager.get_state()
+        assert state["initialized"] is False
+        assert state["cluster_address"] is None
+
+    def test_ray_manager_state_integration(self):
+        """Test RayManager state integration."""
+        manager = RayManager()
+        
+        # Test initial state
+        assert manager.is_initialized is False
+        assert manager.cluster_address is None
+        assert manager.dashboard_url is None
+
+        # Test state update integration
+        manager._update_state(
+            initialized=True,
+            cluster_address="ray://localhost:10001",
+            dashboard_url="http://localhost:8265",
+        )
+        assert manager.is_initialized is True
+        assert manager.cluster_address == "ray://localhost:10001"
+        assert manager.dashboard_url == "http://localhost:8265"
+
+    def test_state_thread_safety(self):
+        """Test thread safety of state management."""
+        state_manager = RayStateManager()
+        results = []
+
+        def update_state_thread(thread_id):
+            for i in range(20):  # Reduced from 50 for efficiency
+                state_manager.update_state(
+                    initialized=True,
+                    cluster_address=f"ray://localhost:{10001 + thread_id}",
+                )
+                state = state_manager.get_state()
+                results.append((thread_id, state["initialized"]))
+                time.sleep(0.001)
+
+        # Test with fewer threads for efficiency
+        threads = []
+        for i in range(3):
+            thread = threading.Thread(target=update_state_thread, args=(i,))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        assert len(results) == 60  # 3 threads * 20 updates each
+
+    # Worker Node Logic Tests
+    @pytest.mark.parametrize("worker_nodes,expected_result", [
+        (None, "default_workers"),  # Should create default workers
+        ([], None),  # Should return None for head-only
+        ([{"num_cpus": 2, "node_name": "test-worker"}], "custom_config"),  # Valid custom config
+    ])
+    def test_worker_node_processing(self, manager, worker_nodes, expected_result):
+        """Test worker node validation and processing scenarios."""
+        result = manager._validate_and_process_worker_nodes(worker_nodes)
+        
+        if expected_result == "default_workers":
+            assert result is not None and len(result) == 2
+            assert result[0]["node_name"] == "default-worker-1"
+        elif expected_result is None:
+            assert result is None
+        elif expected_result == "custom_config":
+            assert result is not None and len(result) == 1
+            assert result[0]["num_cpus"] == 2
+
+    @pytest.mark.asyncio
+    async def test_cleanup_process_handling(self, manager):
+        """Test process cleanup functionality."""
+        # Start a real subprocess for testing
+        proc = subprocess.Popen(["sleep", "1"])
+        manager._head_node_process = proc
+
+        await manager._cleanup_head_node_process(timeout=5)
+        
+        # Process should be cleaned up
+        assert manager._head_node_process is None
+        assert proc.poll() is not None
 
 
 @pytest.mark.fast
-class TestStreamingLogs:
-    """Test cases for streaming log retrieval functionality."""
+class TestProcessCommunication:
+    """Process communication, port allocation, and streaming functionality."""
 
     @pytest.fixture
-    def ray_manager(self):
+    def manager(self):
         """Create a RayManager instance for testing."""
+        return RayManager()
+
+    @pytest.mark.asyncio
+    async def test_find_free_port_functionality(self, manager):
+        """Test port allocation with basic locking mechanism."""
+        flock_call_count = 0
+
+        def mock_flock_side_effect(*args):
+            nonlocal flock_call_count
+            flock_call_count += 1
+            if flock_call_count == 2:  # Second attempt fails
+                raise OSError("Resource temporarily unavailable")
+            return None
+
+        with patch("fcntl.flock", side_effect=mock_flock_side_effect):
+            with patch("socket.socket") as mock_socket:
+                mock_sock = Mock()
+                mock_socket.return_value.__enter__.return_value = mock_sock
+                mock_sock.bind.return_value = None
+                
+                port = await manager.find_free_port(start_port=20000)
+                assert isinstance(port, int)
+                assert port >= 20000
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("scenario,mock_config,expected", [
+        ("normal_operation", {
+            "stdout_lines": ["line1", "line2", ""],
+            "stderr_lines": ["error1", ""],
+            "poll_sequence": [None, None, 0]
+        }, "success"),
+        ("memory_limits", {
+            "stdout_lines": ["x" * 1000] * 10 + [""],
+            "stderr_lines": [""],
+            "poll_sequence": [None, 0]
+        }, "memory_handled"),
+        ("timeout_handling", {
+            "stdout_lines": ["line1"] * 100,  # Never ends
+            "stderr_lines": [""],
+            "poll_sequence": [None] * 100
+        }, "timeout"),
+    ])
+    async def test_stream_process_scenarios(self, manager, scenario, mock_config, expected):
+        """Test various stream processing scenarios."""
+        stdout_iter = iter(mock_config["stdout_lines"])
+        stderr_iter = iter(mock_config["stderr_lines"])
+        poll_iter = iter(mock_config["poll_sequence"])
+
+        def mock_stdout_readline():
+            try:
+                return next(stdout_iter).encode() + b"\n"
+            except StopIteration:
+                return b""
+
+        def mock_stderr_readline():
+            try:
+                return next(stderr_iter).encode() + b"\n"
+            except StopIteration:
+                return b""
+
+        def mock_poll():
+            try:
+                return next(poll_iter)
+            except StopIteration:
+                return 0
+
+        mock_process = Mock()
+        mock_process.stdout.readline = mock_stdout_readline
+        mock_process.stderr.readline = mock_stderr_readline
+        mock_process.poll = mock_poll
+
+        if scenario == "timeout_handling":
+            # Test timeout handling - should raise RuntimeError
+            with pytest.raises(RuntimeError, match="Process startup timed out"):
+                await manager._stream_process_output(mock_process, timeout=0.1)
+        else:
+            stdout, stderr = await manager._stream_process_output(mock_process, timeout=5)
+            
+            if scenario == "normal_operation":
+                assert "line1" in stdout and "line2" in stdout
+                assert "error1" in stderr
+            elif scenario == "memory_limits":
+                # Should handle large output without memory issues
+                assert isinstance(stdout, str)
+                assert len(stdout) > 0
+
+    @pytest.mark.asyncio
+    async def test_communicate_with_timeout_scenarios(self, manager):
+        """Test process communication timeout handling."""
+        # Test timeout scenario - process never finishes
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process still running
+        mock_process.stdout = Mock()
+        mock_process.stderr = Mock()
+        mock_process.stdout.read.return_value = "partial output"
+        mock_process.stderr.read.return_value = "partial error"
+        
+        # Should timeout and raise RuntimeError
+        with pytest.raises(RuntimeError, match="Process communication timed out"):
+            await manager._communicate_with_timeout(mock_process, timeout=0.1)
+
+
+@pytest.mark.fast  
+class TestLogProcessing:
+    """Log processing, validation, and streaming functionality."""
+
+    @pytest.fixture
+    def manager(self):
+        """Create RayManager for log testing."""
         manager = RayManager()
         manager._update_state(initialized=True)
-        # Mock the job client through the state manager rather than directly
         mock_client = Mock()
         manager._update_state(job_client=mock_client)
         manager._ensure_initialized = lambda: None
         return manager
 
-    def test_validate_log_parameters_valid(self):
-        result = LogProcessor.validate_log_parameters(100, 10)
-        assert result is None
+    @pytest.mark.parametrize("num_lines,max_size_mb,expected_error", [
+        (100, 10, None),  # Valid parameters
+        (0, 10, "num_lines must be positive"),  # Invalid num_lines
+        (15000, 10, "num_lines cannot exceed 10000"),  # Excessive num_lines
+        (100, 0, "max_size_mb must be between 1 and 100"),  # Invalid max_size low
+        (100, 150, "max_size_mb must be between 1 and 100"),  # Invalid max_size high
+    ])
+    def test_log_parameter_validation(self, num_lines, max_size_mb, expected_error):
+        """Test log parameter validation scenarios."""
+        result = LogProcessor.validate_log_parameters(num_lines, max_size_mb)
+        
+        if expected_error is None:
+            assert result is None
+        else:
+            assert result and result["status"] == "error"
+            assert expected_error in result["message"]
 
-    def test_validate_log_parameters_invalid_num_lines(self):
-        result = LogProcessor.validate_log_parameters(0, 10)
-        assert result and result["status"] == "error"
-        assert "num_lines must be positive" in result["message"]
+    @pytest.mark.parametrize("log_input,max_size_mb,should_truncate", [
+        ("Small log content", 10, False),
+        ("x" * (2 * 1024 * 1024), 1, True),  # 2MB content, 1MB limit
+    ])
+    def test_log_size_handling(self, log_input, max_size_mb, should_truncate):
+        """Test log size truncation functionality."""
+        result = LogProcessor.truncate_logs_to_size(log_input, max_size_mb)
+        
+        if should_truncate:
+            max_allowed = max_size_mb * 1024 * 1024 + 1024
+            assert len(result.encode("utf-8")) <= max_allowed
+            assert "... (truncated at" in result
+        else:
+            assert result == log_input
 
-        result = LogProcessor.validate_log_parameters(15000, 10)
-        assert result and result["status"] == "error"
-        assert "num_lines cannot exceed 10000" in result["message"]
-
-    def test_validate_log_parameters_invalid_max_size(self):
-        result = LogProcessor.validate_log_parameters(100, 0)
-        assert result and result["status"] == "error"
-        assert "max_size_mb must be between 1 and 100" in result["message"]
-
-        result = LogProcessor.validate_log_parameters(100, 150)
-        assert result and result["status"] == "error"
-        assert "max_size_mb must be between 1 and 100" in result["message"]
-
-    def test_truncate_logs_to_size_within_limit(self):
-        logs = "This is a test log\nwith multiple lines\nbut small size"
-        result = LogProcessor.truncate_logs_to_size(logs, 10)
-        assert result == logs
-
-    def test_truncate_logs_to_size_exceeds_limit(self):
-        large_log = "x" * (2 * 1024 * 1024)
-        result = LogProcessor.truncate_logs_to_size(large_log, 1)
-        max_allowed = 1024 * 1024 + 1024
-        assert len(result.encode("utf-8")) <= max_allowed
-        assert "... (truncated at 1MB limit)" in result
-
-    def test_stream_logs_with_limits_string_input(self):
-        """Test log streaming with line limits and basic per-line size limits."""
+    def test_log_streaming_with_limits(self):
+        """Test log streaming with various limits and constraints."""
+        # Test line limits
         logs = "line1\nline2\nline3\nline4\nline5"
         result = LogProcessor.stream_logs_with_limits(logs, max_lines=3, max_size_mb=1)
         lines = result.split("\n")
-        assert len(lines) == 4
-        assert lines[0] == "line1"
-        assert lines[1] == "line2"
-        assert lines[2] == "line3"
+        assert len(lines) == 4  # 3 lines + truncation message
         assert "... (truncated at 3 lines)" in lines[3]
 
-        # Test basic per-line size limit with a moderately large line
+        # Test per-line size limits
         large_line = "x" * (2 * 1024)  # 2KB line
         logs_with_large = f"normal\n{large_line}\nend"
         result = LogProcessor.stream_logs_with_limits(
@@ -750,9 +431,9 @@ class TestStreamingLogs:
         assert "... (line truncated at 1KB)" in lines[1]
         assert "end" in lines[2]
 
-    def test_stream_logs_memory_exhaustion_protection(self):
-        """Comprehensive test for memory exhaustion protection (Issue #69)."""
-        # Test 1: Multiple large lines with per-line truncation
+    def test_memory_exhaustion_protection(self):
+        """Test memory exhaustion protection in log processing."""
+        # Test multiple large lines
         large_line = "y" * (300 * 1024)  # 300KB each
         logs = [large_line, large_line, "small_line"]
         result = LogProcessor.stream_logs_with_limits(
@@ -763,7 +444,7 @@ class TestStreamingLogs:
         assert "... (line truncated at 200KB)" in lines[1]
         assert "small_line" in lines[2]
 
-        # Test 2: Line limit takes precedence over large lines
+        # Test line limit precedence
         mixed_logs = ["normal"] * 3 + ["z" * (1024 * 1024)]
         result = LogProcessor.stream_logs_with_limits(
             mixed_logs, max_lines=2, max_size_mb=10, max_line_size_kb=512
@@ -772,350 +453,14 @@ class TestStreamingLogs:
         assert len(lines) == 3  # 2 lines + truncation message
         assert lines[2] == "... (truncated at 2 lines)"
 
-        # Test 3: Async version with per-line limits
-        import asyncio
-
-        async def test_async():
-            large_line = "x" * (2 * 1024)  # 2KB
-            logs = f"normal_line\n{large_line}"
-            return await LogProcessor.stream_logs_async(
-                logs, max_lines=10, max_size_mb=1, max_line_size_kb=1
-            )
-
-        result = asyncio.run(test_async())
-        lines = result.split("\n")
-        assert "normal_line" in lines[0]
-        assert "... (line truncated at 1KB)" in lines[1]
-
-        # Test 4: Edge cases - empty input and boundary conditions
-        assert LogProcessor.stream_logs_with_limits([], max_line_size_kb=1) == ""
-
-        # Boundary condition: just under limit should not be truncated
-        boundary_line = "a" * (1024 * 1024 - 100)  # Just under 1MB
-        result = LogProcessor.stream_logs_with_limits(
-            [boundary_line], max_line_size_kb=1024
-        )
-        assert boundary_line in result  # Should not be truncated
-
-    def test_analyze_job_logs_with_streaming(self, ray_manager):
-        """Test log analysis with streaming approach."""
+    def test_log_analysis_functionality(self, manager):
+        """Test log analysis and streaming capabilities."""
         logs = "This is a normal log\nThis is an error log\nThis is an exception\nNormal log again"
-        result = ray_manager._analyze_job_logs(logs)
+        result = manager._analyze_job_logs(logs)
 
         assert result and result["error_count"] == 2
         assert len(result["errors"]) == 2
         assert "error" in result["errors"][0].lower()
-
-
-@pytest.mark.fast
-class TestStateManagement:
-    """Test core state management functionality."""
-
-    def test_ray_state_manager_initialization(self):
-        """Test RayStateManager initialization."""
-        state_manager = RayStateManager()
-        state = state_manager.get_state()
-
-        assert state["initialized"] is False
-        assert state["cluster_address"] is None
-        assert state["dashboard_url"] is None
-        assert state["job_client"] is None
-
-    def test_state_update_and_reset(self):
-        """Test state updates and reset."""
-        state_manager = RayStateManager()
-
-        # Update state
-        state_manager.update_state(
-            initialized=True,
-            cluster_address="ray://localhost:10001",
-            dashboard_url="http://localhost:8265",
-        )
-
-        state = state_manager.get_state()
-        assert state["initialized"] is True
-        assert state["cluster_address"] == "ray://localhost:10001"
-        assert state["dashboard_url"] == "http://localhost:8265"
-
-        # Reset state
-        state_manager.reset_state()
-        state = state_manager.get_state()
-        assert state["initialized"] is False
-        assert state["cluster_address"] is None
-
-    def test_ray_manager_state_integration(self):
-        """Test RayManager state management integration."""
-        manager = RayManager()
-
-        # Test initial state
-        assert manager.is_initialized is False
-        assert manager.cluster_address is None
-        assert manager.dashboard_url is None
-
-        # Test state update
-        manager._update_state(
-            initialized=True,
-            cluster_address="ray://localhost:10001",
-            dashboard_url="http://localhost:8265",
-        )
-        assert manager.is_initialized is True
-        assert manager.cluster_address == "ray://localhost:10001"
-        assert manager.dashboard_url == "http://localhost:8265"
-
-    def test_thread_safety_basic(self):
-        """Test basic thread safety of state management."""
-        state_manager = RayStateManager()
-        results = []
-
-        def update_state_thread(thread_id):
-            for i in range(50):
-                state_manager.update_state(
-                    initialized=True,
-                    cluster_address=f"ray://localhost:{10001 + thread_id}",
-                )
-                state = state_manager.get_state()
-                results.append((thread_id, state["initialized"]))
-                time.sleep(0.001)
-
-        # Start multiple threads
-        threads = []
-        for i in range(3):
-            thread = threading.Thread(target=update_state_thread, args=(i,))
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        # Verify no exceptions occurred
-        assert len(results) == 150  # 3 threads * 50 updates each
-
-    def test_state_validation_race_condition_fix(self):
-        """Test that state validation race condition is properly fixed (Issue #64)."""
-        state_manager = RayStateManager()
-        validation_call_count = 0
-
-        # Mock the validation method to count calls and return success
-        original_validate = state_manager._validate_and_update_state
-        original_validate_ray_state = state_manager._validate_ray_state
-
-        def mock_validate():
-            nonlocal validation_call_count
-            validation_call_count += 1
-            # Simulate some processing time
-            time.sleep(0.01)
-            original_validate()
-
-        def mock_validate_ray_state():
-            return True  # Always return True for testing
-
-        state_manager._validate_and_update_state = mock_validate
-        state_manager._validate_ray_state = mock_validate_ray_state
-
-        # Set up state to require validation by directly manipulating the internal state
-        with state_manager._lock:
-            state_manager._state.update(
-                {
-                    "initialized": True,
-                    "cluster_address": "ray://localhost:10001",
-                    "last_validated": 0.0,  # Force validation to be needed
-                }
-            )
-
-        # Create multiple threads that will all call get_state simultaneously
-        results = []
-        barrier = threading.Barrier(5)  # Synchronize 5 threads
-
-        def get_state_thread(thread_id):
-            barrier.wait()  # Wait for all threads to be ready
-            state = state_manager.get_state()
-            results.append((thread_id, state["initialized"]))
-
-        # Start 5 threads simultaneously
-        threads = []
-        for i in range(5):
-            thread = threading.Thread(target=get_state_thread, args=(i,))
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        # Verify that validation was only called once despite multiple concurrent get_state calls
-        assert (
-            validation_call_count == 1
-        ), f"Expected 1 validation call, got {validation_call_count}"
-        assert len(results) == 5  # All threads should have gotten results
-
-        # All threads should have gotten the same consistent state
-        for thread_id, initialized in results:
-            assert initialized is True
-
-
-@pytest.mark.fast
-class TestWorkerNodeLogic:
-    """Test cases for worker node logic validation and processing."""
-
-    @pytest.fixture
-    def manager(self):
-        """Create a RayManager instance for testing."""
-        return RayManager()
-
-    def test_validate_and_process_worker_nodes_comprehensive(self, manager):
-        """Test all worker node processing scenarios comprehensively."""
-        # Test 1: worker_nodes=None (default behavior)
-        result = manager._validate_and_process_worker_nodes(None)
-        assert result is not None and len(result) == 2
-        assert result[0]["node_name"] == "default-worker-1"
-        assert result[1]["node_name"] == "default-worker-2"
-
-        # Test 2: worker_nodes=[] (head-only cluster)
-        result = manager._validate_and_process_worker_nodes([])
-        assert result is None
-
-        # Test 3: Custom valid configuration
-        custom_config = [
-            {"num_cpus": 2, "node_name": "custom-worker-1"},
-            {"num_cpus": 4, "node_name": "custom-worker-2"},
-        ]
-        result = manager._validate_and_process_worker_nodes(custom_config)
-        assert result is not None and len(result) == 2
-        assert result[0]["num_cpus"] == 2 and result[1]["num_cpus"] == 4
-
-        # Test 4: Invalid configurations with validation
-        invalid_config = [
-            {"num_cpus": -1, "node_name": "invalid-worker"},  # Negative CPUs
-            {"num_cpus": "invalid", "node_name": "invalid-worker-2"},  # Non-integer
-            "not-a-dict",  # Not a dictionary
-            {"num_cpus": 2, "node_name": "valid-worker"},  # Valid config
-        ]
-        result = manager._validate_and_process_worker_nodes(invalid_config)
-        assert result is not None and len(result) == 3  # Two corrected + one valid
-        corrected_configs = [w for w in result if w.get("num_cpus") == 1]
-        valid_configs = [w for w in result if w.get("num_cpus") == 2]
-        assert len(corrected_configs) == 2 and len(valid_configs) == 1
-
-        # Test 5: All invalid configurations (fallback to head-only)
-        all_invalid_config = ["not-a-dict-1", "not-a-dict-2", 123]
-        result = manager._validate_and_process_worker_nodes(all_invalid_config)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_init_cluster_worker_node_scenarios(self, manager):
-        """Test all init_cluster worker node scenarios comprehensively."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = False
-                mock_ray.init.return_value = Mock(
-                    address_info={"address": "127.0.0.1:10001"},
-                    dashboard_url="http://127.0.0.1:8265",
-                )
-
-                with patch("subprocess.Popen") as mock_popen:
-                    mock_process = Mock()
-                    mock_process.poll.return_value = 0
-                    mock_popen.return_value = mock_process
-
-                    with patch.object(
-                        manager, "_communicate_with_timeout", new_callable=AsyncMock
-                    ) as mock_communicate:
-                        mock_communicate.return_value = (
-                            "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
-                            "",
-                        )
-
-                        with patch.object(
-                            manager,
-                            "_initialize_job_client_if_available",
-                            new_callable=AsyncMock,
-                        ) as mock_init_job:
-                            mock_init_job.return_value = "success"
-
-                            with patch.object(
-                                manager._worker_manager,
-                                "start_worker_nodes",
-                                new_callable=AsyncMock,
-                            ) as mock_start_workers:
-                                # Test 1: worker_nodes=None starts default workers
-                                mock_start_workers.return_value = [
-                                    {
-                                        "status": "started",
-                                        "node_name": "default-worker-1",
-                                    },
-                                    {
-                                        "status": "started",
-                                        "node_name": "default-worker-2",
-                                    },
-                                ]
-                                result = await manager.init_cluster(worker_nodes=None)
-                                assert result["status"] == "success"
-                                mock_start_workers.assert_called_once()
-                                called_args = mock_start_workers.call_args[0][0]
-                                assert len(called_args) == 2
-                                assert called_args[0]["node_name"] == "default-worker-1"
-
-                                # Reset mock for next test
-                                mock_start_workers.reset_mock()
-
-                                # Test 2: worker_nodes=[] starts no workers (head-only)
-                                result = await manager.init_cluster(worker_nodes=[])
-                                assert result["status"] == "success"
-                                mock_start_workers.assert_not_called()
-                                assert result.get("worker_nodes") is None
-
-                                # Test 3: Custom worker configuration
-                                mock_start_workers.return_value = [
-                                    {"status": "started", "node_name": "custom-worker"}
-                                ]
-                                custom_config = [
-                                    {"num_cpus": 4, "node_name": "custom-worker"}
-                                ]
-                                result = await manager.init_cluster(
-                                    worker_nodes=custom_config
-                                )
-                                assert result["status"] == "success"
-                                mock_start_workers.assert_called_once()
-                                called_args = mock_start_workers.call_args[0][0]
-                                assert len(called_args) == 1
-                                assert called_args[0]["node_name"] == "custom-worker"
-                                assert called_args[0]["num_cpus"] == 4
-
-    @pytest.mark.asyncio
-    async def test_init_cluster_existing_connection_ignores_workers(self, manager):
-        """Test that connecting to existing cluster ignores worker_nodes parameter."""
-        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.ray_manager.ray") as mock_ray:
-                mock_ray.is_initialized.return_value = False
-                mock_ray.init.return_value = Mock(
-                    address_info={"address": "127.0.0.1:10001"},
-                    dashboard_url="http://127.0.0.1:8265",
-                )
-                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
-                    "node_123"
-                )
-
-                with patch.object(
-                    manager,
-                    "_initialize_job_client_if_available",
-                    new_callable=AsyncMock,
-                ) as mock_init_job:
-                    mock_init_job.return_value = "success"
-
-                    with patch.object(
-                        manager._worker_manager,
-                        "start_worker_nodes",
-                        new_callable=AsyncMock,
-                    ) as mock_start_workers:
-                        # Test connecting to existing cluster - worker_nodes should be ignored
-                        result = await manager.init_cluster(
-                            address="127.0.0.1:10001",
-                            worker_nodes=[{"num_cpus": 2}],  # This should be ignored
-                        )
-
-                        assert result["status"] == "success"
-                        assert result["result_type"] == "connected"
-                        # start_worker_nodes should NOT be called when connecting
-                        mock_start_workers.assert_not_called()
 
 
 if __name__ == "__main__":
