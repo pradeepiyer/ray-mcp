@@ -94,18 +94,29 @@ class RayStateManager:
         }
         self._lock = threading.Lock()
         self._validation_interval = 1.0
+        self._validating = False  # Flag to prevent concurrent validations
 
     def get_state(self) -> Dict[str, Any]:
         """Get current state with validation."""
         with self._lock:
             current_time = time.time()
-            # Only validate if not in initial state
+            # Only validate if not in initial state and not currently validating
             if (
-                current_time - self._state["last_validated"]
-            ) > self._validation_interval and (
-                self._state["cluster_address"] is not None or self._state["initialized"]
+                not self._validating
+                and (current_time - self._state["last_validated"])
+                > self._validation_interval
+                and (
+                    self._state["cluster_address"] is not None
+                    or self._state["initialized"]
+                )
             ):
-                self._validate_and_update_state()
+                # Set validation flag to prevent concurrent validations
+                self._validating = True
+                try:
+                    self._validate_and_update_state()
+                finally:
+                    # Always clear the validation flag, even if validation fails
+                    self._validating = False
             return self._state.copy()
 
     def _validate_and_update_state(self) -> None:

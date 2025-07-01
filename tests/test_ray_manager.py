@@ -831,6 +831,67 @@ class TestStateManagement:
         # Verify no exceptions occurred
         assert len(results) == 150  # 3 threads * 50 updates each
 
+    def test_state_validation_race_condition_fix(self):
+        """Test that state validation race condition is properly fixed (Issue #64)."""
+        state_manager = RayStateManager()
+        validation_call_count = 0
+
+        # Mock the validation method to count calls and return success
+        original_validate = state_manager._validate_and_update_state
+        original_validate_ray_state = state_manager._validate_ray_state
+
+        def mock_validate():
+            nonlocal validation_call_count
+            validation_call_count += 1
+            # Simulate some processing time
+            time.sleep(0.01)
+            original_validate()
+
+        def mock_validate_ray_state():
+            return True  # Always return True for testing
+
+        state_manager._validate_and_update_state = mock_validate
+        state_manager._validate_ray_state = mock_validate_ray_state
+
+        # Set up state to require validation by directly manipulating the internal state
+        with state_manager._lock:
+            state_manager._state.update(
+                {
+                    "initialized": True,
+                    "cluster_address": "ray://localhost:10001",
+                    "last_validated": 0.0,  # Force validation to be needed
+                }
+            )
+
+        # Create multiple threads that will all call get_state simultaneously
+        results = []
+        barrier = threading.Barrier(5)  # Synchronize 5 threads
+
+        def get_state_thread(thread_id):
+            barrier.wait()  # Wait for all threads to be ready
+            state = state_manager.get_state()
+            results.append((thread_id, state["initialized"]))
+
+        # Start 5 threads simultaneously
+        threads = []
+        for i in range(5):
+            thread = threading.Thread(target=get_state_thread, args=(i,))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # Verify that validation was only called once despite multiple concurrent get_state calls
+        assert (
+            validation_call_count == 1
+        ), f"Expected 1 validation call, got {validation_call_count}"
+        assert len(results) == 5  # All threads should have gotten results
+
+        # All threads should have gotten the same consistent state
+        for thread_id, initialized in results:
+            assert initialized is True
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
