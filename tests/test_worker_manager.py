@@ -494,8 +494,7 @@ class TestMultiNodeIntegration:
         # Test with a larger number of workers to verify scalability
         num_workers = 10
         worker_configs = [
-            {"num_cpus": 2, "node_name": f"worker-{i+1}"}
-            for i in range(num_workers)
+            {"num_cpus": 2, "node_name": f"worker-{i+1}"} for i in range(num_workers)
         ]
         expected_results = [
             {"status": "started", "node_name": f"worker-{i+1}"}
@@ -530,7 +529,7 @@ class TestMultiNodeIntegration:
                         ):
                             with patch.object(
                                 RayManager,
-                                "_communicate_with_timeout", 
+                                "_communicate_with_timeout",
                                 new_callable=AsyncMock,
                             ) as mock_communicate:
                                 mock_communicate.return_value = (
@@ -560,7 +559,9 @@ class TestMultiNodeIntegration:
                                     )
 
     @pytest.mark.asyncio
-    async def test_multi_node_resource_allocation(self, ray_manager, mock_cluster_startup):
+    async def test_multi_node_resource_allocation(
+        self, ray_manager, mock_cluster_startup
+    ):
         """Test worker node resource allocation in multi-node setup."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
             with patch("ray_mcp.ray_manager.ray") as mock_ray:
@@ -640,7 +641,7 @@ class TestMultiNodeIntegration:
                                     worker_configs, "127.0.0.1:20000"
                                 )
 
-    @pytest.mark.asyncio 
+    @pytest.mark.asyncio
     async def test_multi_node_error_handling(self, ray_manager):
         """Test error handling in multi-node scenarios."""
         with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):

@@ -2,6 +2,7 @@
 """Integration tests for Ray MCP server - Essential functionality only."""
 
 from unittest.mock import patch
+
 import pytest
 
 from ray_mcp.ray_manager import RayManager
@@ -28,7 +29,7 @@ class TestMCPIntegration:
         tool_names = [tool.name for tool in tools]
         expected_tools = [
             "init_ray",
-            "stop_ray", 
+            "stop_ray",
             "inspect_ray",
             "submit_job",
             "list_jobs",
@@ -80,7 +81,9 @@ class TestMCPIntegration:
 
                             # Test MCP tool integration workflow
                             # 1. Initialize cluster through MCP
-                            result = await registry.execute_tool("init_ray", {"num_cpus": 4})
+                            result = await registry.execute_tool(
+                                "init_ray", {"num_cpus": 4}
+                            )
                             assert result["status"] == "connected"
                             mock_init.assert_called_once()
 
