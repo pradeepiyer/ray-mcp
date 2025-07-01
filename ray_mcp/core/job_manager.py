@@ -197,15 +197,34 @@ class RayJobManager(RayComponent, JobManager):
             if not ray or not ray.is_initialized():
                 return None
             
-            # Try to get dashboard URL from Ray
+            # Get dashboard URL from Ray cluster information
             runtime_context = ray.get_runtime_context()
             if not runtime_context:
                 return None
             
-            # For now, assume standard dashboard port
-            # In a real implementation, this would need to be extracted from cluster info
-            dashboard_url = "http://127.0.0.1:8265"
+            # Try to get dashboard URL from existing state first
+            state = self.state_manager.get_state()
+            existing_dashboard_url = state.get("dashboard_url")
+            if existing_dashboard_url:
+                return existing_dashboard_url
             
+            # Extract dashboard URL from cluster context
+            # Check if we can get GCS address to determine the host
+            gcs_address = getattr(runtime_context, 'gcs_address', None)
+            if gcs_address:
+                # Parse GCS address to get host (format: host:port)
+                try:
+                    host = gcs_address.split(':')[0] if ':' in gcs_address else '127.0.0.1'
+                    # Use standard Ray dashboard port (8265)
+                    dashboard_url = f"http://{host}:8265"
+                except Exception:
+                    # Fallback to localhost if parsing fails
+                    dashboard_url = "http://127.0.0.1:8265"
+            else:
+                # Fallback to localhost if no GCS address available
+                dashboard_url = "http://127.0.0.1:8265"
+            
+            # Store the dashboard URL in state for future use
             self.state_manager.update_state(dashboard_url=dashboard_url)
             return dashboard_url
             

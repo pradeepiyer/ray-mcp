@@ -278,15 +278,52 @@ class TestRayJobManagerClientHandling:
         """Test initializing job client when Ray cluster is available."""
         mock_context = Mock()
         mock_context.get_node_id.return_value = "node_123"
+        mock_context.gcs_address = "192.168.1.100:10001"  # Mock GCS address
         mock_ray.is_initialized.return_value = True
         mock_ray.get_runtime_context.return_value = mock_context
         
         state_manager = Mock()
+        state_manager.get_state.return_value = {}  # No existing dashboard URL
         manager = RayJobManager(state_manager)
         
         dashboard_url = await manager._initialize_job_client_if_available()
         
-        assert dashboard_url == "http://127.0.0.1:8265"
+        assert dashboard_url == "http://192.168.1.100:8265"  # Should extract host from GCS address
+        state_manager.update_state.assert_called_with(dashboard_url="http://192.168.1.100:8265")
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    @patch('ray_mcp.core.job_manager.ray')
+    async def test_initialize_job_client_with_existing_url(self, mock_ray):
+        """Test initializing job client when dashboard URL already exists in state."""
+        mock_context = Mock()
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.return_value = mock_context
+        
+        state_manager = Mock()
+        state_manager.get_state.return_value = {"dashboard_url": "http://existing.host:8265"}
+        manager = RayJobManager(state_manager)
+        
+        dashboard_url = await manager._initialize_job_client_if_available()
+        
+        assert dashboard_url == "http://existing.host:8265"  # Should use existing URL
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    @patch('ray_mcp.core.job_manager.ray')
+    async def test_initialize_job_client_fallback_to_localhost(self, mock_ray):
+        """Test initializing job client falls back to localhost when no GCS address."""
+        mock_context = Mock()
+        mock_context.get_node_id.return_value = "node_123"
+        mock_context.gcs_address = None  # No GCS address
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.return_value = mock_context
+        
+        state_manager = Mock()
+        state_manager.get_state.return_value = {}  # No existing dashboard URL
+        manager = RayJobManager(state_manager)
+        
+        dashboard_url = await manager._initialize_job_client_if_available()
+        
+        assert dashboard_url == "http://127.0.0.1:8265"  # Should fall back to localhost
         state_manager.update_state.assert_called_with(dashboard_url="http://127.0.0.1:8265")
 
     @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
