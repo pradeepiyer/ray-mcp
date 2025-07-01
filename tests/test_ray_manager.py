@@ -832,5 +832,285 @@ class TestStateManagement:
         assert len(results) == 150  # 3 threads * 50 updates each
 
 
+@pytest.mark.fast
+class TestWorkerNodeLogic:
+    """Test cases for worker node logic validation and processing."""
+
+    @pytest.fixture
+    def manager(self):
+        """Create a RayManager instance for testing."""
+        return RayManager()
+
+    def test_validate_and_process_worker_nodes_none(self, manager):
+        """Test worker node processing when worker_nodes=None (default behavior)."""
+        result = manager._validate_and_process_worker_nodes(None)
+
+        # Should return default worker configuration
+        assert result is not None
+        assert len(result) == 2
+        assert result[0]["node_name"] == "default-worker-1"
+        assert result[1]["node_name"] == "default-worker-2"
+
+    def test_validate_and_process_worker_nodes_empty_list(self, manager):
+        """Test worker node processing when worker_nodes=[] (head-only cluster)."""
+        result = manager._validate_and_process_worker_nodes([])
+
+        # Should return None to indicate no workers
+        assert result is None
+
+    def test_validate_and_process_worker_nodes_custom_config(self, manager):
+        """Test worker node processing with custom configuration."""
+        custom_config = [
+            {"num_cpus": 2, "node_name": "custom-worker-1"},
+            {"num_cpus": 4, "node_name": "custom-worker-2"},
+        ]
+
+        result = manager._validate_and_process_worker_nodes(custom_config)
+
+        # Should return the custom configuration unchanged
+        assert result is not None
+        assert len(result) == 2
+        assert result[0]["num_cpus"] == 2
+        assert result[0]["node_name"] == "custom-worker-1"
+        assert result[1]["num_cpus"] == 4
+        assert result[1]["node_name"] == "custom-worker-2"
+
+    def test_validate_and_process_worker_nodes_invalid_config_validation(self, manager):
+        """Test worker node processing with invalid configurations."""
+        invalid_config = [
+            {"num_cpus": -1, "node_name": "invalid-worker"},  # Negative CPUs
+            {
+                "num_cpus": "invalid",
+                "node_name": "invalid-worker-2",
+            },  # Non-integer CPUs
+            "not-a-dict",  # Not a dictionary
+            {"num_cpus": 2, "node_name": "valid-worker"},  # Valid config
+        ]
+
+        result = manager._validate_and_process_worker_nodes(invalid_config)
+
+        # Should filter out invalid configs and fix correctable ones
+        assert result is not None
+        assert len(result) == 3  # Two corrected + one valid
+
+        # Check that invalid CPUs were corrected to 1
+        corrected_configs = [w for w in result if w.get("num_cpus") == 1]
+        assert len(corrected_configs) == 2
+
+        # Check that valid config remains unchanged
+        valid_configs = [w for w in result if w.get("num_cpus") == 2]
+        assert len(valid_configs) == 1
+        assert valid_configs[0]["node_name"] == "valid-worker"
+
+    def test_validate_and_process_worker_nodes_all_invalid_fallback(self, manager):
+        """Test worker node processing when all configurations are invalid."""
+        all_invalid_config = [
+            "not-a-dict-1",
+            "not-a-dict-2",
+            123,  # Not a dict
+        ]
+
+        result = manager._validate_and_process_worker_nodes(all_invalid_config)
+
+        # Should return None (head-only cluster) when all configs are invalid
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_init_cluster_worker_node_none_starts_default_workers(self, manager):
+        """Test that init_cluster with worker_nodes=None starts default workers."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+                mock_ray.init.return_value = Mock(
+                    address_info={"address": "127.0.0.1:10001"},
+                    dashboard_url="http://127.0.0.1:8265",
+                )
+
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_process = Mock()
+                    mock_process.poll.return_value = 0
+                    mock_popen.return_value = mock_process
+
+                    with patch.object(
+                        manager, "_communicate_with_timeout", new_callable=AsyncMock
+                    ) as mock_communicate:
+                        mock_communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+
+                        with patch.object(
+                            manager,
+                            "_initialize_job_client_if_available",
+                            new_callable=AsyncMock,
+                        ) as mock_init_job:
+                            mock_init_job.return_value = "success"
+
+                            with patch.object(
+                                manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
+                                mock_start_workers.return_value = [
+                                    {
+                                        "status": "started",
+                                        "node_name": "default-worker-1",
+                                    },
+                                    {
+                                        "status": "started",
+                                        "node_name": "default-worker-2",
+                                    },
+                                ]
+
+                                # Test with worker_nodes=None (default behavior)
+                                result = await manager.init_cluster(worker_nodes=None)
+
+                                assert result["status"] == "success"
+                                mock_start_workers.assert_called_once()
+                                # Verify default worker config was used
+                                called_args = mock_start_workers.call_args[0][0]
+                                assert len(called_args) == 2
+                                assert called_args[0]["node_name"] == "default-worker-1"
+
+    @pytest.mark.asyncio
+    async def test_init_cluster_worker_node_empty_list_no_workers(self, manager):
+        """Test that init_cluster with worker_nodes=[] starts no workers (head-only)."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+                mock_ray.init.return_value = Mock(
+                    address_info={"address": "127.0.0.1:10001"},
+                    dashboard_url="http://127.0.0.1:8265",
+                )
+
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_process = Mock()
+                    mock_process.poll.return_value = 0
+                    mock_popen.return_value = mock_process
+
+                    with patch.object(
+                        manager, "_communicate_with_timeout", new_callable=AsyncMock
+                    ) as mock_communicate:
+                        mock_communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+
+                        with patch.object(
+                            manager,
+                            "_initialize_job_client_if_available",
+                            new_callable=AsyncMock,
+                        ) as mock_init_job:
+                            mock_init_job.return_value = "success"
+
+                            with patch.object(
+                                manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
+                                # Test with worker_nodes=[] (head-only cluster)
+                                result = await manager.init_cluster(worker_nodes=[])
+
+                                assert result["status"] == "success"
+                                # start_worker_nodes should NOT be called
+                                mock_start_workers.assert_not_called()
+                                # No worker_nodes in result
+                                assert result.get("worker_nodes") is None
+
+    @pytest.mark.asyncio
+    async def test_init_cluster_worker_node_custom_config(self, manager):
+        """Test that init_cluster with custom worker_nodes uses provided configuration."""
+        custom_config = [{"num_cpus": 4, "node_name": "custom-worker"}]
+
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+                mock_ray.init.return_value = Mock(
+                    address_info={"address": "127.0.0.1:10001"},
+                    dashboard_url="http://127.0.0.1:8265",
+                )
+
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_process = Mock()
+                    mock_process.poll.return_value = 0
+                    mock_popen.return_value = mock_process
+
+                    with patch.object(
+                        manager, "_communicate_with_timeout", new_callable=AsyncMock
+                    ) as mock_communicate:
+                        mock_communicate.return_value = (
+                            "Ray runtime started\n--address='127.0.0.1:20000'\nView the Ray dashboard at http://127.0.0.1:8265",
+                            "",
+                        )
+
+                        with patch.object(
+                            manager,
+                            "_initialize_job_client_if_available",
+                            new_callable=AsyncMock,
+                        ) as mock_init_job:
+                            mock_init_job.return_value = "success"
+
+                            with patch.object(
+                                manager._worker_manager,
+                                "start_worker_nodes",
+                                new_callable=AsyncMock,
+                            ) as mock_start_workers:
+                                mock_start_workers.return_value = [
+                                    {"status": "started", "node_name": "custom-worker"},
+                                ]
+
+                                # Test with custom worker configuration
+                                result = await manager.init_cluster(
+                                    worker_nodes=custom_config
+                                )
+
+                                assert result["status"] == "success"
+                                mock_start_workers.assert_called_once()
+                                # Verify custom config was used
+                                called_args = mock_start_workers.call_args[0][0]
+                                assert len(called_args) == 1
+                                assert called_args[0]["node_name"] == "custom-worker"
+                                assert called_args[0]["num_cpus"] == 4
+
+    @pytest.mark.asyncio
+    async def test_init_cluster_connecting_to_existing_ignores_worker_nodes(
+        self, manager
+    ):
+        """Test that init_cluster ignores worker_nodes when connecting to existing cluster."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                mock_ray.is_initialized.return_value = False
+                mock_ray.init.return_value = Mock(
+                    address_info={"address": "127.0.0.1:10001"},
+                    dashboard_url="http://127.0.0.1:8265",
+                )
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = (
+                    "node_123"
+                )
+
+                with patch.object(
+                    manager,
+                    "_initialize_job_client_if_available",
+                    new_callable=AsyncMock,
+                ) as mock_init_job:
+                    mock_init_job.return_value = "success"
+
+                    with patch.object(
+                        manager._worker_manager,
+                        "start_worker_nodes",
+                        new_callable=AsyncMock,
+                    ) as mock_start_workers:
+                        # Test connecting to existing cluster - worker_nodes should be ignored
+                        result = await manager.init_cluster(
+                            address="127.0.0.1:10001",
+                            worker_nodes=[{"num_cpus": 2}],  # This should be ignored
+                        )
+
+                        assert result["status"] == "success"
+                        assert result["result_type"] == "connected"
+                        # start_worker_nodes should NOT be called when connecting
+                        mock_start_workers.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
