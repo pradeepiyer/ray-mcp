@@ -49,22 +49,14 @@ class RayLogManager(RayComponent, LogManager):
         if validation_error:
             return validation_error
         
-        # Route to appropriate retrieval method based on log type
+        # Only job logs are supported
         if log_type == "job":
             return await self._retrieve_job_logs_unified(
                 identifier, num_lines, include_errors, max_size_mb
             )
-        elif log_type == "actor":
-            return await self._retrieve_actor_logs_unified(
-                identifier, num_lines, max_size_mb
-            )
-        elif log_type == "node":
-            return await self._retrieve_node_logs_unified(
-                identifier, num_lines, max_size_mb
-            )
         else:
             return self._response_formatter.format_validation_error(
-                f"Invalid log_type: {log_type}. Must be 'job', 'actor', or 'node'"
+                f"Invalid log_type: {log_type}. Only 'job' is supported"
             )
     
     @ResponseFormatter.handle_exceptions("retrieve logs paginated")
@@ -86,22 +78,14 @@ class RayLogManager(RayComponent, LogManager):
         if validation_error:
             return validation_error
         
-        # Route to appropriate retrieval method with pagination
+        # Only job logs are supported
         if log_type == "job":
             return await self._retrieve_job_logs_paginated(
                 identifier, page, page_size, max_size_mb, include_errors
             )
-        elif log_type == "actor":
-            return await self._retrieve_actor_logs_paginated(
-                identifier, page, page_size, max_size_mb
-            )
-        elif log_type == "node":
-            return await self._retrieve_node_logs_paginated(
-                identifier, page, page_size, max_size_mb
-            )
         else:
             return self._response_formatter.format_validation_error(
-                f"Invalid log_type: {log_type}. Must be 'job', 'actor', or 'node'"
+                f"Invalid log_type: {log_type}. Only 'job' is supported"
             )
     
     async def _retrieve_job_logs_unified(
@@ -118,7 +102,7 @@ class RayLogManager(RayComponent, LogManager):
             # Get job client
             job_client = await self._get_job_client()
             if not job_client:
-                return self._create_placeholder_log_response(
+                return self._create_error_log_response(
                     "job", job_id, num_lines, max_size_mb,
                     additional_info={"error": "Job client not available"}
                 )
@@ -148,7 +132,7 @@ class RayLogManager(RayComponent, LogManager):
             
         except Exception as e:
             LoggingUtility.log_error("retrieve job logs", e)
-            return self._create_placeholder_log_response(
+            return self._create_error_log_response(
                 "job", job_id, num_lines, max_size_mb,
                 additional_info={"error": str(e)}
             )
@@ -168,7 +152,7 @@ class RayLogManager(RayComponent, LogManager):
             # Get job client
             job_client = await self._get_job_client()
             if not job_client:
-                return self._create_placeholder_log_response(
+                return self._create_error_log_response(
                     "job", job_id, 0, max_size_mb, page, page_size,
                     additional_info={"error": "Job client not available"}
                 )
@@ -200,90 +184,10 @@ class RayLogManager(RayComponent, LogManager):
             
         except Exception as e:
             LoggingUtility.log_error("retrieve job logs paginated", e)
-            return self._create_placeholder_log_response(
+            return self._create_error_log_response(
                 "job", job_id, 0, max_size_mb, page, page_size,
                 additional_info={"error": str(e)}
             )
-    
-    async def _retrieve_actor_logs_unified(
-        self,
-        actor_identifier: str,
-        num_lines: int = 100,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Unified actor log retrieval."""
-        return self._create_placeholder_log_response(
-            "actor", actor_identifier, num_lines, max_size_mb,
-            additional_info={
-                "message": "Actor logs are not directly accessible through Ray Python API",
-                "suggestions": [
-                    "Check Ray dashboard for actor logs",
-                    "Use Ray CLI: ray logs --actor-id <actor_id>",
-                    "Monitor actor through dashboard at http://localhost:8265",
-                ]
-            }
-        )
-    
-    async def _retrieve_actor_logs_paginated(
-        self,
-        actor_identifier: str,
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Retrieve actor logs with pagination."""
-        return self._create_placeholder_log_response(
-            "actor", actor_identifier, 0, max_size_mb, page, page_size,
-            additional_info={
-                "message": "Actor logs are not directly accessible through Ray Python API",
-                "suggestions": [
-                    "Check Ray dashboard for actor logs",
-                    "Use Ray CLI: ray logs --actor-id <actor_id>",
-                    "Monitor actor through dashboard at http://localhost:8265",
-                ]
-            }
-        )
-    
-    async def _retrieve_node_logs_unified(
-        self,
-        node_id: str,
-        num_lines: int = 100,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Unified node log retrieval."""
-        return self._create_placeholder_log_response(
-            "node", node_id, num_lines, max_size_mb,
-            additional_info={
-                "message": "Node logs are not directly accessible through Ray Python API",
-                "suggestions": [
-                    "Check Ray dashboard for node logs",
-                    "Use Ray CLI: ray logs --node-id <node_id>",
-                    "Check log files at /tmp/ray/session_*/logs/",
-                    "Monitor node through dashboard at http://localhost:8265",
-                ]
-            }
-        )
-    
-    async def _retrieve_node_logs_paginated(
-        self,
-        node_id: str,
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-    ) -> Dict[str, Any]:
-        """Retrieve node logs with pagination."""
-        return self._create_placeholder_log_response(
-            "node", node_id, 0, max_size_mb, page, page_size,
-            additional_info={
-                "message": "Node logs are not directly accessible through Ray Python API",
-                "suggestions": [
-                    "Check Ray dashboard for node logs",
-                    "Use Ray CLI: ray logs --node-id <node_id>",
-                    "Check log files at /tmp/ray/session_*/logs/",
-                    "Monitor node through dashboard at http://localhost:8265",
-                ]
-            }
-        )
     
     async def _get_job_client(self) -> Optional[JobSubmissionClient]:
         """Get the job submission client from state."""
@@ -324,10 +228,10 @@ class RayLogManager(RayComponent, LogManager):
                 "Identifier must be a non-empty string"
             )
         
-        # Validate log type
-        if log_type not in ["job", "actor", "node"]:
+        # Validate log type - only job logs are supported
+        if log_type != "job":
             return self._response_formatter.format_validation_error(
-                f"Invalid log_type: {log_type}. Must be 'job', 'actor', or 'node'"
+                f"Invalid log_type: {log_type}. Only 'job' is supported"
             )
         
         # Validate size parameters
@@ -355,7 +259,7 @@ class RayLogManager(RayComponent, LogManager):
         
         return None
     
-    def _create_placeholder_log_response(
+    def _create_error_log_response(
         self,
         log_type: str,
         identifier: str,
@@ -365,9 +269,9 @@ class RayLogManager(RayComponent, LogManager):
         page_size: Optional[int] = None,
         additional_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Create a placeholder response when logs cannot be retrieved."""
+        """Create a standardized error response when log retrieval fails."""
         response = {
-            "status": "partial" if additional_info and "suggestions" in additional_info else "error",
+            "status": "error", 
             "log_type": log_type,
             "identifier": identifier,
             "logs": "",
@@ -389,7 +293,7 @@ class RayLogManager(RayComponent, LogManager):
             response["num_lines_retrieved"] = 0
             response["requested_lines"] = num_lines
         
-        # Add additional information
+        # Add additional error information
         if additional_info:
             response.update(additional_info)
         

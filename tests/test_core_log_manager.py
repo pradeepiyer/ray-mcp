@@ -21,21 +21,31 @@ class TestRayLogManagerCore:
         assert manager is not None
         assert manager.state_manager == state_manager
 
-    @pytest.mark.parametrize("log_type", ["job", "actor", "node"])
-    async def test_retrieve_logs_validation_success(self, log_type):
-        """Test log retrieval with valid parameters."""
+    async def test_retrieve_logs_validation_success_job(self):
+        """Test log retrieval with valid job parameters."""
         state_manager = Mock()
         state_manager.is_initialized.return_value = True
         manager = RayLogManager(state_manager)
         
-        # Mock the specific retrieval method
-        with patch.object(manager, f'_retrieve_{log_type}_logs_unified') as mock_method:
+        # Mock the job retrieval method
+        with patch.object(manager, '_retrieve_job_logs_unified') as mock_method:
             mock_method.return_value = {"status": "success", "logs": "test logs"}
             
-            result = await manager.retrieve_logs("test_id", log_type=log_type, num_lines=50)
+            result = await manager.retrieve_logs("test_id", log_type="job", num_lines=50)
             
             assert result["status"] == "success"
             mock_method.assert_called_once()
+
+    @pytest.mark.parametrize("log_type", ["actor", "node"])
+    async def test_retrieve_logs_invalid_log_type(self, log_type):
+        """Test log retrieval with invalid log types (actor, node)."""
+        state_manager = Mock()
+        manager = RayLogManager(state_manager)
+        
+        result = await manager.retrieve_logs("test_id", log_type=log_type)
+        
+        assert result["status"] == "error"
+        assert "Only 'job' is supported" in result["message"]
 
     @pytest.mark.parametrize("identifier", ["", None, "   ", 123])
     async def test_retrieve_logs_invalid_identifier(self, identifier):
@@ -48,24 +58,25 @@ class TestRayLogManagerCore:
         assert result["status"] == "error"
         assert "Identifier must be a non-empty string" in result["message"]
 
-    @pytest.mark.parametrize("log_type", ["invalid", "unknown", ""])
-    async def test_retrieve_logs_invalid_log_type(self, log_type):
-        """Test log retrieval with invalid log type."""
+    @pytest.mark.parametrize("log_type", ["invalid", "ACTOR", "Node", "JOB"])
+    async def test_retrieve_logs_invalid_log_type_validation(self, log_type):
+        """Test log retrieval with various invalid log types."""
         state_manager = Mock()
         manager = RayLogManager(state_manager)
         
         result = await manager.retrieve_logs("test_id", log_type=log_type)
         
         assert result["status"] == "error"
-        assert "Invalid log_type" in result["message"]
+        if log_type.lower() != "job":
+            assert "Only 'job' is supported" in result["message"]
 
-    @pytest.mark.parametrize("num_lines", [-1, 0, 10001])
+    @pytest.mark.parametrize("num_lines", [0, -1, 10001])
     async def test_retrieve_logs_invalid_num_lines(self, num_lines):
         """Test log retrieval with invalid num_lines."""
         state_manager = Mock()
         manager = RayLogManager(state_manager)
         
-        result = await manager.retrieve_logs("test_id", num_lines=num_lines)
+        result = await manager.retrieve_logs("test_id", log_type="job", num_lines=num_lines)
         
         assert result["status"] == "error"
         assert "num_lines must be between 1 and 10000" in result["message"]
@@ -76,7 +87,7 @@ class TestRayLogManagerCore:
         state_manager = Mock()
         manager = RayLogManager(state_manager)
         
-        result = await manager.retrieve_logs("test_id", max_size_mb=max_size_mb)
+        result = await manager.retrieve_logs("test_id", log_type="job", max_size_mb=max_size_mb)
         
         assert result["status"] == "error"
         assert "max_size_mb must be between 1 and 100" in result["message"]
@@ -163,70 +174,6 @@ class TestRayLogManagerJobLogs:
         assert result["status"] == "success"
         assert result["log_type"] == "job"
         assert result["pagination"]["current_page"] == 2
-
-
-@pytest.mark.fast
-class TestRayLogManagerActorLogs:
-    """Test actor log retrieval functionality."""
-
-    async def test_retrieve_actor_logs_placeholder(self):
-        """Test actor log retrieval returns appropriate placeholder."""
-        state_manager = Mock()
-        manager = RayLogManager(state_manager)
-        
-        result = await manager._retrieve_actor_logs_unified("actor_123")
-        
-        assert result["status"] == "partial"
-        assert result["log_type"] == "actor"
-        assert result["identifier"] == "actor_123"
-        assert "not directly accessible" in result["message"]
-        assert "suggestions" in result
-        assert len(result["suggestions"]) > 0
-
-    async def test_retrieve_actor_logs_paginated_placeholder(self):
-        """Test actor log retrieval with pagination returns placeholder."""
-        state_manager = Mock()
-        manager = RayLogManager(state_manager)
-        
-        result = await manager._retrieve_actor_logs_paginated("actor_123", page=1, page_size=100)
-        
-        assert result["status"] == "partial"
-        assert result["log_type"] == "actor"
-        assert "pagination" in result
-        assert result["pagination"]["current_page"] == 1
-        assert result["pagination"]["total_pages"] == 0
-
-
-@pytest.mark.fast
-class TestRayLogManagerNodeLogs:
-    """Test node log retrieval functionality."""
-
-    async def test_retrieve_node_logs_placeholder(self):
-        """Test node log retrieval returns appropriate placeholder."""
-        state_manager = Mock()
-        manager = RayLogManager(state_manager)
-        
-        result = await manager._retrieve_node_logs_unified("node_123")
-        
-        assert result["status"] == "partial"
-        assert result["log_type"] == "node"
-        assert result["identifier"] == "node_123"
-        assert "not directly accessible" in result["message"]
-        assert "suggestions" in result
-        assert "dashboard" in result["suggestions"][0]
-
-    async def test_retrieve_node_logs_paginated_placeholder(self):
-        """Test node log retrieval with pagination returns placeholder."""
-        state_manager = Mock()
-        manager = RayLogManager(state_manager)
-        
-        result = await manager._retrieve_node_logs_paginated("node_123", page=2, page_size=50)
-        
-        assert result["status"] == "partial"
-        assert result["log_type"] == "node"
-        assert "pagination" in result
-        assert result["pagination"]["current_page"] == 2
-        assert result["pagination"]["total_pages"] == 0
 
 
 @pytest.mark.fast

@@ -184,19 +184,19 @@ class ToolRegistry:
 
         self._register_tool(
             name="retrieve_logs",
-            description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis and memory protection",
+            description="Retrieve job logs from Ray cluster with comprehensive error analysis and memory protection",
             schema={
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Job ID, actor ID/name, or node ID to get logs for (required)",
+                        "description": "Job ID to get logs for (required)",
                     },
                     "log_type": {
                         "type": "string",
-                        "enum": ["job", "actor", "node"],
+                        "enum": ["job"],
                         "default": "job",
-                        "description": "Type of logs to retrieve: 'job' for job logs, 'actor' for actor logs, 'node' for node logs",
+                        "description": "Type of logs to retrieve - only 'job' logs are supported",
                     },
                     "num_lines": {
                         "type": "integer",
@@ -225,19 +225,19 @@ class ToolRegistry:
 
         self._register_tool(
             name="retrieve_logs_paginated",
-            description="Retrieve logs from Ray cluster with pagination support for large log files and memory protection",
+            description="Retrieve job logs from Ray cluster with pagination support for large log files and memory protection",
             schema={
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Job ID, actor ID/name, or node ID to get logs for (required)",
+                        "description": "Job ID to get logs for (required)",
                     },
                     "log_type": {
                         "type": "string",
-                        "enum": ["job", "actor", "node"],
+                        "enum": ["job"],
                         "default": "job",
-                        "description": "Type of logs to retrieve: 'job' for job logs, 'actor' for actor logs, 'node' for node logs",
+                        "description": "Type of logs to retrieve - only 'job' logs are supported",
                     },
                     "page": {
                         "type": "integer",

@@ -105,11 +105,11 @@ Cancel a running job.
 
 ### `retrieve_logs`
 
-Retrieve logs with error analysis and memory protection.
+Retrieve job logs with error analysis and memory protection.
 
 **Parameters:**
-- `identifier` (string, required) - Job ID, actor ID, or node ID
-- `log_type` (string, optional) - Type: "job", "actor", or "node" (default: "job")
+- `identifier` (string, required) - Job ID 
+- `log_type` (string, optional) - Type: only "job" is supported (default: "job")
 - `num_lines` (integer, optional) - Number of lines to retrieve (default: 100, max: 10000)
 - `include_errors` (boolean, optional) - Include error analysis (default: false)
 - `max_size_mb` (integer, optional) - Maximum log size in MB (default: 10, max: 100)
@@ -125,11 +125,11 @@ retrieve_logs(
 
 ### `retrieve_logs_paginated`
 
-Retrieve logs with pagination support for large log files.
+Retrieve job logs with pagination support for large log files.
 
 **Parameters:**
-- `identifier` (string, required) - Job ID, actor ID, or node ID
-- `log_type` (string, optional) - Type: "job", "actor", or "node" (default: "job")
+- `identifier` (string, required) - Job ID
+- `log_type` (string, optional) - Type: only "job" is supported (default: "job")
 - `page` (integer, optional) - Page number (1-based, default: 1)
 - `page_size` (integer, optional) - Lines per page (default: 100, max: 1000)
 - `max_size_mb` (integer, optional) - Maximum log size in MB (default: 10, max: 100)

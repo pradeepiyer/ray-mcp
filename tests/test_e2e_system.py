@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""End-to-end integration tests for the refactored Ray MCP architecture.
+"""End-to-end integration tests for the Ray MCP architecture.
 
-These tests validate that the new component-based architecture works seamlessly
+These tests validate that the component-based architecture works seamlessly
 in real scenarios without any mocking. They focus on:
 
-1. Component integration across the new architecture
+1. Component integration across the architecture
 2. Backward compatibility with existing workflows  
 3. Critical user journeys end-to-end
 4. Error handling across component boundaries
@@ -29,8 +29,8 @@ from tests.conftest import (
 
 
 @pytest.mark.e2e
-class TestRefactoredArchitectureE2E:
-    """E2E tests validating the refactored component architecture."""
+class TestRayMCPSystemE2E:
+    """E2E tests validating the Ray MCP system architecture and component integration."""
 
     @pytest.mark.asyncio
     @pytest.mark.slow
@@ -180,7 +180,7 @@ class TestRefactoredArchitectureE2E:
     @pytest.mark.asyncio
     @pytest.mark.slow
     async def test_performance_and_resource_efficiency(self):
-        """Test performance and resource efficiency of the refactored architecture."""
+        """Test performance and resource efficiency of the system architecture."""
         
         print("⚡ Testing performance and resource efficiency...")
         

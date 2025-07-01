@@ -5,7 +5,7 @@
 # - test-smoke: Critical functionality validation (quick confidence)
 # - test:       Complete test suite including E2E (full validation)
 
-.PHONY: test test-fast test-smoke install dev-install sync clean uv-lock uv-check lint-tool-functions wc
+.PHONY: test test-fast test-smoke install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
 
 # ================================================================================
 # TESTING TARGETS
@@ -24,12 +24,12 @@ test-fast:
 # Smoke tests - critical functionality validation for quick confidence
 test-smoke:
 	@echo "💨 Running smoke tests for critical functionality..."
-	@echo "🚀 Testing refactored architecture integration..."
+	@echo "🚀 Testing system architecture integration..."
 	@uv run python -c "\
 import asyncio; \
 from ray_mcp.main import ray_manager; \
 from ray_mcp.core.unified_manager import RayUnifiedManager; \
-print('🔧 Testing Refactored Architecture Integration'); \
+print('🔧 Testing System Architecture Integration'); \
 print('=' * 60); \
 print('✅ Architecture Validation:'); \
 print(f'   - Type: {type(ray_manager).__name__}'); \
@@ -38,11 +38,11 @@ print('✅ Component Access:'); \
 components = {'State Manager': ray_manager.get_state_manager(), 'Cluster Manager': ray_manager.get_cluster_manager(), 'Job Manager': ray_manager.get_job_manager(), 'Log Manager': ray_manager.get_log_manager(), 'Port Manager': ray_manager.get_port_manager()}; \
 [print(f'   - {name}: {\"✅ Available\" if component else \"❌ Missing\"}') for name, component in components.items()]; \
 print('✅ Integration Test: All systems operational!'); \
-print('✅ Refactored architecture successfully deployed!'); \
+print('✅ System architecture successfully deployed!'); \
 "
 	@echo "🚀 Testing core unit functionality..."
 	@uv run pytest tests/test_core_unified_manager.py::TestRayUnifiedManagerCore::test_manager_instantiation_creates_all_components -v --tb=short
-	@echo "✅ Smoke tests completed - Architecture validated!"
+	@echo "✅ Smoke tests completed - System architecture validated!"
 
 # ================================================================================
 # LINTING AND FORMATTING TARGETS
@@ -171,6 +171,30 @@ wc:
 	@echo "Total code lines (Python + Shell + Config):"
 	@find . -name "*.py" -o -name "*.sh" -o -name "*.toml" -o -name "*.ini" -o -name "*.cfg" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" | grep -v ".venv" | grep -v ".git" | grep -v ".mypy_cache" | grep -v ".pytest_cache" | grep -v "htmlcov" | grep -v ".coverage_data" | xargs wc -l | tail -1
 
+# Coverage cleanup
+clean-coverage:
+	@echo "🧹 Cleaning coverage files..."
+	find . -maxdepth 1 -name ".coverage*" -exec rm -rf {} \; 2>/dev/null || true
+	mkdir -p .coverage_data
+	rm -rf htmlcov/
+	@echo "✅ Coverage files cleaned"
+
+clean-all: clean-coverage
+	@echo "🧹 Cleaning all generated files..."
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	find . -type f -name "*.pyo" -delete 2>/dev/null || true
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	rm -rf .pytest_cache/
+	rm -rf .mypy_cache/
+	@echo "✅ All generated files cleaned"
+
+# Test with coverage (using new clean setup)
+test-cov: clean-coverage
+	@echo "🧪 Running tests with coverage..."
+	python -m pytest --cov=ray_mcp --cov-report=term-missing --cov-report=html:htmlcov
+	@echo "📊 Coverage report generated in htmlcov/"
+
 # Help
 help:
 	@echo "Ray MCP Server - Available Commands:"
@@ -186,6 +210,7 @@ help:
 	@echo "  test             Run complete test suite including E2E (default)"
 	@echo "  test-fast        Run unit tests only for fast development feedback"
 	@echo "  test-smoke       Run smoke tests for quick critical functionality validation"
+	@echo "  test-cov         Run tests with coverage"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  lint             Run linting checks"
@@ -193,4 +218,6 @@ help:
 	@echo "  format           Format code"
 	@echo "  lint-tool-functions  Lint tool function signatures"
 	@echo "  wc               Count lines of code with directory breakdown"
-	@echo "  clean            Clean build artifacts" 
+	@echo "  clean            Clean build artifacts"
+	@echo "  clean-coverage   Clean coverage files"
+	@echo "  clean-all        Clean all generated files" 

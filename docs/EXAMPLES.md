@@ -129,20 +129,14 @@ logs_page2 = retrieve_logs_paginated(
 )
 ```
 
-### Multi-Type Log Analysis
+### Job Log Analysis
 
 ```python
 # Job logs with error analysis
 retrieve_logs(
     identifier="job_12345",
     log_type="job",
-    include_errors=true
-)
-
-# Node-level logs for cluster debugging
-retrieve_logs(
-    identifier="node_456",
-    log_type="node",
+    include_errors=true,
     num_lines=500
 )
 ```

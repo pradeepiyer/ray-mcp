@@ -313,7 +313,7 @@ class ResponseFormatter:
 
 
 class LogRetrievalManager:
-    """Centralized log retrieval manager to eliminate redundancy in log retrieval methods."""
+    """Centralized log retrieval manager for job logs only."""
 
     def __init__(self):
         self.log_processor = LogProcessor()
@@ -330,7 +330,7 @@ class LogRetrievalManager:
         page: int = 1,
         page_size: int = 100,
     ) -> Dict[str, Any]:
-        """Unified log retrieval method that handles both regular and paginated retrieval."""
+        """Unified log retrieval method that handles job logs only."""
         # Validate parameters
         validation_error = self.log_processor.validate_log_parameters(
             num_lines, max_size_mb
@@ -343,7 +343,7 @@ class LogRetrievalManager:
                 "page must be positive"
             )
 
-        # Route to appropriate retrieval method
+        # Only job logs are supported
         if log_type == "job":
             return await self._retrieve_job_logs_unified(
                 identifier,
@@ -354,17 +354,9 @@ class LogRetrievalManager:
                 page,
                 page_size,
             )
-        elif log_type == "actor":
-            return await self._retrieve_actor_logs_unified(
-                identifier, num_lines, max_size_mb, paginated, page, page_size
-            )
-        elif log_type == "node":
-            return await self._retrieve_node_logs_unified(
-                identifier, num_lines, max_size_mb, paginated, page, page_size
-            )
         else:
             return self.response_formatter.format_validation_error(
-                f"Invalid log_type: {log_type}. Must be 'job', 'actor', or 'node'"
+                f"Invalid log_type: {log_type}. Only 'job' is supported"
             )
 
     async def _retrieve_job_logs_unified(
@@ -390,90 +382,3 @@ class LogRetrievalManager:
         except Exception as e:
             LoggingUtility.log_error("retrieve job logs", e)
             return self.response_formatter.format_error_response("retrieve job logs", e)
-
-    async def _retrieve_actor_logs_unified(
-        self,
-        actor_identifier: str,
-        num_lines: int,
-        max_size_mb: int,
-        paginated: bool,
-        page: int,
-        page_size: int,
-    ) -> Dict[str, Any]:
-        """Unified actor log retrieval that handles both regular and paginated modes."""
-        try:
-            # Placeholder implementation - Ray doesn't provide direct actor log access
-            pagination_info = (
-                {
-                    "current_page": page,
-                    "total_pages": 0,
-                    "page_size": page_size,
-                    "total_lines": 0,
-                    "lines_in_page": 0,
-                    "has_next": False,
-                    "has_previous": False,
-                }
-                if paginated
-                else {}
-            )
-
-            return self.response_formatter.format_partial_response(
-                "Actor logs are not directly accessible through Ray Python API",
-                log_type="actor",
-                identifier=actor_identifier,
-                suggestions=[
-                    "Check Ray dashboard for actor logs",
-                    "Use Ray CLI: ray logs --actor-id <actor_id>",
-                    "Monitor actor through dashboard at http://localhost:8265",
-                ],
-                **pagination_info,
-            )
-        except Exception as e:
-            LoggingUtility.log_error("retrieve actor logs", e)
-            return self.response_formatter.format_error_response(
-                "retrieve actor logs", e
-            )
-
-    async def _retrieve_node_logs_unified(
-        self,
-        node_id: str,
-        num_lines: int,
-        max_size_mb: int,
-        paginated: bool,
-        page: int,
-        page_size: int,
-    ) -> Dict[str, Any]:
-        """Unified node log retrieval that handles both regular and paginated modes."""
-        try:
-            # Placeholder implementation - Ray doesn't provide direct node log access
-            pagination_info = (
-                {
-                    "current_page": page,
-                    "total_pages": 0,
-                    "page_size": page_size,
-                    "total_lines": 0,
-                    "lines_in_page": 0,
-                    "has_next": False,
-                    "has_previous": False,
-                }
-                if paginated
-                else {}
-            )
-
-            return self.response_formatter.format_partial_response(
-                "Node logs are not directly accessible through Ray Python API",
-                log_type="node",
-                identifier=node_id,
-                suggestions=[
-                    "Check Ray dashboard for node logs",
-                    "Use Ray CLI: ray logs --node-id <node_id>",
-                    "Check log files at /tmp/ray/session_*/logs/",
-                    "Monitor node through dashboard at http://localhost:8265",
-                ],
-                **pagination_info,
-            )
-        except Exception as e:
-            LoggingUtility.log_error("retrieve node logs", e)
-            return self.response_formatter.format_error_response(
-                "retrieve node logs", e
-            )

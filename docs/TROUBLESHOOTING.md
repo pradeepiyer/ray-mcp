@@ -164,9 +164,8 @@ cat ~/Library/Application\ Support/Claude/claude_desktop_config.json
 # Verify job ID exists
 list_jobs()
 
-# Check different log types
+# Check job logs
 retrieve_logs(identifier="job_123", log_type="job")
-retrieve_logs(identifier="node_456", log_type="node")
 
 # Increase line count
 retrieve_logs(identifier="job_123", num_lines=1000)

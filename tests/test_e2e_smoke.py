@@ -154,19 +154,19 @@ class TestRayMCPSmoke:
         print("✅ Error scenarios smoke test passed!")
 
     @pytest.mark.asyncio
-    async def test_refactored_components_smoke(self):
-        """Fast validation that refactored components work together."""
+    async def test_component_integration_smoke(self):
+        """Fast validation that system components work together."""
         
-        print("🔧 Testing refactored components integration...")
+        print("🔧 Testing component integration...")
         
         # Test that we're using the new unified manager
         print("Checking unified manager...")
         from ray_mcp.main import ray_manager
         from ray_mcp.core.unified_manager import RayUnifiedManager
         
-        # Verify we're using the refactored architecture
+        # Verify we're using the unified manager architecture
         assert isinstance(ray_manager, RayUnifiedManager), "Should be using RayUnifiedManager"
-        print("✅ Using refactored unified manager")
+        print("✅ Using unified manager")
         
         # Test component access
         print("Testing component access...")
@@ -216,7 +216,7 @@ class TestRayMCPSmoke:
         print("✅ Components working together")
         
         await stop_ray_cluster()
-        print("✅ Refactored components smoke test passed!")
+        print("✅ Component integration smoke test passed!")
 
 
 @pytest.mark.e2e
