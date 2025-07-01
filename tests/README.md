@@ -7,14 +7,12 @@ Optimized test suite focused on maintainability and proper test classification.
 ```
 tests/
 ├── conftest.py              # Shared fixtures and test utilities
-├── test_ray_manager.py      # Core Ray manager unit tests (599 lines)
+├── test_ray_manager.py      # Core Ray manager unit tests
 ├── test_worker_manager.py   # Worker node management tests
-├── test_integration.py      # Essential integration tests (118 lines)
-├── test_e2e_integration.py  # End-to-end workflow tests (113 lines)
+├── test_integration.py      # Essential integration tests
+├── test_e2e_integration.py  # End-to-end workflow tests
 └── test_main.py            # MCP server entry point tests
 ```
-
-**Total: 61 tests, 2,151 lines, 60% coverage**
 
 ## Test Categories
 
@@ -75,13 +73,13 @@ pytest --cov=ray_mcp --cov-report=term-missing
 ### Key Guidelines
 - E2E tests are **reserved for critical user workflows only**
 - Add new tests to existing files and classes
-- Maintain the 3-class structure in `test_ray_manager.py`
+- Maintain the logical class structure in `test_ray_manager.py`
 - All tests must pass before merging
 
-## Coverage Targets
-- **Overall coverage**: 60%+ maintained
-- **Core modules**: `ray_manager.py`, `tool_registry.py` prioritized
+## Coverage Philosophy
 - **Quality over quantity** - Meaningful tests, not coverage theater
+- **Focus on critical paths** - Core modules like `ray_manager.py`, `tool_registry.py`
+- **Behavior over implementation** - Test what matters to users
 
 ## Debugging Failed Tests
 
