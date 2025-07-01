@@ -897,21 +897,16 @@ class RayManager:
             # Initialize job client with retry logic - this must complete before returning success
             job_client_status = await self._initialize_job_client_if_available()
 
-            # Set default worker nodes if none specified and not connecting to existing cluster
-            if worker_nodes is None and address is None:
-                worker_nodes = self._get_default_worker_config()
-            # CRITICAL: worker_nodes behavior for LLM understanding:
-            # - worker_nodes=None: Uses default workers (2 workers) - happens above
-            # - worker_nodes=[]: Empty list, condition 'if worker_nodes' is False, so NO workers started
-            # - worker_nodes=[...]: Has content, condition 'if worker_nodes' is True, so workers started
-            # When user says "only head node" or "no worker nodes", LLM should pass worker_nodes=[]
-
-            # Start worker nodes if specified
+            # Process and validate worker nodes configuration
             worker_results = []
-            if worker_nodes and address is None:  # Only start workers for new clusters
-                worker_results = await self._worker_manager.start_worker_nodes(
-                    worker_nodes, self._get_cached_state()["gcs_address"]
+            if address is None:  # Only process workers for new clusters
+                processed_worker_nodes = self._validate_and_process_worker_nodes(
+                    worker_nodes
                 )
+                if processed_worker_nodes:  # Start workers if configuration is provided
+                    worker_results = await self._worker_manager.start_worker_nodes(
+                        processed_worker_nodes, self._get_cached_state()["gcs_address"]
+                    )
 
             # Determine status based on whether we connected or started
             if address:
@@ -969,6 +964,73 @@ class RayManager:
                 "node_name": "default-worker-2",
             },
         ]
+
+    def _validate_and_process_worker_nodes(
+        self, worker_nodes: Optional[List[Dict[str, Any]]]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Validate and process worker nodes configuration with explicit logic.
+
+        Args:
+            worker_nodes: Worker node configuration parameter
+
+        Returns:
+            Processed worker configuration or None if no workers should be started
+
+        Behavior:
+            - None: Use default worker configuration (2 workers)
+            - []: Empty list - NO workers (head-only cluster)
+            - [...]: Use provided worker configurations
+        """
+        if worker_nodes is None:
+            # Default behavior: start 2 workers
+            LoggingUtility.log_info(
+                "worker_config",
+                "No worker_nodes specified, using default configuration (2 workers)",
+            )
+            return self._get_default_worker_config()
+        elif len(worker_nodes) == 0:
+            # Explicit head-only cluster request
+            LoggingUtility.log_info(
+                "worker_config",
+                "Empty worker_nodes list provided, starting head-only cluster (no workers)",
+            )
+            return None
+        else:
+            # Custom worker configuration provided
+            LoggingUtility.log_info(
+                "worker_config",
+                f"Custom worker configuration provided with {len(worker_nodes)} workers",
+            )
+            # Validate worker configurations
+            validated_workers = []
+            for i, worker_config in enumerate(worker_nodes):
+                if not isinstance(worker_config, dict):
+                    LoggingUtility.log_warning(
+                        "worker_config",
+                        f"Worker config at index {i} is not a dictionary, skipping",
+                    )
+                    continue
+
+                # Basic validation - ensure reasonable CPU values
+                num_cpus = worker_config.get("num_cpus", 1)
+                if not isinstance(num_cpus, int) or num_cpus < 0:
+                    LoggingUtility.log_warning(
+                        "worker_config",
+                        f"Worker config at index {i} has invalid num_cpus ({num_cpus}), using default (1)",
+                    )
+                    worker_config = worker_config.copy()
+                    worker_config["num_cpus"] = 1
+
+                validated_workers.append(worker_config)
+
+            if not validated_workers:
+                LoggingUtility.log_warning(
+                    "worker_config",
+                    "All worker configurations were invalid, falling back to head-only cluster",
+                )
+                return None
+
+            return validated_workers
 
     async def stop_cluster(self) -> Dict[str, Any]:
         """Stop the Ray cluster."""
