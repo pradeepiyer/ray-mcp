@@ -451,40 +451,9 @@ def wait_for_ray_shutdown(timeout: int = 30) -> bool:
     return False
 
 
-def ensure_clean_ray_state():
-    """
-    Ensure Ray is in a clean state by running cleanup and waiting for shutdown.
-    """
-    run_ray_cleanup()
-    wait_for_ray_shutdown()
-
-
-@pytest.fixture(scope="function", autouse=False)  # Temporarily disabled autouse
-def cleanup_ray_between_e2e_tests(request):
-    """Manually run ray_cleanup.sh between e2e tests when needed."""
-    # Only run cleanup for e2e tests if explicitly requested
-    if "e2e" in request.keywords:
-        print(f"\n🧹 Manual cleanup for e2e test: {request.node.name}")
-
-        # Run minimal cleanup before the test
-        try:
-            import ray
-            if ray.is_initialized():
-                ray.shutdown()
-        except:
-            pass
-
-        yield
-
-        # Run minimal cleanup after the test
-        try:
-            import ray
-            if ray.is_initialized():
-                ray.shutdown()
-        except:
-            pass
-    else:
-        yield
+# NOTE: cleanup_ray_between_e2e_tests fixture was removed as it was disabled and unused.
+# If automatic cleanup between e2e tests is needed in the future, re-implement using
+# the run_ray_cleanup() and wait_for_ray_shutdown() functions above.
 
 
 @pytest.fixture
@@ -514,33 +483,4 @@ def e2e_ray_manager():
         pass  # Ignore cleanup errors
 
 
-@pytest.fixture
-def mock_cluster_startup():
-    """Mock cluster startup operations to speed up tests."""
-    with patch("asyncio.sleep") as mock_sleep:
-        with patch("subprocess.Popen.communicate") as mock_communicate:
-            mock_communicate.return_value = (
-                "Ray runtime started\n--address='127.0.0.1:10001'\nView the Ray dashboard at http://127.0.0.1:8265",
-                "",
-            )
-            yield
 
-
-@pytest.fixture
-def mock_ray_available():
-    """Mock Ray as available for tests."""
-    with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
-        yield
-
-
-@pytest.fixture
-def mock_ray_module():
-    """Mock the ray module with common behaviors."""
-    with patch("ray_mcp.ray_manager.ray") as mock_ray:
-        mock_ray.is_initialized.return_value = False
-        mock_ray.init.return_value = Mock(
-            address_info={"address": "127.0.0.1:10001"},
-            dashboard_url="http://127.0.0.1:8265",
-        )
-        mock_ray.get_runtime_context.return_value.get_node_id.return_value = "node_123"
-        yield mock_ray

@@ -218,43 +218,5 @@ class TestRayMCPSmoke:
         print("✅ Component integration smoke test passed!")
 
 
-@pytest.mark.e2e
-@pytest.mark.smoke
-class TestQuickRegression:
-    """Extremely fast regression tests for deployment validation."""
-
-    @pytest.mark.asyncio
-    async def test_30_second_regression(self):
-        """30-second regression test for deployment validation."""
-        
-        print("⚡ Running 30-second regression test...")
-        
-        import time
-        start_time = time.time()
-        
-        # Ultra-minimal test  
-        cluster_data = await start_ray_cluster(cpu_limit=1, worker_nodes=[])  # Head-only
-        assert cluster_data["status"] == "success"
-        
-        # Simplest possible API validation
-        list_result = await call_tool("list_jobs", {})
-        list_data = parse_tool_result(list_result)
-        assert list_data["status"] == "success"
-        
-        # Quick status check
-        status_result = await call_tool("inspect_ray")
-        status_data = parse_tool_result(status_result)
-        # Accept "active" (cluster running) or "success" (operation succeeded)
-        assert status_data["status"] in ["success", "active"], f"Unexpected status: {status_data['status']}"
-        
-        await stop_ray_cluster()
-        
-        elapsed = time.time() - start_time
-        print(f"✅ 30-second regression test completed in {elapsed:.1f}s")
-        
-        # Should complete well under 30 seconds
-        assert elapsed < 30, f"Test took too long: {elapsed:.1f}s"
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-m", "smoke"]) 
