@@ -39,7 +39,7 @@ class ToolRegistry:
                 "properties": {
                     "address": {
                         "type": "string",
-                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster; if not provided, starts a new cluster. Uses direct GCS address format, not Ray Client API.",
+                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster via dashboard API; if not provided, starts a new cluster. Connection uses dashboard API (port 8265) for all cluster operations.",
                     },
                     "num_cpus": {
                         "type": "integer",

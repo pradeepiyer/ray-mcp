@@ -20,10 +20,12 @@ from .interfaces import ClusterManager, PortManager, StateManager, RayComponent
 # Import Ray modules with error handling
 try:
     import ray
+    from ray.job_submission import JobSubmissionClient
     RAY_AVAILABLE = True
 except ImportError:
     RAY_AVAILABLE = False
     ray = None
+    JobSubmissionClient = None
 
 
 class RayClusterManager(RayComponent, ClusterManager):
@@ -136,7 +138,7 @@ class RayClusterManager(RayComponent, ClusterManager):
             return self._response_formatter.format_error_response("inspect cluster", e)
     
     async def _connect_to_existing_cluster(self, address: str) -> Dict[str, Any]:
-        """Connect to an existing Ray cluster."""
+        """Connect to an existing Ray cluster via dashboard API."""
         try:
             # Validate address format
             if not self._validate_cluster_address(address):
@@ -144,19 +146,44 @@ class RayClusterManager(RayComponent, ClusterManager):
                     f"Invalid cluster address format: {address}"
                 )
             
-            # Initialize Ray client connection
-            ray.init(address=address, ignore_reinit_error=True)
+            # Parse address to construct dashboard URL
+            host, port = address.split(":")
+            dashboard_port = 8265  # Standard Ray dashboard port
+            dashboard_url = f"http://{host}:{dashboard_port}"
             
-            # Update state
+            # Test connection via dashboard API
+            if not JobSubmissionClient:
+                return self._response_formatter.format_error_response(
+                    "connect to cluster", 
+                    Exception("JobSubmissionClient not available - Ray not properly installed")
+                )
+            
+            # Verify cluster connectivity via dashboard API
+            job_client = await self._test_dashboard_connection(dashboard_url)
+            if not job_client:
+                return self._response_formatter.format_error_response(
+                    "connect to cluster",
+                    Exception(f"Failed to connect to Ray dashboard at {dashboard_url}")
+                )
+            
+            # Initialize local Ray without connecting to remote cluster
+            # This gives us access to Ray APIs for cluster inspection
+            if not ray.is_initialized():
+                ray.init(ignore_reinit_error=True)
+            
+            # Update state with dashboard-based connection
             self.state_manager.update_state(
                 initialized=True,
                 cluster_address=address,
-                gcs_address=address
+                gcs_address=address,
+                dashboard_url=dashboard_url,
+                job_client=job_client
             )
             
             return self._response_formatter.format_success_response(
-                message=f"Successfully connected to Ray cluster at {address}",
+                message=f"Successfully connected to Ray cluster via dashboard API at {dashboard_url}",
                 cluster_address=address,
+                dashboard_url=dashboard_url,
                 connection_type="existing"
             )
             
@@ -314,6 +341,43 @@ class RayClusterManager(RayComponent, ClusterManager):
         finally:
             self._head_node_process = None
     
+    async def _test_dashboard_connection(self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0) -> Optional[JobSubmissionClient]:
+        """Test connection to Ray dashboard API."""
+        if not JobSubmissionClient:
+            return None
+            
+        for attempt in range(max_retries):
+            try:
+                LoggingUtility.log_info(
+                    "dashboard_connect", 
+                    f"Testing dashboard connection (attempt {attempt + 1}/{max_retries}): {dashboard_url}"
+                )
+                
+                # Create client and test connection
+                job_client = JobSubmissionClient(dashboard_url)
+                
+                # Test the connection by listing jobs
+                _ = job_client.list_jobs()
+                
+                LoggingUtility.log_info("dashboard_connect", "Dashboard connection successful")
+                return job_client
+                
+            except Exception as e:
+                LoggingUtility.log_warning(
+                    "dashboard_connect",
+                    f"Attempt {attempt + 1} failed: {e}"
+                )
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+        
+        LoggingUtility.log_error(
+            "dashboard_connect", 
+            Exception(f"Failed to connect to dashboard after {max_retries} attempts")
+        )
+        return None
+
     def _validate_cluster_address(self, address: str) -> bool:
         """Validate cluster address format."""
         # Basic validation for host:port format
