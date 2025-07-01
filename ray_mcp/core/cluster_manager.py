@@ -167,15 +167,16 @@ class RayClusterManager(RayComponent, ClusterManager):
     async def _start_new_cluster(self, **kwargs) -> Dict[str, Any]:
         """Start a new Ray cluster."""
         try:
-            # Allocate ports
-            head_port = kwargs.get('head_node_port') or await self._port_manager.find_free_port(10001)
+            # Use Ray's default approach - let Ray handle port allocation
+            # This avoids port conflicts and is more reliable
             dashboard_port = kwargs.get('dashboard_port') or await self._port_manager.find_free_port(8265)
             
-            # Build head node command
+            # Build head node command (without manual port specification)
+            build_kwargs = {k: v for k, v in kwargs.items() 
+                          if k not in ['head_node_port', 'dashboard_port']}
             head_cmd = await self._build_head_node_command(
-                head_port=head_port,
                 dashboard_port=dashboard_port,
-                **kwargs
+                **build_kwargs
             )
             
             # Start head node process
@@ -185,18 +186,23 @@ class RayClusterManager(RayComponent, ClusterManager):
                     "start cluster", Exception("Failed to start head node process")
                 )
             
-            # Wait for cluster to be ready and extract connection info
-            cluster_address = f"{kwargs.get('head_node_host', '127.0.0.1')}:{head_port}"
-            dashboard_url = f"http://{kwargs.get('head_node_host', '127.0.0.1')}:{dashboard_port}"
+            # Wait for cluster to be ready and initialize Ray to get actual address
+            host = kwargs.get('head_node_host', '127.0.0.1')
+            dashboard_url = f"http://{host}:{dashboard_port}"
             
-            # Initialize Ray client
-            ray.init(address=cluster_address, ignore_reinit_error=True)
+            # Initialize Ray and let it detect the cluster
+            ray.init(ignore_reinit_error=True)
+            
+            # Get the actual cluster address from Ray
+            runtime_context = ray.get_runtime_context()
+            gcs_address = runtime_context.gcs_address if runtime_context else None
+            cluster_address = gcs_address or f"{host}:10001"  # fallback
             
             # Update state
             self.state_manager.update_state(
                 initialized=True,
                 cluster_address=cluster_address,
-                gcs_address=cluster_address,
+                gcs_address=gcs_address,
                 dashboard_url=dashboard_url
             )
             
@@ -216,9 +222,10 @@ class RayClusterManager(RayComponent, ClusterManager):
             
             return self._response_formatter.format_success_response(
                 message="Ray cluster started successfully",
+                result_type="started",
                 cluster_address=cluster_address,
                 dashboard_url=dashboard_url,
-                head_node_port=head_port,
+                gcs_address=gcs_address,
                 dashboard_port=dashboard_port,
                 worker_results=worker_results,
                 connection_type="new"
@@ -231,11 +238,10 @@ class RayClusterManager(RayComponent, ClusterManager):
             self.state_manager.reset_state()
             return self._response_formatter.format_error_response("start cluster", e)
     
-    async def _build_head_node_command(self, head_port: int, dashboard_port: int, **kwargs) -> List[str]:
+    async def _build_head_node_command(self, dashboard_port: int, **kwargs) -> List[str]:
         """Build the command to start Ray head node."""
         cmd = [
             "ray", "start", "--head",
-            "--port", str(head_port),
             "--dashboard-port", str(dashboard_port),
             "--dashboard-host", "0.0.0.0",
         ]

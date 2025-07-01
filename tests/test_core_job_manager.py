@@ -1,0 +1,401 @@
+"""Unit tests for RayJobManager component.
+
+Tests focus on job management behavior with 100% mocking.
+"""
+
+import asyncio
+from unittest.mock import Mock, patch, AsyncMock
+
+import pytest
+
+from ray_mcp.core.job_manager import RayJobManager
+from ray_mcp.core.state_manager import RayStateManager
+
+
+@pytest.mark.fast
+class TestRayJobManagerCore:
+    """Test core job management functionality."""
+
+    def test_manager_instantiation(self):
+        """Test that job manager can be instantiated with state manager."""
+        state_manager = Mock()
+        manager = RayJobManager(state_manager)
+        assert manager is not None
+        assert manager.state_manager == state_manager
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    async def test_submit_job_success(self):
+        """Test successful job submission."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        state_manager.get_state.return_value = {"dashboard_url": "http://127.0.0.1:8265"}
+        
+        # Mock job client
+        mock_job_client = Mock()
+        mock_job_client.submit_job.return_value = "job_12345"
+        
+        manager = RayJobManager(state_manager)
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+            result = await manager.submit_job("python script.py")
+        
+        assert result["status"] == "success"
+        assert result["job_id"] == "job_12345"
+        assert result["entrypoint"] == "python script.py"
+        mock_job_client.submit_job.assert_called_once()
+
+    async def test_submit_job_not_initialized(self):
+        """Test job submission when Ray is not initialized."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = False
+        
+        manager = RayJobManager(state_manager)
+        
+        result = await manager.submit_job("python script.py")
+        assert result["status"] == "error"
+        assert "Ray is not initialized" in result["message"]
+
+    @pytest.mark.parametrize("entrypoint", ["", None, "   ", 123])
+    async def test_submit_job_invalid_entrypoint(self, entrypoint):
+        """Test job submission with invalid entrypoint."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        manager = RayJobManager(state_manager)
+        
+        result = await manager.submit_job(entrypoint)
+        assert result["status"] == "error"
+        assert "Entrypoint must be a non-empty string" in result["message"]
+
+    async def test_submit_job_with_runtime_env(self):
+        """Test job submission with runtime environment."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        mock_job_client = Mock()
+        mock_job_client.submit_job.return_value = "job_67890"
+        
+        manager = RayJobManager(state_manager)
+        
+        runtime_env = {"pip": ["numpy", "pandas"]}
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+            result = await manager.submit_job(
+                "python script.py",
+                runtime_env=runtime_env,
+                job_id="custom_job_id",
+                metadata={"user": "test"}
+            )
+        
+        assert result["status"] == "success"
+        assert result["runtime_env"] == runtime_env
+        mock_job_client.submit_job.assert_called_with(
+            entrypoint="python script.py",
+            runtime_env=runtime_env,
+            job_id="custom_job_id",
+            metadata={"user": "test"}
+        )
+
+    async def test_list_jobs_success(self):
+        """Test successful job listing."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        # Mock job data
+        mock_job1 = Mock()
+        mock_job1.__dict__ = {
+            "job_id": "job_1",
+            "status": "SUCCEEDED",
+            "entrypoint": "python script1.py"
+        }
+        mock_job2 = Mock()
+        mock_job2.__dict__ = {
+            "job_id": "job_2", 
+            "status": "RUNNING",
+            "entrypoint": "python script2.py"
+        }
+        
+        mock_job_client = Mock()
+        mock_job_client.list_jobs.return_value = [mock_job1, mock_job2]
+        
+        manager = RayJobManager(state_manager)
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+            result = await manager.list_jobs()
+        
+        assert result["status"] == "success"
+        assert result["job_count"] == 2
+        assert len(result["jobs"]) == 2
+        assert result["jobs"][0]["job_id"] == "job_1"
+        assert result["jobs"][1]["job_id"] == "job_2"
+
+    async def test_cancel_job_success(self):
+        """Test successful job cancellation."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        mock_job_client = Mock()
+        mock_job_client.stop_job.return_value = True
+        
+        manager = RayJobManager(state_manager)
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+            result = await manager.cancel_job("job_12345")
+        
+        assert result["status"] == "success"
+        assert result["job_id"] == "job_12345"
+        assert result["cancelled"] is True
+        mock_job_client.stop_job.assert_called_with("job_12345")
+
+    async def test_cancel_job_failure(self):
+        """Test job cancellation failure."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        mock_job_client = Mock()
+        mock_job_client.stop_job.return_value = False
+        
+        manager = RayJobManager(state_manager)
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+            result = await manager.cancel_job("job_12345")
+        
+        assert result["status"] == "error"
+        assert "Failed to cancel job job_12345" in result["message"]
+
+    @pytest.mark.parametrize("job_id", ["", None, "   ", 123])
+    async def test_cancel_job_invalid_id(self, job_id):
+        """Test job cancellation with invalid job ID."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        manager = RayJobManager(state_manager)
+        
+        result = await manager.cancel_job(job_id)
+        assert result["status"] == "error"
+        assert "Invalid job_id" in result["message"]
+
+
+
+
+
+@pytest.mark.fast
+class TestRayJobManagerClientHandling:
+    """Test job client initialization and management."""
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    @patch('ray_mcp.core.job_manager.JobSubmissionClient')
+    async def test_job_client_creation_success(self, mock_client_class):
+        """Test successful job client creation."""
+        state_manager = Mock()
+        state_manager.get_state.return_value = {
+            "dashboard_url": "http://127.0.0.1:8265",
+            "job_client": None
+        }
+        
+        mock_client = Mock()
+        mock_client.list_jobs.return_value = []
+        mock_client_class.return_value = mock_client
+        
+        manager = RayJobManager(state_manager)
+        
+        client = await manager._get_or_create_job_client("test_operation")
+        
+        assert client == mock_client
+        mock_client_class.assert_called_with("http://127.0.0.1:8265")
+        state_manager.update_state.assert_called_with(job_client=mock_client)
+
+    async def test_job_client_existing_client(self):
+        """Test using existing job client."""
+        existing_client = Mock()
+        state_manager = Mock()
+        state_manager.get_state.return_value = {"job_client": existing_client}
+        
+        manager = RayJobManager(state_manager)
+        
+        client = await manager._get_or_create_job_client("test_operation")
+        
+        assert client == existing_client
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', False)
+    async def test_job_client_ray_not_available(self):
+        """Test job client creation when Ray is not available."""
+        state_manager = Mock()
+        
+        manager = RayJobManager(state_manager)
+        
+        client = await manager._get_or_create_job_client("test_operation")
+        
+        assert client is None
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    @patch('ray_mcp.core.job_manager.JobSubmissionClient')
+    async def test_job_client_creation_with_retry(self, mock_client_class):
+        """Test job client creation with retry logic."""
+        state_manager = Mock()
+        state_manager.get_state.return_value = {
+            "dashboard_url": "http://127.0.0.1:8265",
+            "job_client": None
+        }
+        
+        mock_client = Mock()
+        # Fail first two attempts, succeed on third
+        mock_client.list_jobs.side_effect = [
+            Exception("Connection failed"),
+            Exception("Still failing"), 
+            []  # Success
+        ]
+        mock_client_class.return_value = mock_client
+        
+        manager = RayJobManager(state_manager)
+        
+        client = await manager._initialize_job_client_with_retry(
+            "http://127.0.0.1:8265", max_retries=3, retry_delay=0.01
+        )
+        
+        assert client == mock_client
+        assert mock_client.list_jobs.call_count == 3
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)  
+    @patch('ray_mcp.core.job_manager.JobSubmissionClient')
+    async def test_job_client_creation_all_retries_fail(self, mock_client_class):
+        """Test job client creation when all retries fail."""
+        mock_client = Mock()
+        mock_client.list_jobs.side_effect = Exception("Connection failed")
+        mock_client_class.return_value = mock_client
+        
+        manager = RayJobManager(Mock())
+        
+        client = await manager._initialize_job_client_with_retry(
+            "http://127.0.0.1:8265", max_retries=2, retry_delay=0.01
+        )
+        
+        assert client is None
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    @patch('ray_mcp.core.job_manager.ray')
+    async def test_initialize_job_client_if_available(self, mock_ray):
+        """Test initializing job client when Ray cluster is available."""
+        mock_context = Mock()
+        mock_context.get_node_id.return_value = "node_123"
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.return_value = mock_context
+        
+        state_manager = Mock()
+        manager = RayJobManager(state_manager)
+        
+        dashboard_url = await manager._initialize_job_client_if_available()
+        
+        assert dashboard_url == "http://127.0.0.1:8265"
+        state_manager.update_state.assert_called_with(dashboard_url="http://127.0.0.1:8265")
+
+    @patch('ray_mcp.core.job_manager.RAY_AVAILABLE', True)
+    @patch('ray_mcp.core.job_manager.ray')
+    async def test_initialize_job_client_ray_not_initialized(self, mock_ray):
+        """Test initializing job client when Ray is not initialized."""
+        mock_ray.is_initialized.return_value = False
+        
+        state_manager = Mock()
+        manager = RayJobManager(state_manager)
+        
+        dashboard_url = await manager._initialize_job_client_if_available()
+        
+        assert dashboard_url is None
+
+
+@pytest.mark.fast
+class TestRayJobManagerErrorHandling:
+    """Test error handling in job operations."""
+
+    async def test_job_operation_client_initialization_failure(self):
+        """Test job operation when client initialization fails."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        manager = RayJobManager(state_manager)
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=None):
+            result = await manager.submit_job("python script.py")
+        
+        assert result["status"] == "error"
+        assert "Failed to initialize job client" in result["message"]
+
+    async def test_job_operation_execution_error(self):
+        """Test error handling during job operation execution."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        mock_job_client = Mock()
+        mock_job_client.submit_job.side_effect = Exception("Job submission failed")
+        
+        manager = RayJobManager(state_manager)
+        
+        with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+            result = await manager.submit_job("python script.py")
+        
+        assert result["status"] == "error"
+        assert "Job submission failed" in result["message"]
+
+    async def test_format_job_info_with_dict(self):
+        """Test job info formatting with dictionary input."""
+        manager = RayJobManager(Mock())
+        
+        job_dict = {
+            "job_id": "test_job",
+            "status": "RUNNING",
+            "entrypoint": "python test.py",
+            "metadata": {"user": "test"}
+        }
+        
+        formatted = manager._format_job_info(job_dict)
+        
+        assert formatted["job_id"] == "test_job"
+        assert formatted["status"] == "RUNNING"
+        assert formatted["entrypoint"] == "python test.py"
+        assert formatted["metadata"] == {"user": "test"}
+
+    async def test_format_job_info_with_object(self):
+        """Test job info formatting with object input."""
+        manager = RayJobManager(Mock())
+        
+        job_obj = Mock()
+        job_obj.__dict__ = {
+            "submission_id": "test_job_obj",
+            "status": "SUCCEEDED",
+            "entrypoint": "python obj_test.py"
+        }
+        
+        formatted = manager._format_job_info(job_obj)
+        
+        assert formatted["job_id"] == "test_job_obj"  # Uses submission_id as fallback
+        assert formatted["status"] == "SUCCEEDED"
+        assert formatted["entrypoint"] == "python obj_test.py"
+
+    @pytest.mark.parametrize("kwargs", [
+        {"invalid_param": "value", "entrypoint": "python script.py"},
+        {"entrypoint": "python script.py", "extra_param": 123},
+    ])
+    async def test_submit_job_filters_invalid_kwargs(self, kwargs):
+        """Test that submit_job filters out invalid kwargs."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        
+        mock_job_client = Mock()
+        mock_job_client.submit_job.return_value = "job_filtered"
+        
+        # Mock inspect.signature to return specific parameters
+        with patch('ray_mcp.core.job_manager.inspect.signature') as mock_signature:
+            mock_sig = Mock()
+            mock_sig.parameters.keys.return_value = ['entrypoint', 'runtime_env', 'job_id', 'metadata']
+            mock_signature.return_value = mock_sig
+            
+            manager = RayJobManager(state_manager)
+            
+            with patch.object(manager, '_get_or_create_job_client', return_value=mock_job_client):
+                await manager.submit_job(**kwargs)
+        
+        # Should only pass valid parameters to submit_job
+        call_args = mock_job_client.submit_job.call_args
+        assert "invalid_param" not in call_args.kwargs
+        assert "extra_param" not in call_args.kwargs
+        assert call_args.kwargs["entrypoint"] == "python script.py" 

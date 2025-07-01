@@ -336,8 +336,8 @@ class RayLogManager(RayComponent, LogManager):
                 "max_size_mb must be between 1 and 100"
             )
         
-        # Validate line parameters (if specified)
-        if num_lines > 0 and (num_lines < 1 or num_lines > 10000):
+        # Validate line parameters (if specified and not default)  
+        if num_lines < 1 or num_lines > 10000:
             return self._response_formatter.format_validation_error(
                 "num_lines must be between 1 and 10000"
             )

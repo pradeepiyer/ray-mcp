@@ -318,7 +318,7 @@ class ToolRegistry:
 
     async def _submit_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for submit_job tool."""
-        sig = inspect.signature(RayManager.submit_job)
+        sig = inspect.signature(self.ray_manager.submit_job)
         # Exclude 'self' parameter from filtering since it's not in kwargs
         valid_params = {k for k in sig.parameters.keys() if k != "self"}
         filtered = {k: v for k, v in kwargs.items() if k in valid_params}
