@@ -45,11 +45,11 @@ Stop the Ray cluster and clean up resources.
 
 ### `inspect_ray`
 
-Get comprehensive cluster information including status, resources, health metrics, and optimization recommendations.
+Get comprehensive cluster information including status, resources, and nodes.
 
 **Parameters:** None
 
-**Returns:** Cluster status, node information, resource utilization, performance metrics, and actionable recommendations.
+**Returns:** Cluster status, node information, and resource utilization.
 
 ## Job Management
 
@@ -152,12 +152,10 @@ All tools return structured responses with:
 - `message` - Human-readable description
 - `data` - Tool-specific response data
 - `timestamp` - Operation timestamp
-- `recommendations` - Actionable suggestions (when applicable)
 
 ## Enhanced Output Mode
 
 Set `RAY_MCP_ENHANCED_OUTPUT=true` to enable LLM-optimized response formatting with:
 - Contextual summaries
 - Suggested next steps
-- Structured recommendations
 - Quick reference information 

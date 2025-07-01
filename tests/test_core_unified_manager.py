@@ -87,7 +87,7 @@ class TestRayUnifiedManagerDelegation:
         mock_cluster_manager = Mock()
         mock_cluster_manager.init_cluster = AsyncMock(return_value={"status": "success", "cluster_address": "127.0.0.1:10001"})
         mock_cluster_manager.stop_cluster = AsyncMock(return_value={"status": "success", "message": "Cluster stopped"})
-        mock_cluster_manager.inspect_cluster = AsyncMock(return_value={"status": "running", "nodes": 3})
+        mock_cluster_manager.inspect_cluster = AsyncMock(return_value={"status": "running"})
         
         manager._cluster_manager = mock_cluster_manager
         

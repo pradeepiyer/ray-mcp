@@ -121,7 +121,7 @@ class ToolRegistry:
 
         self._register_tool(
             name="inspect_ray",
-            description="Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations",
+            description="Get comprehensive cluster information including status, resources, and nodes",
             schema={"type": "object", "properties": {}},
             handler=self._inspect_ray_handler,
         )

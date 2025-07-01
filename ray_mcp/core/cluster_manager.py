@@ -116,21 +116,15 @@ class RayClusterManager(RayComponent, ClusterManager):
     
     @ResponseFormatter.handle_exceptions("inspect cluster")
     async def inspect_cluster(self) -> Dict[str, Any]:
-        """Get comprehensive cluster information."""
+        """Get basic cluster information."""
         self._ensure_initialized()
         
         try:
             cluster_info = {}
             
-            # Basic cluster status
-            cluster_info["status"] = "active" if ray.is_initialized() else "inactive"
+            # Use cluster_status to avoid collision with response status
+            cluster_info["cluster_status"] = "running" if ray.is_initialized() else "not_running"
             cluster_info["ray_version"] = ray.__version__ if ray else "unavailable"
-            
-            # Cluster resources and nodes
-            if ray.is_initialized():
-                cluster_info.update(await self._get_cluster_resources())
-                cluster_info.update(await self._get_node_information())
-                cluster_info.update(await self._get_cluster_health())
             
             return self._response_formatter.format_success_response(**cluster_info)
             
@@ -217,6 +211,9 @@ class RayClusterManager(RayComponent, ClusterManager):
             host = kwargs.get('head_node_host', '127.0.0.1')
             dashboard_url = f"http://{host}:{dashboard_port}"
             
+            # Wait for the head node to be fully ready before connecting
+            await self._wait_for_head_node_ready(dashboard_port, host)
+            
             # Initialize Ray and let it detect the cluster
             ray.init(ignore_reinit_error=True)
             
@@ -301,17 +298,19 @@ class RayClusterManager(RayComponent, ClusterManager):
                 text=True
             )
             
-            # Wait briefly and check if process is still running
-            await asyncio.sleep(2.0)
+            # Wait for the command to complete (ray start exits after starting the cluster)
+            stdout, stderr = process.communicate()
             
-            if process.poll() is None:
-                LoggingUtility.log_info("cluster_start", f"Head node started (PID: {process.pid})")
+            # Check if the command completed successfully
+            if process.returncode == 0:
+                LoggingUtility.log_info("cluster_start", f"Head node command completed successfully")
+                LoggingUtility.log_debug("cluster_start", f"STDOUT: {stdout}")
+                # Ray start command succeeded - Ray cluster is now running as daemon processes
                 return process
             else:
-                stdout, stderr = process.communicate()
                 LoggingUtility.log_error(
                     "cluster_start", 
-                    Exception(f"Head node failed to start. STDOUT: {stdout}, STDERR: {stderr}")
+                    Exception(f"Head node command failed with return code {process.returncode}. STDOUT: {stdout}, STDERR: {stderr}")
                 )
                 return None
                 
@@ -325,17 +324,9 @@ class RayClusterManager(RayComponent, ClusterManager):
             return
         
         try:
-            # Terminate gracefully
-            self._head_node_process.terminate()
-            try:
-                self._head_node_process.wait(timeout=timeout)
-                LoggingUtility.log_info("cluster_cleanup", "Head node process terminated gracefully")
-            except subprocess.TimeoutExpired:
-                # Force kill if necessary
-                self._head_node_process.kill()
-                self._head_node_process.wait()
-                LoggingUtility.log_warning("cluster_cleanup", "Head node process force killed")
-                
+            # The ray start command has already exited, so we don't need to terminate it
+            # Ray cluster cleanup is handled by ray.shutdown() in the stop_cluster method
+            LoggingUtility.log_info("cluster_cleanup", "Head node command already completed")
         except Exception as e:
             LoggingUtility.log_error("cleanup head node", e)
         finally:
@@ -391,72 +382,27 @@ class RayClusterManager(RayComponent, ClusterManager):
             {"num_cpus": 1, "node_name": "worker-2"}
         ]
     
-    async def _get_cluster_resources(self) -> Dict[str, Any]:
-        """Get cluster resource information."""
-        try:
-            cluster_resources = ray.cluster_resources()
-            available_resources = ray.available_resources()
-            
-            return {
-                "cluster_resources": dict(cluster_resources),
-                "available_resources": dict(available_resources),
-                "resource_utilization": self._calculate_resource_utilization(
-                    cluster_resources, available_resources
-                )
-            }
-        except Exception as e:
-            LoggingUtility.log_warning("get cluster resources", str(e))
-            return {"cluster_resources": {}, "available_resources": {}}
-    
-    async def _get_node_information(self) -> Dict[str, Any]:
-        """Get information about cluster nodes."""
-        try:
-            nodes = ray.nodes()
-            return {
-                "num_nodes": len(nodes),
-                "node_info": [
-                    {
-                        "node_id": node.get("NodeID"),
-                        "alive": node.get("Alive", False),
-                        "resources": node.get("Resources", {}),
-                        "node_name": node.get("NodeName", "unknown")
-                    }
-                    for node in nodes
-                ]
-            }
-        except Exception as e:
-            LoggingUtility.log_warning("get node information", str(e))
-            return {"num_nodes": 0, "node_info": []}
-    
-    async def _get_cluster_health(self) -> Dict[str, Any]:
-        """Get cluster health information."""
-        try:
-            # Basic health checks
-            runtime_context = ray.get_runtime_context()
-            
-            return {
-                "health_status": "healthy" if runtime_context else "unhealthy",
-                "current_node_id": runtime_context.get_node_id() if runtime_context else None,
-                "cluster_metadata": {
-                    "ray_initialized": ray.is_initialized(),
-                    "ray_version": ray.__version__
-                }
-            }
-        except Exception as e:
-            LoggingUtility.log_warning("get cluster health", str(e))
-            return {"health_status": "unknown"}
-    
-    def _calculate_resource_utilization(
-        self, cluster_resources: Dict, available_resources: Dict
-    ) -> Dict[str, float]:
-        """Calculate resource utilization percentages."""
-        utilization = {}
+    async def _wait_for_head_node_ready(self, dashboard_port: int, host: str, max_wait: int = 10) -> None:
+        """Wait for the head node to be fully ready before connecting."""
+        dashboard_url = f"http://{host}:{dashboard_port}"
         
-        for resource, total in cluster_resources.items():
-            if isinstance(total, (int, float)) and total > 0:
-                available = available_resources.get(resource, 0)
-                if isinstance(available, (int, float)):
-                    used = total - available
-                    utilization[resource] = round((used / total) * 100, 2)
+        for attempt in range(max_wait):
+            try:
+                # Try to connect to the dashboard to see if Ray is ready
+                if JobSubmissionClient:
+                    job_client = JobSubmissionClient(dashboard_url)
+                    _ = job_client.list_jobs()  # This will fail if Ray isn't ready
+                    LoggingUtility.log_info("head_node_ready", f"Head node ready after {attempt + 1} seconds")
+                    return
+            except Exception as e:
+                LoggingUtility.log_debug("head_node_ready", f"Attempt {attempt + 1}: {e}")
+                
+            await asyncio.sleep(1.0)
         
-        return utilization 
+        LoggingUtility.log_warning("head_node_ready", f"Head node may not be fully ready after {max_wait} seconds, proceeding anyway")
+
+
+    
+
+    
+ 

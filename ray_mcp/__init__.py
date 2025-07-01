@@ -7,7 +7,6 @@ high-level tools for cluster management, job submission, monitoring, and debuggi
 Key Features:
     - Cluster Management: Start, connect to, and stop Ray clusters
     - Job Management: Submit, monitor, and cancel distributed jobs
-    - Monitoring: Performance metrics, health checks, and optimization
     - Debugging: Log retrieval and job debugging tools
 
 The server supports both single-node and multi-node Ray clusters, with automatic

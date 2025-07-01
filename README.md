@@ -12,7 +12,6 @@ Ray MCP provides a bridge between LLM agents and Ray distributed computing throu
 - **Job Operations**: Submit, monitor, cancel, and inspect distributed jobs
 - **Worker Node Control**: Manage worker nodes with custom resource configurations
 - **Comprehensive Logging**: Retrieve and analyze logs with error detection
-- **Resource Monitoring**: Real-time cluster health and performance metrics
 - **Multi-Node Support**: Handle head-only or multi-worker cluster topologies
 
 ## Installation
@@ -65,7 +64,7 @@ retrieve_logs(identifier="job_123")
 
 - `init_ray` - Initialize or connect to Ray cluster
 - `stop_ray` - Stop Ray cluster
-- `inspect_ray` - Get cluster status and metrics
+- `inspect_ray` - Get cluster status and information
 - `submit_job` - Submit jobs to the cluster
 - `list_jobs` - List all jobs
 - `inspect_job` - Inspect specific job with logs/debug info
