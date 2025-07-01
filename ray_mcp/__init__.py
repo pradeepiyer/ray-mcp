@@ -7,7 +7,6 @@ high-level tools for cluster management, job submission, monitoring, and debuggi
 Key Features:
     - Cluster Management: Start, connect to, and stop Ray clusters
     - Job Management: Submit, monitor, and cancel distributed jobs
-    - Actor Management: List and manage Ray actors
     - Monitoring: Performance metrics, health checks, and optimization
     - Debugging: Log retrieval and job debugging tools
 

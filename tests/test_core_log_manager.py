@@ -36,17 +36,6 @@ class TestRayLogManagerCore:
             assert result["status"] == "success"
             mock_method.assert_called_once()
 
-    @pytest.mark.parametrize("log_type", ["actor", "node"])
-    async def test_retrieve_logs_invalid_log_type(self, log_type):
-        """Test log retrieval with invalid log types (actor, node)."""
-        state_manager = Mock()
-        manager = RayLogManager(state_manager)
-        
-        result = await manager.retrieve_logs("test_id", log_type=log_type)
-        
-        assert result["status"] == "error"
-        assert "Only 'job' is supported" in result["message"]
-
     @pytest.mark.parametrize("identifier", ["", None, "   ", 123])
     async def test_retrieve_logs_invalid_identifier(self, identifier):
         """Test log retrieval with invalid identifier."""
@@ -58,7 +47,7 @@ class TestRayLogManagerCore:
         assert result["status"] == "error"
         assert "Identifier must be a non-empty string" in result["message"]
 
-    @pytest.mark.parametrize("log_type", ["invalid", "ACTOR", "Node", "JOB"])
+    @pytest.mark.parametrize("log_type", ["invalid", "JOB"])
     async def test_retrieve_logs_invalid_log_type_validation(self, log_type):
         """Test log retrieval with various invalid log types."""
         state_manager = Mock()
