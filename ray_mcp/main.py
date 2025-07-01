@@ -26,12 +26,12 @@ except ImportError:
     job_submission = None
 
 from .logging_utils import LoggingUtility
-from .ray_manager import RayManager
+from .core.unified_manager import RayUnifiedManager
 from .tool_registry import ToolRegistry
 
 # Initialize server and ray manager
 server = Server("ray-mcp")
-ray_manager = RayManager()
+ray_manager = RayUnifiedManager()
 tool_registry = ToolRegistry(ray_manager)
 
 # Configure logging

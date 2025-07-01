@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from mcp.types import Tool
 
-from .ray_manager import RayManager
+from .core.unified_manager import RayUnifiedManager
 
 logger = logging.getLogger(__name__)
 from .logging_utils import LoggingUtility, ResponseFormatter
@@ -21,7 +21,7 @@ from .logging_utils import LoggingUtility, ResponseFormatter
 class ToolRegistry:
     """Registry for all Ray MCP tools with centralized metadata and implementations."""
 
-    def __init__(self, ray_manager: RayManager):
+    def __init__(self, ray_manager: RayUnifiedManager):
         self.ray_manager = ray_manager
         self._tools: Dict[str, Dict[str, Any]] = {}
         self.response_formatter = ResponseFormatter()
