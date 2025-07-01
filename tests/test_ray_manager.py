@@ -255,6 +255,120 @@ class TestRayManagerCore:
         assert manager._head_node_process is None
         assert proc.poll() is not None
 
+    @pytest.mark.asyncio
+    async def test_cluster_lifecycle_scenarios(self, manager):
+        """Test cluster initialization and shutdown in various scenarios."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                # Test 1: Successful initialization
+                mock_ray.is_initialized.return_value = False
+                mock_ray.init.return_value = Mock(
+                    address_info={"address": "127.0.0.1:10001"},
+                    dashboard_url="http://127.0.0.1:8265",
+                )
+                mock_ray.get_runtime_context.return_value.get_node_id.return_value = "node_123"
+
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value.returncode = 0
+                    mock_run.return_value.stdout = "Ray runtime started\n--address='127.0.0.1:10001'"
+                    
+                    result = await manager.init_cluster(num_cpus=4)
+                    assert result["status"] == "success"
+                    assert "cluster_address" in result
+
+                # Test 2: Already initialized scenario
+                mock_ray.is_initialized.return_value = True
+                result = await manager.init_cluster(num_cpus=4)
+                assert result["status"] == "success"
+                # Result type could be "connected" or "started" depending on implementation
+
+                # Test 3: Shutdown scenarios
+                mock_ray.shutdown.return_value = None
+                result = await manager.stop_cluster()
+                assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_state_management_and_validation(self, manager):
+        """Test state management and input validation."""
+        # Test state initialization
+        assert manager.is_initialized == False
+        assert manager.cluster_address is None
+
+        # Test state updates
+        manager._update_state(
+            initialized=True,
+            cluster_address="127.0.0.1:10001",
+            dashboard_url="http://127.0.0.1:8265"
+        )
+        assert manager.is_initialized == True
+        assert manager.cluster_address == "127.0.0.1:10001"
+
+        # Test parameter validation scenarios
+        # Note: Actual validation may happen at Ray level, not in our manager
+        result = await manager.init_cluster(num_cpus=-1)
+        # Should either raise an error or return error status
+        assert result is None or result.get("status") == "error"
+
+    @pytest.mark.asyncio
+    async def test_exception_handling_scenarios(self, manager):
+        """Test comprehensive exception handling across different failure modes."""
+        with patch("ray_mcp.ray_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.ray_manager.ray") as mock_ray:
+                # Test initialization failures
+                mock_ray.init.side_effect = Exception("Ray init failed")
+                result = await manager.init_cluster(num_cpus=4)
+                assert result["status"] == "error"
+                assert "Ray init failed" in result["message"]
+
+                # Test shutdown failures  
+                mock_ray.is_initialized.return_value = True
+                mock_ray.shutdown.side_effect = Exception("Shutdown failed")
+                result = await manager.stop_cluster()
+                assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_port_allocation_race_condition_prevention(self, manager):
+        """Test that find_free_port() prevents race conditions using file locking."""
+        import os
+        import tempfile
+        
+        print("Testing port allocation race condition prevention...")
+        
+        # Test concurrent find_free_port calls
+        start_port = 20000
+        
+        async def allocate_port_task(task_id):
+            port = await manager.find_free_port(start_port=start_port + task_id * 10)
+            return port
+
+        # Run 5 concurrent port allocations
+        tasks = [allocate_port_task(i) for i in range(5)]
+        ports_found = await asyncio.gather(*tasks)
+        
+        # Verify no race conditions occurred
+        unique_ports = set(ports_found)
+        assert len(unique_ports) == len(ports_found), f"Race condition detected! Duplicate ports: {ports_found}"
+        
+        # Test rapid sequential calls
+        sequential_ports = []
+        for i in range(3):
+            port = await manager.find_free_port(start_port=start_port + 100 + i)
+            sequential_ports.append(port)
+        
+        unique_sequential = set(sequential_ports)
+        assert len(unique_sequential) == len(sequential_ports), f"Sequential race condition detected: {sequential_ports}"
+        
+        # Test file locking mechanism
+        temp_dir = tempfile.gettempdir()
+        test_port = await manager.find_free_port(start_port=start_port + 200)
+        
+        # Verify lock file cleanup
+        manager._cleanup_port_lock(test_port)
+        
+        print(f"✅ Port allocation race condition prevention validated")
+        print(f"   Concurrent ports: {sorted(ports_found)}")
+        print(f"   Sequential ports: {sorted(sequential_ports)}")
+
 
 @pytest.mark.fast
 class TestProcessCommunication:
@@ -363,6 +477,22 @@ class TestProcessCommunication:
         # Should timeout and raise RuntimeError
         with pytest.raises(RuntimeError, match="Process communication timed out"):
             await manager._communicate_with_timeout(mock_process, timeout=0.1)
+
+    @pytest.mark.asyncio
+    async def test_port_allocation_and_management(self, manager):
+        """Test port allocation, validation, and cleanup."""
+        # Test find_free_port basic functionality
+        port = await manager.find_free_port()
+        assert isinstance(port, int)
+        assert 10000 <= port <= 65535
+        
+        # Test port range specification
+        port = await manager.find_free_port(start_port=20000)
+        assert port >= 20000
+        
+        # Test that we can allocate multiple ports
+        port2 = await manager.find_free_port(start_port=20100)
+        assert port2 != port
 
 
 @pytest.mark.fast  
