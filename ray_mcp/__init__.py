@@ -32,6 +32,14 @@ Dependencies:
 For more information, see the documentation in the docs/ directory.
 """
 
-__version__ = "0.3.0"
+# Get version dynamically from package metadata (populated from pyproject.toml)
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("ray-mcp")
+except PackageNotFoundError:
+    # Fallback when package not installed (e.g., development mode)
+    __version__ = "dev"
+
 __author__ = "claude 4 sonnet"
 __email__ = "ray-mcp@example.com"

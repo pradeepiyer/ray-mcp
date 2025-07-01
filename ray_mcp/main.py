@@ -28,6 +28,7 @@ except ImportError:
 from .logging_utils import LoggingUtility
 from .core.unified_manager import RayUnifiedManager
 from .tool_registry import ToolRegistry
+from . import __version__
 
 # Initialize server and ray manager
 server = Server("ray-mcp")
@@ -94,7 +95,8 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="ray-mcp",
-                server_version="1.0.0",
+                # Version automatically synced from pyproject.toml via package metadata
+                server_version=__version__,
                 capabilities=ServerCapabilities(),
             ),
         )
