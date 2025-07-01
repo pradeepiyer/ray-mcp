@@ -4,7 +4,7 @@ Model Context Protocol (MCP) server for Ray distributed computing. Enables LLM a
 
 ## Overview
 
-Ray MCP provides a bridge between LLM agents and Ray distributed computing through the MCP protocol. It exposes Ray's cluster management, job submission, and monitoring capabilities as structured tools that AI agents can call directly.
+Ray MCP provides a bridge between LLM agents and Ray distributed computing through the MCP protocol. Built with a modular, maintainable architecture using Domain-Driven Design principles.
 
 ## Features
 
@@ -73,21 +73,36 @@ retrieve_logs(identifier="job_123")
 - `retrieve_logs` - Get logs with error analysis
 - `retrieve_logs_paginated` - Get logs with pagination support
 
-## Documentation
-
-- [Configuration Guide](docs/CONFIGURATION.md) - Setup and configuration options
-- [Tools Reference](docs/TOOLS.md) - Complete tool documentation
-- [Examples](docs/EXAMPLES.md) - Usage examples and patterns
-- [Development](docs/DEVELOPMENT.md) - Development setup and testing
-- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
-
 ## Architecture
+
+Ray MCP uses a modular architecture with focused components:
 
 ```
 ┌─────────────────┐    MCP Protocol    ┌─────────────────┐
 │   LLM Agent     │◄──────────────────►│   Ray MCP       │
 │                 │                    │   Server        │
 └─────────────────┘                    └─────────┬───────┘
+                                                 │
+                                                 ▼
+                                       ┌─────────────────┐
+                                       │   Core Layer    │
+                                       │                 │
+                                       │ ┌─────────────┐ │
+                                       │ │StateManager │ │
+                                       │ └─────────────┘ │
+                                       │ ┌─────────────┐ │
+                                       │ │ClusterMgr   │ │
+                                       │ └─────────────┘ │
+                                       │ ┌─────────────┐ │
+                                       │ │JobManager   │ │
+                                       │ └─────────────┘ │
+                                       │ ┌─────────────┐ │
+                                       │ │LogManager   │ │
+                                       │ └─────────────┘ │
+                                       │ ┌─────────────┐ │
+                                       │ │PortManager │ │
+                                       │ └─────────────┘ │
+                                       └─────────┬───────┘
                                                  │
                                        Ray API   │
                                                  ▼
@@ -105,6 +120,36 @@ retrieve_logs(identifier="job_123")
                                        │  └──────────┘   │
                                        └─────────────────┘
 ```
+
+### Core Components
+
+- **StateManager**: Thread-safe cluster state management
+- **ClusterManager**: Pure cluster lifecycle operations
+- **JobManager**: Job operations and lifecycle management
+- **LogManager**: Centralized log retrieval with memory protection
+- **PortManager**: Port allocation with race condition prevention
+- **UnifiedManager**: Backward compatibility facade
+
+## Development
+
+```bash
+# Run tests
+make test          # Complete test suite
+make test-fast     # Unit tests only
+make test-smoke    # Critical functionality validation
+
+# Code quality
+make lint          # Linting checks
+make format        # Code formatting
+```
+
+## Documentation
+
+- [Configuration Guide](docs/CONFIGURATION.md) - Setup and configuration options
+- [Tools Reference](docs/TOOLS.md) - Complete tool documentation
+- [Examples](docs/EXAMPLES.md) - Usage examples and patterns
+- [Development](docs/DEVELOPMENT.md) - Development setup and testing
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## Requirements
 

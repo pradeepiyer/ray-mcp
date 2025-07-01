@@ -40,22 +40,42 @@ source venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Project Structure
+## Architecture Overview
+
+Ray MCP uses a modular Domain-Driven Design architecture with focused components:
 
 ```
-ray-mcp/
-├── ray_mcp/                 # Main package
-│   ├── __init__.py
-│   ├── main.py             # MCP server entry point
-│   ├── ray_manager.py      # Ray cluster operations
-│   ├── tool_registry.py    # Tool definitions and handlers
-│   ├── worker_manager.py   # Worker node management
-│   └── logging_utils.py    # Logging and response formatting
-├── tests/                  # Test suite
-├── examples/               # Usage examples
-├── docs/                   # Documentation
-└── pyproject.toml         # Project configuration
+ray_mcp/
+├── core/                    # Core business logic layer
+│   ├── interfaces.py        # Protocol definitions and contracts
+│   ├── state_manager.py     # Thread-safe cluster state management
+│   ├── port_manager.py      # Port allocation with race condition prevention
+│   ├── cluster_manager.py   # Pure cluster lifecycle operations
+│   ├── job_manager.py       # Job operations and lifecycle management
+│   ├── log_manager.py       # Centralized log retrieval with memory protection
+│   └── unified_manager.py   # Backward compatibility facade
+├── main.py                  # MCP server entry point
+├── tool_registry.py         # Tool definitions and handlers
+├── worker_manager.py        # Worker node management
+└── logging_utils.py         # Logging and response formatting
 ```
+
+### Core Components
+
+- **StateManager**: Thread-safe cluster state management with validation
+- **PortManager**: Port allocation with file locking and cleanup
+- **ClusterManager**: Pure cluster lifecycle operations without side effects
+- **JobManager**: Job operations with client management and inspection
+- **LogManager**: Centralized log retrieval with memory protection and error analysis
+- **UnifiedManager**: Facade providing backward compatibility
+
+### Design Principles
+
+- **Dependency Injection**: Components receive dependencies through constructors
+- **Single Responsibility**: Each component has one clear purpose
+- **Protocol-Based Contracts**: Runtime-checkable protocols define interfaces
+- **Thread Safety**: State management handles concurrent access properly
+- **Error Handling**: Comprehensive exception handling with structured responses
 
 ## Development Workflow
 
@@ -65,13 +85,13 @@ The project uses automated formatting and linting:
 
 ```bash
 # Format code
-uv run black ray_mcp tests examples
+make format
 
-# Sort imports
-uv run isort ray_mcp tests examples
+# Run linting
+make lint
 
-# Type checking
-uv run pyright
+# Enhanced linting with tool function checks
+make lint-enhanced
 ```
 
 ### Running the Server
@@ -89,41 +109,50 @@ RAY_MCP_LOG_LEVEL=DEBUG uv run ray-mcp
 
 ## Testing
 
-### Test Suite
+The project uses a comprehensive test suite with focused targets:
+
+### Test Structure
+
+```
+tests/
+├── conftest.py                    # Shared fixtures and utilities
+├── test_core_state_manager.py     # State management unit tests
+├── test_core_port_manager.py      # Port allocation unit tests  
+├── test_core_cluster_manager.py   # Cluster lifecycle unit tests
+├── test_core_job_manager.py       # Job management unit tests
+├── test_core_log_manager.py       # Log management unit tests
+├── test_core_unified_manager.py   # Unified manager unit tests
+├── test_mcp_integration.py        # MCP integration layer tests
+├── test_e2e_smoke.py              # Fast critical functionality validation
+└── test_e2e_system.py             # System integration tests
+```
+
+### Running Tests
 
 ```bash
-# Run all tests
-uv run pytest
+# Fast unit tests for development
+make test-fast
 
-# Run with coverage
+# Critical functionality validation
+make test-smoke  
+
+# Complete test suite including E2E
+make test
+
+# Individual component tests
+uv run pytest tests/test_core_job_manager.py
+uv run pytest tests/test_core_state_manager.py
+
+# With coverage
 uv run pytest --cov=ray_mcp --cov-report=html
-
-# Run specific test categories
-uv run pytest tests/test_ray_manager.py
-uv run pytest -k "test_init_cluster"
 ```
 
 ### Test Categories
 
-- **Unit tests** - Individual component testing
-- **Integration tests** - Multi-component workflows
-- **End-to-end tests** - Full MCP server testing
-
-### Manual Testing
-
-```bash
-# Test with MCP client simulator
-uv run python -m ray_mcp.main
-
-# Test individual tools
-python -c "
-import asyncio
-from ray_mcp.ray_manager import RayManager
-rm = RayManager()
-result = asyncio.run(rm.init_cluster())
-print(result)
-"
-```
+- **Unit Tests** (`test_core_*.py`) - Component testing with full mocking
+- **Integration Tests** (`test_mcp_integration.py`) - MCP layer integration
+- **Smoke Tests** (`test_e2e_smoke.py`) - Fast critical path validation
+- **System Tests** (`test_e2e_system.py`) - End-to-end system integration
 
 ## Debugging
 
@@ -137,6 +166,18 @@ logger.setLevel(logging.DEBUG)
 ```
 
 ### Common Debug Scenarios
+
+#### Component Testing
+
+```python
+# Test individual components directly
+from ray_mcp.core.state_manager import RayStateManager
+from ray_mcp.core.cluster_manager import RayClusterManager
+
+state_mgr = RayStateManager()
+cluster_mgr = RayClusterManager(state_mgr, port_mgr)
+result = await cluster_mgr.init_cluster()
+```
 
 #### MCP Protocol Issues
 
@@ -153,17 +194,6 @@ uv run ray-mcp
 export RAY_DISABLE_USAGE_STATS=1
 export RAY_LOG_LEVEL=debug
 uv run ray-mcp
-```
-
-#### Tool Execution Issues
-
-```python
-# Test tool directly
-from ray_mcp.tool_registry import ToolRegistry
-from ray_mcp.ray_manager import RayManager
-
-registry = ToolRegistry(RayManager())
-result = await registry.execute_tool("init_ray", {})
 ```
 
 ## Adding New Tools
@@ -193,19 +223,19 @@ self._register_tool(
 ```python
 async def _my_new_tool_handler(self, **kwargs) -> Dict[str, Any]:
     """Handler for my_new_tool."""
-    return await self.ray_manager.my_new_operation(**kwargs)
+    return await self.unified_manager.my_new_operation(**kwargs)
 ```
 
-### 3. Add Ray Manager Method
+### 3. Add Core Component Method
 
-In `ray_manager.py`:
+Choose the appropriate core component (e.g., `JobManager` for job operations):
 
 ```python
 @ResponseFormatter.handle_exceptions("my operation")
 async def my_new_operation(self, param1: str, param2: int = 1) -> Dict[str, Any]:
     """Implement the new operation."""
     # Implementation here
-    return ResponseFormatter.format_success_response(
+    return self._response_formatter.format_success_response(
         message="Operation completed",
         data={"result": "value"}
     )
@@ -214,39 +244,11 @@ async def my_new_operation(self, param1: str, param2: int = 1) -> Dict[str, Any]
 ### 4. Add Tests
 
 ```python
-# tests/test_my_new_tool.py
-async def test_my_new_tool():
-    registry = ToolRegistry(RayManager())
-    result = await registry.execute_tool("my_new_tool", {"param1": "test"})
+# tests/test_core_my_component.py
+async def test_my_new_operation():
+    manager = MyComponentManager(mock_dependencies)
+    result = await manager.my_new_operation(param1="test")
     assert result["status"] == "success"
-```
-
-## Release Process
-
-### Version Management
-
-Update version in `pyproject.toml`:
-
-```toml
-[project]
-version = "0.3.0"
-```
-
-### Testing Before Release
-
-```bash
-# Full test suite
-uv run pytest
-
-# Type checking
-uv run pyright
-
-# Code formatting
-uv run black --check ray_mcp tests examples
-uv run isort --check ray_mcp tests examples
-
-# Build package
-uv build
 ```
 
 ## Contributing
@@ -256,21 +258,33 @@ uv build
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/my-feature`
 3. Make changes with tests
-4. Verify all tests pass: `uv run pytest`
+4. Verify all tests pass: `make test`
 5. Submit pull request
 
 ### Code Review Guidelines
 
-- All new code must have tests
-- Follow existing code style and patterns
+- All new code must have unit tests
+- Follow existing architectural patterns
 - Update documentation for user-facing changes
 - Ensure backward compatibility
 - Add type hints for new functions
+- Components should follow dependency injection pattern
 
 ### Issue Reporting
 
 Include in bug reports:
 - Ray version and OS
 - MCP client configuration
-- Full error logs
-- Minimal reproduction case 
+- Full error logs with component context
+- Minimal reproduction case
+- Which component(s) are involved
+
+### Architecture Guidelines
+
+When contributing:
+- Keep components focused on single responsibilities  
+- Use dependency injection for component relationships
+- Follow protocol-based contracts defined in `interfaces.py`
+- Add comprehensive error handling with structured responses
+- Maintain thread safety for shared state
+- Write tests that verify behavior, not implementation details 
