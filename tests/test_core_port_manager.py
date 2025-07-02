@@ -22,12 +22,10 @@ class TestRayPortManagerCore:
     @patch("ray_mcp.core.port_manager.socket.socket")
     @patch("builtins.open", new_callable=mock_open)
     @patch("ray_mcp.core.port_manager.fcntl.flock")
-    @patch("ray_mcp.core.port_manager.os.path.exists")
-    async def test_find_free_port_success(
-        self, mock_exists, mock_flock, mock_file, mock_socket
-    ):
+    async def test_find_free_port_success(self, mock_flock, mock_file, mock_socket):
         """Test successful port allocation."""
-        mock_exists.return_value = False  # No existing lock file
+        # Mock empty lock file content (no existing lock)
+        mock_file.return_value.read.return_value = ""
 
         # Mock socket binding success
         mock_sock_instance = Mock()
@@ -43,12 +41,12 @@ class TestRayPortManagerCore:
     @patch("ray_mcp.core.port_manager.socket.socket")
     @patch("builtins.open", new_callable=mock_open)
     @patch("ray_mcp.core.port_manager.fcntl.flock")
-    @patch("ray_mcp.core.port_manager.os.path.exists")
     async def test_find_free_port_multiple_attempts(
-        self, mock_exists, mock_flock, mock_file, mock_socket
+        self, mock_flock, mock_file, mock_socket
     ):
-        """Test port allocation when first ports are occupied."""
-        mock_exists.return_value = False
+        """Test port allocation when first ports are occupied by socket binding failures."""
+        # Mock empty lock file content (no existing locks)
+        mock_file.return_value.read.return_value = ""
 
         # Mock socket to fail on first two attempts, succeed on third
         mock_sock_instance = Mock()
@@ -67,12 +65,12 @@ class TestRayPortManagerCore:
     @patch("ray_mcp.core.port_manager.socket.socket")
     @patch("builtins.open", new_callable=mock_open)
     @patch("ray_mcp.core.port_manager.fcntl.flock")
-    @patch("ray_mcp.core.port_manager.os.path.exists")
     async def test_find_free_port_exhausted_attempts(
-        self, mock_exists, mock_flock, mock_file, mock_socket
+        self, mock_flock, mock_file, mock_socket
     ):
         """Test port allocation failure when all attempts are exhausted."""
-        mock_exists.return_value = False
+        # Mock empty lock file content (no existing locks)
+        mock_file.return_value.read.return_value = ""
 
         # Mock all socket bind attempts to fail
         mock_sock_instance = Mock()
@@ -114,16 +112,10 @@ class TestRayPortManagerCore:
 class TestRayPortManagerLockHandling:
     """Test file locking mechanisms for port allocation."""
 
-    @patch("ray_mcp.core.port_manager.os.path.exists")
     @patch("ray_mcp.core.port_manager.os.kill")
-    @patch("ray_mcp.core.port_manager.os.unlink")
     @patch("builtins.open", new_callable=mock_open)
-    async def test_stale_lock_file_removal(
-        self, mock_file, mock_unlink, mock_kill, mock_exists
-    ):
-        """Test that stale lock files are removed."""
-        mock_exists.return_value = True
-
+    async def test_stale_lock_file_removal(self, mock_file, mock_kill):
+        """Test that stale lock files are handled correctly during allocation."""
         # Mock lock file content with dead PID
         mock_file.return_value.read.return_value = "99999,1234567890"
 
@@ -132,24 +124,23 @@ class TestRayPortManagerLockHandling:
 
         manager = RayPortManager()
 
-        # This should trigger cleanup of stale lock file
+        # This should detect stale lock content and proceed with allocation
         with patch("ray_mcp.core.port_manager.socket.socket") as mock_socket:
             with patch("ray_mcp.core.port_manager.fcntl.flock"):
                 mock_sock_instance = Mock()
                 mock_socket.return_value.__enter__.return_value = mock_sock_instance
 
-                # After cleanup, should proceed to try binding
-                await manager.find_free_port(start_port=10001, max_tries=1)
+                # Should proceed to try binding after detecting stale lock
+                port = await manager.find_free_port(start_port=10001, max_tries=1)
+                assert port == 10001
 
-        mock_unlink.assert_called()
+        # Verify we attempted to bind to the port
+        mock_sock_instance.bind.assert_called_with(("", 10001))
 
     @patch("ray_mcp.core.port_manager.fcntl.flock")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("ray_mcp.core.port_manager.os.path.exists")
-    async def test_lock_acquisition_failure(self, mock_exists, mock_file, mock_flock):
+    async def test_lock_acquisition_failure(self, mock_file, mock_flock):
         """Test handling when lock acquisition fails."""
-        mock_exists.return_value = False
-
         # Mock lock acquisition failure
         mock_flock.side_effect = OSError("Resource temporarily unavailable")
 
@@ -158,6 +149,59 @@ class TestRayPortManagerLockHandling:
         # Should fail to get port due to lock contention
         with pytest.raises(RuntimeError):
             await manager.find_free_port(start_port=10001, max_tries=1)
+
+    @patch("ray_mcp.core.port_manager.os.kill")
+    @patch("ray_mcp.core.port_manager.os.getpid")
+    @patch("ray_mcp.core.port_manager.time.time")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("ray_mcp.core.port_manager.fcntl.flock")
+    async def test_race_condition_active_lock_respected(
+        self, mock_flock, mock_file, mock_time, mock_getpid, mock_kill
+    ):
+        """Test race condition fix: active locks from other processes are respected."""
+        mock_time.return_value = 1234567890
+        mock_getpid.return_value = 12345
+        mock_kill.return_value = None  # Process exists
+
+        # Mock lock file with active lock from different process
+        mock_file.return_value.read.return_value = "99999,1234567850"
+
+        manager = RayPortManager()
+
+        # Should detect active lock and move to next port
+        with patch("ray_mcp.core.port_manager.socket.socket") as mock_socket:
+            mock_sock_instance = Mock()
+            mock_socket.return_value.__enter__.return_value = mock_sock_instance
+
+            # First call has active lock, second call succeeds
+            mock_file.return_value.read.side_effect = ["99999,1234567850", ""]
+
+            port = await manager.find_free_port(start_port=10001, max_tries=2)
+            assert port == 10002
+
+    @patch("ray_mcp.core.port_manager.os.getpid")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("ray_mcp.core.port_manager.fcntl.flock")
+    async def test_race_condition_own_process_ignored(
+        self, mock_flock, mock_file, mock_getpid
+    ):
+        """Test race condition fix: locks from same process are ignored."""
+        our_pid = 12345
+        mock_getpid.return_value = our_pid
+
+        # Mock lock file with our own PID
+        mock_file.return_value.read.return_value = f"{our_pid},1234567850"
+
+        manager = RayPortManager()
+
+        # Should ignore our own lock and proceed
+        with patch("ray_mcp.core.port_manager.socket.socket") as mock_socket:
+            mock_sock_instance = Mock()
+            mock_socket.return_value.__enter__.return_value = mock_sock_instance
+
+            port = await manager.find_free_port(start_port=10001, max_tries=1)
+            assert port == 10001
+            mock_sock_instance.bind.assert_called_with(("", 10001))
 
 
 @pytest.mark.fast
