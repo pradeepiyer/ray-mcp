@@ -470,11 +470,11 @@ class TestWorkerManagerProcessCleanup:
 
         with patch("asyncio.get_running_loop") as mock_loop:
             mock_loop.return_value.run_in_executor = AsyncMock(return_value=0)
-            
+
             status, message = await worker_manager._wait_for_process_termination(
                 mock_process, "test-worker", timeout=5
             )
-            
+
             assert status == "force_stopped"
             assert "test-worker" in message
             assert "force stopped" in message
@@ -485,11 +485,11 @@ class TestWorkerManagerProcessCleanup:
             mock_loop.return_value.run_in_executor = AsyncMock(
                 side_effect=asyncio.TimeoutError()
             )
-            
+
             status, message = await worker_manager._wait_for_process_termination(
                 mock_process, "test-worker", timeout=5
             )
-            
+
             assert status == "force_stopped"
             assert "test-worker" in message
 
@@ -499,11 +499,11 @@ class TestWorkerManagerProcessCleanup:
             mock_loop.return_value.run_in_executor = AsyncMock(
                 side_effect=asyncio.TimeoutError()
             )
-            
+
             status, message = await worker_manager._wait_for_process_termination(
                 mock_process, "test-worker", timeout=5
             )
-            
+
             assert status == "force_stopped"
             assert "may still be running" in message
 
@@ -512,15 +512,17 @@ class TestWorkerManagerProcessCleanup:
             mock_loop.return_value.run_in_executor = AsyncMock(
                 side_effect=RuntimeError("Unexpected error")
             )
-            
+
             status, message = await worker_manager._wait_for_process_termination(
                 mock_process, "test-worker", timeout=5
             )
-            
+
             assert status == "force_stopped"
             assert "cleanup error" in message
 
-    async def test_stop_all_workers_graceful_and_force_termination(self, worker_manager):
+    async def test_stop_all_workers_graceful_and_force_termination(
+        self, worker_manager
+    ):
         """Test both graceful and force termination workflows in stop_all_workers."""
         from unittest.mock import AsyncMock, Mock, patch
 
@@ -556,7 +558,7 @@ class TestWorkerManagerProcessCleanup:
 
         with patch("asyncio.get_running_loop") as mock_loop:
             mock_loop.return_value.run_in_executor = AsyncMock(return_value=0)
-            
+
             # First asyncio.wait_for (graceful) times out, triggering force termination
             with patch("asyncio.wait_for", side_effect=[asyncio.TimeoutError(), None]):
                 results = await worker_manager.stop_all_workers()
