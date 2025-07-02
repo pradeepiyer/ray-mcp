@@ -51,6 +51,33 @@ class LogProcessor:
         return truncated_text + f"\n... (truncated at {max_size_mb}MB limit)"
 
     @staticmethod
+    def _stream_log_lines(log_source: Union[str, List[str]]):
+        """Generator that yields log lines one by one to prevent memory exhaustion.
+
+        Args:
+            log_source: String or list of log lines to process
+
+        Yields:
+            Individual lines from the log source
+        """
+        if isinstance(log_source, str):
+            # For strings, use a character-by-character approach to avoid loading all lines in memory
+            current_line = ""
+            for char in log_source:
+                if char == "\n":
+                    yield current_line
+                    current_line = ""
+                else:
+                    current_line += char
+            # Don't forget the last line if it doesn't end with newline
+            if current_line:
+                yield current_line
+        else:
+            # For lists, yield each line directly
+            for line in log_source:
+                yield line
+
+    @staticmethod
     def stream_logs_with_limits(
         log_source: Union[str, List[str]],
         max_lines: int = 100,
@@ -74,13 +101,8 @@ class LogProcessor:
         max_line_bytes = max_line_size_kb * 1024
 
         try:
-            # Handle both string and list inputs with streaming approach
-            if isinstance(log_source, str):
-                log_lines = log_source.split("\n")
-            else:
-                log_lines = log_source
-
-            for line_idx, line in enumerate(log_lines):
+            # Use streaming approach to process logs line by line
+            for line_idx, line in enumerate(LogProcessor._stream_log_lines(log_source)):
                 # Early exit if we've reached the line limit
                 if len(lines) >= max_lines:
                     lines.append(f"... (truncated at {max_lines} lines)")
@@ -140,13 +162,29 @@ class LogProcessor:
     ) -> Dict[str, Any]:
         """Stream logs with pagination support for large log files."""
         try:
-            # Handle both string and list inputs
+            # First, we need to count total lines efficiently
+            # For very large logs, we'll estimate rather than count all lines
+            total_lines = 0
             if isinstance(log_source, str):
-                log_lines = log_source.split("\n")
+                # For strings, estimate line count without loading all into memory
+                # Use a sample-based approach for very large strings
+                if len(log_source) > 10 * 1024 * 1024:  # 10MB threshold
+                    # Sample first 1MB to estimate line density
+                    sample_size = min(
+                        1024 * 1024, len(log_source)
+                    )  # 1MB or full string
+                    sample = log_source[:sample_size]
+                    sample_lines = sample.count("\n") + 1
+                    estimated_total_lines = int(
+                        (len(log_source) / sample_size) * sample_lines
+                    )
+                    total_lines = estimated_total_lines
+                else:
+                    # For smaller strings, count accurately
+                    total_lines = log_source.count("\n") + 1
             else:
-                log_lines = log_source
+                total_lines = len(log_source)
 
-            total_lines = len(log_lines)
             total_pages = (total_lines + page_size - 1) // page_size
 
             # Validate page number
@@ -160,10 +198,20 @@ class LogProcessor:
 
             # Calculate start and end indices
             start_idx = (page - 1) * page_size
-            end_idx = min(start_idx + page_size, total_lines)
+            end_idx = start_idx + page_size
 
-            # Extract page lines
-            page_lines = log_lines[start_idx:end_idx]
+            # Stream through logs to get the requested page
+            current_line_idx = 0
+            page_lines = []
+
+            for line in LogProcessor._stream_log_lines(log_source):
+                if current_line_idx >= end_idx:
+                    break
+
+                if current_line_idx >= start_idx:
+                    page_lines.append(line)
+
+                current_line_idx += 1
 
             # Apply size limits to the page with per-line size checking
             current_size = 0
@@ -204,19 +252,13 @@ class LogProcessor:
                     "has_next": page < total_pages,
                     "has_previous": page > 1,
                 },
-                size_info={
-                    "current_size_mb": current_size / (1024 * 1024),
-                    "max_size_mb": max_size_mb,
-                    "max_line_size_kb": max_line_size_kb,
-                },
             )
 
         except Exception as e:
-            LoggingUtility.log_error("paginated log streaming", e)
-            return {
-                "status": "error",
-                "message": f"Error streaming logs with pagination: {str(e)}",
-            }
+            LoggingUtility.log_error("streaming logs with pagination", e)
+            return ResponseFormatter.format_error_response(
+                "stream logs with pagination", e
+            )
 
 
 class LoggingUtility:
