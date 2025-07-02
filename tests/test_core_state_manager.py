@@ -312,3 +312,116 @@ class TestRayStateManagerErrorHandling:
         state = manager.get_state()
 
         assert not state["initialized"]
+
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
+    def test_validating_flag_reset_after_exception(self, mock_ray):
+        """Test that _validating flag is always reset even when validation throws exception."""
+        # Setup to cause exception during validation
+        mock_ray.is_initialized.side_effect = Exception("Validation error")
+
+        manager = RayStateManager(validation_interval=0.01)
+        manager.update_state(cluster_address="127.0.0.1:10001")
+
+        # First validation should trigger exception
+        time.sleep(0.02)
+        state1 = manager.get_state()
+        assert not state1["initialized"]
+
+        # Reset the mock to return True for second validation
+        mock_ray.reset_mock()
+        mock_ray.is_initialized.side_effect = None  # Clear the side_effect
+        mock_ray.is_initialized.return_value = True
+        mock_context = Mock()
+        mock_context.get_node_id.return_value = "node_123"
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        # Second validation should work (validating flag should be reset)
+        time.sleep(0.02)
+        state2 = manager.get_state()
+
+        # Verify that validation was attempted again (flag was properly reset)
+        mock_ray.is_initialized.assert_called()
+        assert state2["initialized"]
+
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
+    def test_concurrent_validation_flag_protection(self, mock_ray):
+        """Test that concurrent validations are prevented by the _validating flag."""
+
+        # Slow validation to test concurrency
+        def slow_validation():
+            time.sleep(0.1)  # Simulate slow validation
+            return True
+
+        mock_ray.is_initialized.side_effect = slow_validation
+        mock_context = Mock()
+        mock_context.get_node_id.return_value = "node_123"
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        manager = RayStateManager(validation_interval=0.01)
+        manager.update_state(cluster_address="127.0.0.1:10001")
+
+        # Reset last_validated to ensure validation will trigger
+        manager._state["last_validated"] = 0.0
+
+        # Start multiple concurrent get_state calls
+        results = []
+        threads = []
+
+        def get_state_worker():
+            results.append(manager.get_state())
+
+        # Start 5 concurrent threads
+        for _ in range(5):
+            thread = threading.Thread(target=get_state_worker)
+            threads.append(thread)
+            thread.start()
+
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        # Validation should only be called once due to _validating flag protection
+        assert mock_ray.is_initialized.call_count == 1
+        assert len(results) == 5
+
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
+    def test_validation_exception_preserves_cluster_address(self, mock_ray):
+        """Test that cluster address is preserved when validation throws exception."""
+        # First test: exception in is_initialized should preserve cluster_address
+        mock_ray.is_initialized.side_effect = Exception("Validation error")
+
+        manager = RayStateManager(validation_interval=0.01)
+        manager.update_state(cluster_address="127.0.0.1:10001")
+
+        # Reset last_validated to ensure validation will trigger
+        manager._state["last_validated"] = 0.0
+
+        # Trigger validation with exception
+        time.sleep(0.02)
+        state = manager.get_state()
+
+        # Cluster address should be preserved after exception
+        assert not state["initialized"]
+        assert state["cluster_address"] == "127.0.0.1:10001"
+
+        # Second test: successful validation after exception should work
+        mock_ray.reset_mock()
+        mock_ray.is_initialized.side_effect = None
+        mock_ray.is_initialized.return_value = True
+        mock_context = Mock()
+        mock_context.get_node_id.return_value = "node_123"
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        # Reset last_validated to ensure validation will trigger again
+        manager._state["last_validated"] = 0.0
+
+        # Trigger successful validation
+        time.sleep(0.02)
+        state = manager.get_state()
+
+        # Should now be initialized successfully
+        assert state["initialized"]
+        assert state["cluster_address"] == "127.0.0.1:10001"
