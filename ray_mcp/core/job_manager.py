@@ -41,6 +41,7 @@ class RayJobManager(RayComponent, JobManager):
         super().__init__(state_manager)
         self._response_formatter = ResponseFormatter()
         self._job_client: Optional[Any] = None
+        self._initializing_job_client = False  # Add flag to prevent infinite recursion
 
     @ResponseFormatter.handle_exceptions("submit job")
     async def submit_job(
@@ -140,6 +141,14 @@ class RayJobManager(RayComponent, JobManager):
             )
             return None
 
+        # Prevent infinite recursion during client initialization
+        if self._initializing_job_client:
+            LoggingUtility.log_warning(
+                operation_name,
+                "Job client initialization already in progress, preventing recursion",
+            )
+            return None
+
         # Return existing client if available
         state = self.state_manager.get_state()
         if state.get("job_client"):
@@ -151,7 +160,17 @@ class RayJobManager(RayComponent, JobManager):
             LoggingUtility.log_warning(
                 operation_name, "Dashboard URL not available, attempting to initialize"
             )
-            dashboard_url = await self._initialize_job_client_if_available()
+            self._initializing_job_client = True
+            try:
+                dashboard_url = await self._initialize_job_client_if_available()
+            except Exception as e:
+                LoggingUtility.log_warning(
+                    operation_name, f"Failed to initialize job client: {e}"
+                )
+                dashboard_url = None
+            finally:
+                self._initializing_job_client = False
+
             if not dashboard_url:
                 return None
 
@@ -205,6 +224,14 @@ class RayJobManager(RayComponent, JobManager):
 
     async def _initialize_job_client_if_available(self) -> Optional[str]:
         """Try to initialize job client if Ray cluster is available."""
+        # Additional safeguard against recursive calls
+        if self._initializing_job_client:
+            LoggingUtility.log_warning(
+                "initialize job client",
+                "Job client initialization already in progress, avoiding nested initialization",
+            )
+            return None
+
         try:
             if not ray or not ray.is_initialized():
                 return None

@@ -359,18 +359,45 @@ class TestRayJobManagerClientHandling:
 class TestRayJobManagerErrorHandling:
     """Test error handling in job operations."""
 
+    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
     async def test_job_operation_client_initialization_failure(self):
-        """Test job operation when client initialization fails."""
+        """Test job operation when client initialization fails, including infinite loop prevention."""
         state_manager = Mock()
         state_manager.is_initialized.return_value = True
+        state_manager.get_state.return_value = {
+            "job_client": None,
+            "dashboard_url": None,
+        }
 
         manager = RayJobManager(state_manager)
 
+        # Test 1: Basic client initialization failure
         with patch.object(manager, "_get_or_create_job_client", return_value=None):
             result = await manager.submit_job("python script.py")
 
         assert result["status"] == "error"
         assert "Failed to initialize job client" in result["message"]
+
+        # Test 2: Infinite loop prevention - Direct recursion prevention when flag is already set
+        manager._initializing_job_client = True
+        client = await manager._get_or_create_job_client("test_operation")
+        assert client is None
+
+        # Test 3: Nested initialization prevention
+        dashboard_url = await manager._initialize_job_client_if_available()
+        assert dashboard_url is None
+
+        # Test 4: Flag reset after exception
+        manager._initializing_job_client = False  # Reset for exception test
+        with patch.object(
+            manager,
+            "_initialize_job_client_if_available",
+            side_effect=Exception("Test error"),
+        ):
+            client = await manager._get_or_create_job_client("test_operation")
+            assert client is None
+            # Flag should be reset to False after exception
+            assert manager._initializing_job_client is False
 
     async def test_job_operation_execution_error(self):
         """Test error handling during job operation execution."""
