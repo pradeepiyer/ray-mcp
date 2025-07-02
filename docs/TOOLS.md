@@ -105,16 +105,20 @@ Cancel a running job.
 
 ### `retrieve_logs`
 
-Retrieve job logs with error analysis and memory protection.
+Retrieve job logs with optional pagination, error analysis and memory protection.
 
 **Parameters:**
 - `identifier` (string, required) - Job ID 
 - `log_type` (string, optional) - Type: only "job" is supported (default: "job")
-- `num_lines` (integer, optional) - Number of lines to retrieve (default: 100, max: 10000)
+- `num_lines` (integer, optional) - Number of lines to retrieve (default: 100, max: 10000). Ignored if page is specified
 - `include_errors` (boolean, optional) - Include error analysis (default: false)
 - `max_size_mb` (integer, optional) - Maximum log size in MB (default: 10, max: 100)
+- `page` (integer, optional) - Page number (1-based) for paginated log retrieval. If specified, enables pagination mode
+- `page_size` (integer, optional) - Lines per page (default: 100, max: 1000). Only used when page is specified
 
-**Example:**
+**Examples:**
+
+Basic log retrieval:
 ```python
 retrieve_logs(
     identifier="job_12345",
@@ -123,25 +127,21 @@ retrieve_logs(
 )
 ```
 
-### `retrieve_logs_paginated`
-
-Retrieve job logs with pagination support for large log files.
-
-**Parameters:**
-- `identifier` (string, required) - Job ID
-- `log_type` (string, optional) - Type: only "job" is supported (default: "job")
-- `page` (integer, optional) - Page number (1-based, default: 1)
-- `page_size` (integer, optional) - Lines per page (default: 100, max: 1000)
-- `max_size_mb` (integer, optional) - Maximum log size in MB (default: 10, max: 100)
-- `include_errors` (boolean, optional) - Include error analysis (default: false)
-
-**Example:**
+Paginated log retrieval:
 ```python
-retrieve_logs_paginated(
+# Get first page
+retrieve_logs(
     identifier="job_12345",
-    page=2,
+    page=1,
     page_size=200,
     include_errors=true
+)
+
+# Get second page
+retrieve_logs(
+    identifier="job_12345",
+    page=2,
+    page_size=200
 )
 ```
 

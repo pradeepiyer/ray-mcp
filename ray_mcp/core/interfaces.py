@@ -74,22 +74,11 @@ class LogManager(Protocol):
         num_lines: int = 100,
         include_errors: bool = False,
         max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Retrieve logs from Ray cluster."""
-        ...
-
-    async def retrieve_logs_paginated(
-        self,
-        identifier: str,
-        log_type: str = "job",
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-        include_errors: bool = False,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        """Retrieve logs with pagination."""
+        """Retrieve logs from Ray cluster with optional pagination."""
         ...
 
 

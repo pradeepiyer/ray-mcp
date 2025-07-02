@@ -114,18 +114,18 @@ submit_job(
 ### Paginated Log Retrieval
 
 ```python
-# Get first page of logs
-logs_page1 = retrieve_logs_paginated(
+# Get paginated logs for large jobs
+logs_page1 = retrieve_logs(
     identifier="job_12345",
     page=1,
-    page_size=100
+    page_size=500,
+    include_errors=True
 )
 
-# Get subsequent pages if needed
-logs_page2 = retrieve_logs_paginated(
-    identifier="job_12345",
+logs_page2 = retrieve_logs(
+    identifier="job_12345", 
     page=2,
-    page_size=100
+    page_size=500
 )
 ```
 
@@ -179,4 +179,4 @@ if result["status"] == "success":
     job_id = result["data"]["job_id"]
     # Monitor job progress
     inspect_job(job_id=job_id, mode="status")
-``` 
+```
