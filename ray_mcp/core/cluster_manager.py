@@ -103,9 +103,14 @@ class RayClusterManager(RayComponent, ClusterManager):
                 worker_results = await self._worker_manager.stop_all_workers()
                 cleanup_results.extend(worker_results)
 
-            # Stop head node process if we started it
+            # Clean up head node process reference
+            # Note: The 'ray start' command has already exited after starting Ray daemon processes.
+            # The actual Ray cluster cleanup is handled by ray.shutdown() below.
             if self._head_node_process:
-                await self._cleanup_head_node_process()
+                LoggingUtility.log_info(
+                    "cluster_cleanup", "Head node command already completed"
+                )
+                self._head_node_process = None
 
             # Shutdown Ray if initialized
             if ray and ray.is_initialized():
@@ -280,8 +285,14 @@ class RayClusterManager(RayComponent, ClusterManager):
 
         except Exception as e:
             # Cleanup on failure
+            # Note: The 'ray start' command has already exited, so we just need to clear the reference.
+            # Ray daemon processes (if started) will be cleaned up by the OS or manual intervention.
             if self._head_node_process:
-                await self._cleanup_head_node_process()
+                LoggingUtility.log_info(
+                    "cluster_cleanup",
+                    "Clearing head node process reference after failure",
+                )
+                self._head_node_process = None
             self.state_manager.reset_state()
             return self._response_formatter.format_error_response("start cluster", e)
 
@@ -348,22 +359,6 @@ class RayClusterManager(RayComponent, ClusterManager):
         except Exception as e:
             LoggingUtility.log_error("start head node process", e)
             return None
-
-    async def _cleanup_head_node_process(self, timeout: int = 10) -> None:
-        """Clean up the head node process."""
-        if not self._head_node_process:
-            return
-
-        try:
-            # The ray start command has already exited, so we don't need to terminate it
-            # Ray cluster cleanup is handled by ray.shutdown() in the stop_cluster method
-            LoggingUtility.log_info(
-                "cluster_cleanup", "Head node command already completed"
-            )
-        except Exception as e:
-            LoggingUtility.log_error("cleanup head node", e)
-        finally:
-            self._head_node_process = None
 
     async def _test_dashboard_connection(
         self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
