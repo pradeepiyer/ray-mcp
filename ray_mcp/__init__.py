@@ -7,8 +7,6 @@ high-level tools for cluster management, job submission, monitoring, and debuggi
 Key Features:
     - Cluster Management: Start, connect to, and stop Ray clusters
     - Job Management: Submit, monitor, and cancel distributed jobs
-    - Actor Management: List and manage Ray actors
-    - Monitoring: Performance metrics, health checks, and optimization
     - Debugging: Log retrieval and job debugging tools
 
 The server supports both single-node and multi-node Ray clusters, with automatic
@@ -32,6 +30,14 @@ Dependencies:
 For more information, see the documentation in the docs/ directory.
 """
 
-__version__ = "0.3.0"
+# Get version dynamically from package metadata (populated from pyproject.toml)
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("ray-mcp")
+except PackageNotFoundError:
+    # Fallback when package not installed (e.g., development mode)
+    __version__ = "dev"
+
 __author__ = "claude 4 sonnet"
 __email__ = "ray-mcp@example.com"

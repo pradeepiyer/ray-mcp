@@ -25,13 +25,14 @@ except ImportError:
     ray = None
     job_submission = None
 
+from . import __version__
+from .core.unified_manager import RayUnifiedManager
 from .logging_utils import LoggingUtility
-from .ray_manager import RayManager
 from .tool_registry import ToolRegistry
 
 # Initialize server and ray manager
 server = Server("ray-mcp")
-ray_manager = RayManager()
+ray_manager = RayUnifiedManager()
 tool_registry = ToolRegistry(ray_manager)
 
 # Configure logging
@@ -94,7 +95,8 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="ray-mcp",
-                server_version="1.0.0",
+                # Version automatically synced from pyproject.toml via package metadata
+                server_version=__version__,
                 capabilities=ServerCapabilities(),
             ),
         )

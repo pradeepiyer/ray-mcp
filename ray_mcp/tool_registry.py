@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from mcp.types import Tool
 
-from .ray_manager import RayManager
+from .core.unified_manager import RayUnifiedManager
 
 logger = logging.getLogger(__name__)
 from .logging_utils import LoggingUtility, ResponseFormatter
@@ -21,7 +21,7 @@ from .logging_utils import LoggingUtility, ResponseFormatter
 class ToolRegistry:
     """Registry for all Ray MCP tools with centralized metadata and implementations."""
 
-    def __init__(self, ray_manager: RayManager):
+    def __init__(self, ray_manager: RayUnifiedManager):
         self.ray_manager = ray_manager
         self._tools: Dict[str, Dict[str, Any]] = {}
         self.response_formatter = ResponseFormatter()
@@ -39,7 +39,7 @@ class ToolRegistry:
                 "properties": {
                     "address": {
                         "type": "string",
-                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster; if not provided, starts a new cluster. Uses direct GCS address format, not Ray Client API.",
+                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster via dashboard API; if not provided, starts a new cluster. Connection uses dashboard API (port 8265) for all cluster operations.",
                     },
                     "num_cpus": {
                         "type": "integer",
@@ -121,7 +121,7 @@ class ToolRegistry:
 
         self._register_tool(
             name="inspect_ray",
-            description="Get comprehensive cluster information including status, resources, nodes, worker status, performance metrics, health check, and optimization recommendations",
+            description="Get comprehensive cluster information including status, resources, and nodes",
             schema={"type": "object", "properties": {}},
             handler=self._inspect_ray_handler,
         )
@@ -184,19 +184,19 @@ class ToolRegistry:
 
         self._register_tool(
             name="retrieve_logs",
-            description="Retrieve logs from Ray cluster for jobs, actors, or nodes with comprehensive error analysis and memory protection",
+            description="Retrieve job logs from Ray cluster with comprehensive error analysis and memory protection",
             schema={
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Job ID, actor ID/name, or node ID to get logs for (required)",
+                        "description": "Job ID to get logs for (required)",
                     },
                     "log_type": {
                         "type": "string",
-                        "enum": ["job", "actor", "node"],
+                        "enum": ["job"],
                         "default": "job",
-                        "description": "Type of logs to retrieve: 'job' for job logs, 'actor' for actor logs, 'node' for node logs",
+                        "description": "Type of logs to retrieve - only 'job' logs are supported",
                     },
                     "num_lines": {
                         "type": "integer",
@@ -225,19 +225,19 @@ class ToolRegistry:
 
         self._register_tool(
             name="retrieve_logs_paginated",
-            description="Retrieve logs from Ray cluster with pagination support for large log files and memory protection",
+            description="Retrieve job logs from Ray cluster with pagination support for large log files and memory protection",
             schema={
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Job ID, actor ID/name, or node ID to get logs for (required)",
+                        "description": "Job ID to get logs for (required)",
                     },
                     "log_type": {
                         "type": "string",
-                        "enum": ["job", "actor", "node"],
+                        "enum": ["job"],
                         "default": "job",
-                        "description": "Type of logs to retrieve: 'job' for job logs, 'actor' for actor logs, 'node' for node logs",
+                        "description": "Type of logs to retrieve - only 'job' logs are supported",
                     },
                     "page": {
                         "type": "integer",
@@ -318,7 +318,7 @@ class ToolRegistry:
 
     async def _submit_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for submit_job tool."""
-        sig = inspect.signature(RayManager.submit_job)
+        sig = inspect.signature(self.ray_manager.submit_job)
         # Exclude 'self' parameter from filtering since it's not in kwargs
         valid_params = {k for k in sig.parameters.keys() if k != "self"}
         filtered = {k: v for k, v in kwargs.items() if k in valid_params}
