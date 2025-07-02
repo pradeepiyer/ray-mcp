@@ -7,15 +7,11 @@ the MCP-specific functionality that bridges between the LLM and the
 Ray components.
 """
 
-import asyncio
-import json
 from unittest.mock import AsyncMock, Mock, patch
 
-from mcp.types import TextContent
 import pytest
 
 from ray_mcp.core.unified_manager import RayUnifiedManager
-from ray_mcp.main import list_tools, run_server
 from ray_mcp.tool_registry import ToolRegistry
 
 

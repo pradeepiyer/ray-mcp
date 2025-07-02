@@ -3,8 +3,6 @@
 Tests focus on port allocation behavior with 100% mocking.
 """
 
-import os
-import tempfile
 from unittest.mock import Mock, mock_open, patch
 
 import pytest

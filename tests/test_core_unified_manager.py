@@ -40,7 +40,7 @@ class TestRayUnifiedManagerCore:
         mock_job_mgr.return_value = mock_job_instance
         mock_log_mgr.return_value = mock_log_instance
 
-        manager = RayUnifiedManager()
+        RayUnifiedManager()
 
         # Verify all components are created
         mock_state_mgr.assert_called_once()

@@ -331,7 +331,7 @@ class RayClusterManager(RayComponent, ClusterManager):
             # Check if the command completed successfully
             if process.returncode == 0:
                 LoggingUtility.log_info(
-                    "cluster_start", f"Head node command completed successfully"
+                    "cluster_start", "Head node command completed successfully"
                 )
                 LoggingUtility.log_debug("cluster_start", f"STDOUT: {stdout}")
                 # Ray start command succeeded - Ray cluster is now running as daemon processes

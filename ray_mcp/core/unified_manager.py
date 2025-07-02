@@ -1,15 +1,8 @@
 """Unified Ray MCP manager that composes focused components."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .cluster_manager import RayClusterManager
-from .interfaces import (
-    ClusterManager,
-    JobManager,
-    LogManager,
-    PortManager,
-    StateManager,
-)
 from .job_manager import RayJobManager
 from .log_manager import RayLogManager
 from .port_manager import RayPortManager

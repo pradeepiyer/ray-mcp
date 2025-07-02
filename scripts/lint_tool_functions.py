@@ -2,10 +2,9 @@
 """Custom linting script to catch parameter passing issues in tool functions."""
 
 import ast
-import os
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 
 
 class ToolFunctionLinter(ast.NodeVisitor):

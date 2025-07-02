@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Dict, List, Optional
-from unittest.mock import Mock, patch
 
 from mcp.types import TextContent
 import pytest

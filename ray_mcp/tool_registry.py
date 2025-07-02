@@ -8,14 +8,14 @@ import inspect
 import json
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 from mcp.types import Tool
 
 from .core.unified_manager import RayUnifiedManager
 
 logger = logging.getLogger(__name__)
-from .logging_utils import LoggingUtility, ResponseFormatter
+from .logging_utils import ResponseFormatter
 
 
 class ToolRegistry:

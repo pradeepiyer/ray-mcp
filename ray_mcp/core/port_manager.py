@@ -5,13 +5,11 @@ import os
 import socket
 import tempfile
 import time
-from typing import Optional
 
 try:
     from ..logging_utils import LoggingUtility
 except ImportError:
     # Fallback for direct execution
-    import os
     import sys
 
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -124,13 +122,12 @@ class RayPortManager(PortManager):
                     pid_str, timestamp_str = content.split(",", 1)
                     pid = int(pid_str)
                     timestamp = int(timestamp_str)
-                    current_time = int(time.time())
 
                     # Check if process still exists and lock is recent
                     try:
                         os.kill(pid, 0)  # Check if process exists
                         return (
-                            current_time - timestamp
+                            int(time.time()) - timestamp
                         ) < 300  # Less than 5 minutes old
                     except OSError:
                         # Process doesn't exist
@@ -169,7 +166,6 @@ class RayPortManager(PortManager):
         """Clean up stale lock files from processes that no longer exist."""
         try:
             temp_dir = self._get_temp_dir()
-            current_time = int(time.time())
 
             for filename in os.listdir(temp_dir):
                 if filename.startswith("ray_port_") and filename.endswith(".lock"):

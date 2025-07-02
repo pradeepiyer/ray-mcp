@@ -3,13 +3,11 @@
 Tests focus on job management behavior with 100% mocking.
 """
 
-import asyncio
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from ray_mcp.core.job_manager import RayJobManager
-from ray_mcp.core.state_manager import RayStateManager
 
 
 @pytest.mark.fast

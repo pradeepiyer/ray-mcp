@@ -4,9 +4,8 @@
 import asyncio
 import json
 import logging
-import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 # Import MCP types
 from mcp.server import Server
