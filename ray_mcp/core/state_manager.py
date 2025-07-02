@@ -92,10 +92,11 @@ class RayStateManager(StateManager):
         try:
             is_valid = self._validate_ray_state()
             self._state["initialized"] = is_valid
+            # Only update last_validated if validation completed successfully
             self._state["last_validated"] = time.time()
 
             if not is_valid:
-                # Clear invalid state
+                # Clear invalid state only when validation succeeds but cluster is invalid
                 self._state.update(
                     {
                         "cluster_address": None,
@@ -109,37 +110,33 @@ class RayStateManager(StateManager):
                 "state_validation", Exception(f"State validation failed: {e}")
             )
             self._state["initialized"] = False
+            # Don't update last_validated on exception - allow retry on next validation cycle
+            # Don't clear cluster_address on exception - keep it for retry attempts
 
     def _validate_ray_state(self) -> bool:
         """Validate the actual Ray state against internal state."""
+        if not RAY_AVAILABLE or ray is None:
+            return False
+
+        if not ray.is_initialized():
+            return False
+
+        if not self._state.get("cluster_address"):
+            return False
+
+        # Verify cluster is still accessible
         try:
-            if not RAY_AVAILABLE or ray is None:
+            runtime_context = ray.get_runtime_context()
+            if not runtime_context:
                 return False
 
-            if not ray.is_initialized():
+            node_id = runtime_context.get_node_id()
+            if not node_id:
                 return False
-
-            if not self._state.get("cluster_address"):
-                return False
-
-            # Verify cluster is still accessible
-            try:
-                runtime_context = ray.get_runtime_context()
-                if not runtime_context:
-                    return False
-
-                node_id = runtime_context.get_node_id()
-                if not node_id:
-                    return False
-            except Exception as e:
-                LoggingUtility.log_warning(
-                    "ray_state", f"Failed to validate Ray runtime context: {e}"
-                )
-                return False
-
-            return True
         except Exception as e:
-            LoggingUtility.log_error(
-                "ray_state", Exception(f"Error validating Ray state: {e}")
+            LoggingUtility.log_warning(
+                "ray_state", f"Failed to validate Ray runtime context: {e}"
             )
             return False
+
+        return True

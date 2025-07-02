@@ -312,3 +312,48 @@ class TestRayStateManagerErrorHandling:
         state = manager.get_state()
 
         assert not state["initialized"]
+
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
+    def test_validation_exception_recovery_race_condition_fix(self, mock_ray):
+        """Test that validation can recover from exceptions without race condition.
+
+        This test verifies the fix for Issue #105 where validation exceptions
+        would prevent future validation attempts, creating a race condition.
+        """
+        # Setup: cause exception during validation
+        mock_ray.is_initialized.side_effect = Exception("Validation error")
+
+        manager = RayStateManager(validation_interval=0.01)
+        manager.update_state(cluster_address="127.0.0.1:10001")
+
+        # Reset last_validated to ensure validation will trigger
+        manager._state["last_validated"] = 0.0
+
+        # First validation should trigger exception
+        time.sleep(0.02)
+        state1 = manager.get_state()
+
+        # Verify: exception handled but cluster state preserved for retry
+        assert not state1["initialized"]
+        assert state1["cluster_address"] == "127.0.0.1:10001"  # Preserved!
+
+        # Setup: successful validation after exception
+        mock_ray.reset_mock()
+        mock_ray.is_initialized.side_effect = None
+        mock_ray.is_initialized.return_value = True
+        mock_context = Mock()
+        mock_context.get_node_id.return_value = "node_123"
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        # Reset last_validated to ensure validation will trigger again
+        manager._state["last_validated"] = 0.0
+
+        # Second validation should succeed (race condition fixed)
+        time.sleep(0.02)
+        state2 = manager.get_state()
+
+        # Verify: validation succeeded after exception recovery
+        mock_ray.is_initialized.assert_called()
+        assert state2["initialized"]
+        assert state2["cluster_address"] == "127.0.0.1:10001"
