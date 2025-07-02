@@ -26,9 +26,17 @@ class TestMCPServer:
         with patch("ray_mcp.main.RAY_AVAILABLE", False):
             # Should not exit when Ray is not available, just log warning
             with patch("ray_mcp.main.stdio_server") as mock_stdio:
-                mock_stdio.return_value.__aenter__.return_value = (Mock(), Mock())
-                with patch("ray_mcp.main.server.run") as mock_run:
-                    mock_run.return_value = None
+                # Use AsyncMock for the streams since they're used in async context
+                mock_read_stream = AsyncMock()
+                mock_write_stream = AsyncMock()
+                mock_stdio.return_value.__aenter__.return_value = (
+                    mock_read_stream,
+                    mock_write_stream,
+                )
+
+                with patch(
+                    "ray_mcp.main.server.run", new_callable=AsyncMock
+                ) as mock_run:
                     # Should not raise SystemExit
                     from ray_mcp.main import main
 
