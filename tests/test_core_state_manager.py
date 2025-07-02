@@ -20,10 +20,14 @@ class TestRayStateManagerCore:
         """Test that state manager initializes with correct default state."""
         manager = RayStateManager()
         state = manager.get_state()
-        
+
         expected_keys = {
-            "initialized", "cluster_address", "gcs_address", 
-            "dashboard_url", "job_client", "last_validated"
+            "initialized",
+            "cluster_address",
+            "gcs_address",
+            "dashboard_url",
+            "job_client",
+            "last_validated",
         }
         assert set(state.keys()) == expected_keys
         assert not state["initialized"]
@@ -36,13 +40,13 @@ class TestRayStateManagerCore:
     def test_update_state_modifies_values(self):
         """Test that update_state correctly modifies state values."""
         manager = RayStateManager()
-        
+
         manager.update_state(
             initialized=True,
             cluster_address="127.0.0.1:10001",
-            custom_field="test_value"
+            custom_field="test_value",
         )
-        
+
         state = manager.get_state()
         assert state["initialized"] is True
         assert state["cluster_address"] == "127.0.0.1:10001"
@@ -53,29 +57,29 @@ class TestRayStateManagerCore:
         """Test that update_state updates the last_validated timestamp."""
         manager = RayStateManager()
         original_time = manager.get_state()["last_validated"]
-        
+
         # Small delay to ensure timestamp difference
         time.sleep(0.01)
         manager.update_state(test_field="value")
-        
+
         new_time = manager.get_state()["last_validated"]
         assert new_time > original_time
 
     def test_reset_state_clears_all_custom_values(self):
         """Test that reset_state clears all custom values and resets to defaults."""
         manager = RayStateManager()
-        
+
         # Add custom state
         manager.update_state(
             initialized=True,
             cluster_address="127.0.0.1:10001",
             custom_field="test",
-            another_field=42
+            another_field=42,
         )
-        
+
         # Reset state
         manager.reset_state()
-        
+
         state = manager.get_state()
         assert not state["initialized"]
         assert state["cluster_address"] is None
@@ -88,7 +92,7 @@ class TestRayStateManagerCore:
         """Test that is_initialized correctly reflects the initialized state."""
         manager = RayStateManager()
         manager.update_state(initialized=initialized_value)
-        
+
         assert manager.is_initialized() == initialized_value
 
 
@@ -100,31 +104,31 @@ class TestRayStateManagerThreadSafety:
         """Test that concurrent state updates don't cause race conditions."""
         manager = RayStateManager()
         results = []
-        
+
         def update_state(thread_id):
             """Update state from a specific thread."""
             for i in range(10):
                 manager.update_state(**{f"thread_{thread_id}_value_{i}": i})
                 results.append((thread_id, i))
-        
+
         # Create multiple threads
         threads = []
         for thread_id in range(5):
             thread = threading.Thread(target=update_state, args=(thread_id,))
             threads.append(thread)
-        
+
         # Start all threads
         for thread in threads:
             thread.start()
-        
+
         # Wait for completion
         for thread in threads:
             thread.join()
-        
+
         # Verify all updates were applied
         state = manager.get_state()
         assert len(results) == 50  # 5 threads × 10 updates each
-        
+
         # Check that all thread values are in state
         for thread_id in range(5):
             for i in range(10):
@@ -135,28 +139,28 @@ class TestRayStateManagerThreadSafety:
     def test_concurrent_reset_and_update_operations(self):
         """Test that reset and update operations work correctly when concurrent."""
         manager = RayStateManager()
-        
+
         def continuous_updates():
             """Continuously update state."""
             for i in range(20):
                 manager.update_state(counter=i)
                 time.sleep(0.001)
-        
+
         def reset_operation():
             """Reset state after delay."""
             time.sleep(0.01)  # Let some updates happen first
             manager.reset_state()
-        
+
         # Start update thread
         update_thread = threading.Thread(target=continuous_updates)
         reset_thread = threading.Thread(target=reset_operation)
-        
+
         update_thread.start()
         reset_thread.start()
-        
+
         update_thread.join()
         reset_thread.join()
-        
+
         # State should be in a consistent state (either reset or with final update)
         state = manager.get_state()
         assert isinstance(state, dict)
@@ -167,71 +171,71 @@ class TestRayStateManagerThreadSafety:
 class TestRayStateManagerValidation:
     """Test state validation functionality."""
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True)
-    @patch('ray_mcp.core.state_manager.ray')
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
     def test_validation_with_ray_not_initialized(self, mock_ray):
         """Test validation when Ray is not initialized."""
         mock_ray.is_initialized.return_value = False
-        
+
         manager = RayStateManager(validation_interval=0.01)  # Fast validation
         manager.update_state(cluster_address="127.0.0.1:10001")
-        
+
         # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
+
         assert not state["initialized"]
         mock_ray.is_initialized.assert_called()
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True)
-    @patch('ray_mcp.core.state_manager.ray')
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
     def test_validation_with_ray_initialized_and_valid_cluster(self, mock_ray):
         """Test validation when Ray is initialized with valid cluster."""
         mock_ray.is_initialized.return_value = True
         mock_context = Mock()
         mock_context.get_node_id.return_value = "node_123"
         mock_ray.get_runtime_context.return_value = mock_context
-        
+
         manager = RayStateManager(validation_interval=0.01)
         manager.update_state(cluster_address="127.0.0.1:10001")
-        
+
         # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
+
         assert state["initialized"]
         mock_ray.is_initialized.assert_called()
         mock_ray.get_runtime_context.assert_called()
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', False)
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", False)
     def test_validation_with_ray_unavailable(self):
         """Test validation when Ray is not available."""
         manager = RayStateManager(validation_interval=0.01)
         manager.update_state(cluster_address="127.0.0.1:10001")
-        
+
         # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
+
         assert not state["initialized"]
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True)
-    @patch('ray_mcp.core.state_manager.ray')
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
     def test_validation_clears_invalid_state(self, mock_ray):
         """Test that validation clears invalid state when Ray fails validation."""
         mock_ray.is_initialized.return_value = False
-        
+
         manager = RayStateManager(validation_interval=0.01)
         manager.update_state(
             cluster_address="127.0.0.1:10001",
             dashboard_url="http://127.0.0.1:8265",
-            job_client=Mock()
+            job_client=Mock(),
         )
-        
+
         # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
+
         assert not state["initialized"]
         assert state["cluster_address"] is None
         assert state["dashboard_url"] is None
@@ -239,74 +243,72 @@ class TestRayStateManagerValidation:
 
     def test_validation_interval_prevents_excessive_validation(self):
         """Test that validation interval prevents excessive validation calls."""
-        with patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True):
-            with patch('ray_mcp.core.state_manager.ray') as mock_ray:
+        with patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.core.state_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
-                
+
                 manager = RayStateManager(validation_interval=1.0)  # 1 second interval
                 manager.update_state(cluster_address="127.0.0.1:10001")
-                
+
                 # Multiple rapid calls to get_state
                 for _ in range(5):
                     manager.get_state()
-                
+
                 # Should only validate once due to interval
                 assert mock_ray.is_initialized.call_count <= 1
 
 
-
-
-@pytest.mark.fast 
+@pytest.mark.fast
 class TestRayStateManagerErrorHandling:
     """Test error handling in state validation."""
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True)
-    @patch('ray_mcp.core.state_manager.ray')
-    @patch('ray_mcp.core.state_manager.LoggingUtility')
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
+    @patch("ray_mcp.core.state_manager.LoggingUtility")
     def test_validation_error_handling(self, mock_logging, mock_ray):
         """Test that validation errors are properly handled and logged."""
         mock_ray.is_initialized.side_effect = Exception("Ray validation error")
-        
+
         manager = RayStateManager(validation_interval=0.01)
         manager.update_state(cluster_address="127.0.0.1:10001")
-        
+
         # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
+
         assert not state["initialized"]
         mock_logging.log_error.assert_called()
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True)
-    @patch('ray_mcp.core.state_manager.ray')
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
     def test_runtime_context_error_handling(self, mock_ray):
         """Test handling of runtime context errors during validation."""
         mock_ray.is_initialized.return_value = True
         mock_ray.get_runtime_context.side_effect = Exception("Context error")
-        
+
         manager = RayStateManager(validation_interval=0.01)
         manager.update_state(cluster_address="127.0.0.1:10001")
-        
+
         # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
+
         assert not state["initialized"]
 
-    @patch('ray_mcp.core.state_manager.RAY_AVAILABLE', True)
-    @patch('ray_mcp.core.state_manager.ray')
+    @patch("ray_mcp.core.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.state_manager.ray")
     def test_node_id_error_handling(self, mock_ray):
         """Test handling of node ID errors during validation."""
         mock_ray.is_initialized.return_value = True
         mock_context = Mock()
         mock_context.get_node_id.side_effect = Exception("Node ID error")
         mock_ray.get_runtime_context.return_value = mock_context
-        
+
         manager = RayStateManager(validation_interval=0.01)
         manager.update_state(cluster_address="127.0.0.1:10001")
-        
-        # Wait for validation to trigger  
+
+        # Wait for validation to trigger
         time.sleep(0.02)
         state = manager.get_state()
-        
-        assert not state["initialized"] 
+
+        assert not state["initialized"]

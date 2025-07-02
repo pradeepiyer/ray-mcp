@@ -1,1 +1,1 @@
-"""Core Ray MCP components with separated concerns.""" 
+"""Core Ray MCP components with separated concerns."""

@@ -310,6 +310,3 @@ class ResponseFormatter:
         response = {"status": "partial", "message": message}
         response.update(kwargs)
         return response
-
-
-

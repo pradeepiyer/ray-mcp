@@ -190,36 +190,38 @@ print("Success job completed!")
 """
 
 
-async def _wait_for_cluster_ready(max_wait: int = 10, poll_interval: float = 0.5) -> None:
+async def _wait_for_cluster_ready(
+    max_wait: int = 10, poll_interval: float = 0.5
+) -> None:
     """
     Wait for Ray cluster to be fully ready by polling its status.
-    
+
     Args:
         max_wait: Maximum time to wait in seconds
         poll_interval: Time between status checks in seconds
-        
+
     Raises:
         AssertionError: If cluster doesn't become ready within max_wait seconds
     """
     print("Waiting for Ray cluster to be fully ready...")
     start_time = time.time()
-    
+
     while time.time() - start_time < max_wait:
         try:
             status_result = await call_tool("inspect_ray", {})
             status_data = parse_tool_result(status_result)
-            
+
             # Check if cluster is ready (either "active" or "success" status)
             if status_data.get("status") in ["active", "success"]:
                 print("✅ Ray cluster is fully ready!")
                 return
-                
+
         except Exception as e:
             # Cluster might not be ready yet, continue polling
             print(f"Cluster not ready yet: {e}")
-            
+
         await asyncio.sleep(poll_interval)
-        
+
     raise AssertionError(f"Ray cluster did not become ready within {max_wait} seconds")
 
 
@@ -244,14 +246,16 @@ async def start_ray_cluster(
     # Clean up any existing Ray instances before starting
     try:
         import ray
+
         if ray.is_initialized():
             ray.shutdown()
     except:
         pass
-    
+
     # Run ray stop to clean up any external processes
     try:
         import subprocess
+
         subprocess.run(["ray", "stop"], capture_output=True, check=False)
     except:
         pass
@@ -295,14 +299,16 @@ async def stop_ray_cluster() -> Dict[str, Any]:
     # Additional cleanup to ensure Ray is completely shut down
     try:
         import ray
+
         if ray.is_initialized():
             ray.shutdown()
     except:
         pass
-    
+
     # Run ray stop to clean up any remaining processes
     try:
         import subprocess
+
         subprocess.run(["ray", "stop"], capture_output=True, check=False)
     except:
         pass
@@ -330,11 +336,17 @@ async def verify_cluster_status() -> Dict[str, Any]:
     status_data = parse_tool_result(status_result)
 
     # Accept both "active" (cluster running) and "success" (operation succeeded)
-    assert status_data["status"] in ["success", "active"], f"Unexpected status: {status_data['status']}"
-    
+    assert status_data["status"] in [
+        "success",
+        "active",
+    ], f"Unexpected status: {status_data['status']}"
+
     # Check for basic cluster status (no longer includes performance metrics)
-    assert status_data["status"] in ["active", "success"], f"Unexpected cluster status: {status_data.get('status')}"
-    
+    assert status_data["status"] in [
+        "active",
+        "success",
+    ], f"Unexpected cluster status: {status_data.get('status')}"
+
     print(f"Cluster status: {status_data}")
     return status_data
 
@@ -481,6 +493,3 @@ def e2e_ray_manager():
             ray.shutdown()
     except Exception:
         pass  # Ignore cleanup errors
-
-
-

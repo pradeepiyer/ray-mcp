@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, Mock, patch
 from mcp.types import TextContent
 import pytest
 
-from ray_mcp.main import list_tools, run_server
 from ray_mcp.core.unified_manager import RayUnifiedManager
+from ray_mcp.main import list_tools, run_server
 from ray_mcp.tool_registry import ToolRegistry
 
 
@@ -48,7 +48,7 @@ class TestMCPServer:
         tool_names = [tool.name for tool in tools]
         expected_tools = [
             "init_ray",
-            "stop_ray", 
+            "stop_ray",
             "inspect_ray",
             "submit_job",
             "list_jobs",
@@ -175,4 +175,4 @@ class TestMCPWorkflow:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"]) 
+    pytest.main([__file__, "-v"])

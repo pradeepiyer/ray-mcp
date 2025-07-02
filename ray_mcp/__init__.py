@@ -31,7 +31,7 @@ For more information, see the documentation in the docs/ directory.
 """
 
 # Get version dynamically from package metadata (populated from pyproject.toml)
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("ray-mcp")
