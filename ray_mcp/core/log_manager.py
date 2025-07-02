@@ -49,50 +49,32 @@ class RayLogManager(RayComponent, LogManager):
         num_lines: int = 100,
         include_errors: bool = False,
         max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Retrieve logs from Ray cluster with comprehensive error analysis."""
+        """Retrieve logs from Ray cluster with optional pagination and comprehensive error analysis."""
         # Validate parameters
         validation_error = self._validate_log_retrieval_params(
-            identifier, log_type, num_lines, max_size_mb
+            identifier, log_type, num_lines, max_size_mb, page, page_size
         )
         if validation_error:
             return validation_error
 
         # Only job logs are supported
         if log_type == "job":
-            return await self._retrieve_job_logs_unified(
-                identifier, num_lines, include_errors, max_size_mb
-            )
-        else:
-            return self._response_formatter.format_validation_error(
-                f"Invalid log_type: {log_type}. Only 'job' is supported"
-            )
-
-    @ResponseFormatter.handle_exceptions("retrieve logs paginated")
-    async def retrieve_logs_paginated(
-        self,
-        identifier: str,
-        log_type: str = "job",
-        page: int = 1,
-        page_size: int = 100,
-        max_size_mb: int = 10,
-        include_errors: bool = False,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        """Retrieve logs with pagination support for large log files."""
-        # Validate parameters
-        validation_error = self._validate_log_retrieval_params(
-            identifier, log_type, 0, max_size_mb, page, page_size
-        )
-        if validation_error:
-            return validation_error
-
-        # Only job logs are supported
-        if log_type == "job":
-            return await self._retrieve_job_logs_paginated(
-                identifier, page, page_size, max_size_mb, include_errors
-            )
+            # Use pagination if page parameters are provided
+            if page is not None:
+                # Set default page_size if not provided
+                if page_size is None:
+                    page_size = 100
+                return await self._retrieve_job_logs_paginated(
+                    identifier, page, page_size, max_size_mb, include_errors
+                )
+            else:
+                return await self._retrieve_job_logs_unified(
+                    identifier, num_lines, include_errors, max_size_mb
+                )
         else:
             return self._response_formatter.format_validation_error(
                 f"Invalid log_type: {log_type}. Only 'job' is supported"

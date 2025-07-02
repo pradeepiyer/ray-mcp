@@ -178,7 +178,7 @@ retrieve_logs(identifier="job_123", num_lines=1000)
 **Solutions:**
 ```python
 # Use pagination for large logs
-retrieve_logs_paginated(
+retrieve_logs(
     identifier="job_123",
     page=1,
     page_size=500,

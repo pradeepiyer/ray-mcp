@@ -69,8 +69,7 @@ retrieve_logs(identifier="job_123")
 - `list_jobs` - List all jobs
 - `inspect_job` - Inspect specific job with logs/debug info
 - `cancel_job` - Cancel running jobs
-- `retrieve_logs` - Get logs with error analysis
-- `retrieve_logs_paginated` - Get logs with pagination support
+- `retrieve_logs` - Get logs with optional pagination and error analysis
 
 ## Architecture
 

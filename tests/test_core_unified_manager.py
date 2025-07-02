@@ -176,30 +176,30 @@ class TestRayUnifiedManagerDelegation:
         mock_log_manager.retrieve_logs = AsyncMock(
             return_value={"status": "success", "logs": "Log content"}
         )
-        mock_log_manager.retrieve_logs_paginated = AsyncMock(
+
+        manager._log_manager = mock_log_manager
+
+        # Test retrieve_logs delegation without pagination
+        result = await manager.retrieve_logs("job_123", log_type="job", num_lines=50)
+        assert result["logs"] == "Log content"
+        mock_log_manager.retrieve_logs.assert_called_with(
+            "job_123", "job", 50, False, 10, None, None
+        )
+
+        # Test retrieve_logs delegation with pagination
+        mock_log_manager.retrieve_logs = AsyncMock(
             return_value={
                 "status": "success",
                 "logs": "Page content",
                 "pagination": {"current_page": 1},
             }
         )
-
-        manager._log_manager = mock_log_manager
-
-        # Test retrieve_logs delegation
-        result = await manager.retrieve_logs("job_123", log_type="job", num_lines=50)
-        assert result["logs"] == "Log content"
-        mock_log_manager.retrieve_logs.assert_called_with(
-            "job_123", "job", 50, False, 10
-        )
-
-        # Test retrieve_logs_paginated delegation
-        result = await manager.retrieve_logs_paginated(
+        result = await manager.retrieve_logs(
             "job_123", log_type="job", page=2, page_size=25
         )
         assert result["pagination"]["current_page"] == 1
-        mock_log_manager.retrieve_logs_paginated.assert_called_with(
-            "job_123", "job", 2, 25, 10, False
+        mock_log_manager.retrieve_logs.assert_called_with(
+            "job_123", "job", 100, False, 10, 2, 25
         )
 
     async def test_port_management_delegation(self):
@@ -255,7 +255,6 @@ class TestRayUnifiedManagerBackwardCompatibility:
             "cancel_job",
             "inspect_job",
             "retrieve_logs",
-            "retrieve_logs_paginated",
             "find_free_port",
             "cleanup_port_lock",
         ]
@@ -291,9 +290,6 @@ class TestRayUnifiedManagerBackwardCompatibility:
             return_value={"status": "success"}
         )
         manager._log_manager.retrieve_logs = AsyncMock(
-            return_value={"status": "success"}
-        )
-        manager._log_manager.retrieve_logs_paginated = AsyncMock(
             return_value={"status": "success"}
         )
         manager._port_manager.find_free_port = AsyncMock(return_value=10001)
