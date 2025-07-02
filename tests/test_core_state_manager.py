@@ -317,7 +317,7 @@ class TestRayStateManagerErrorHandling:
     @patch("ray_mcp.core.state_manager.ray")
     def test_validation_exception_recovery_race_condition_fix(self, mock_ray):
         """Test that validation can recover from exceptions without race condition.
-        
+
         This test verifies the fix for Issue #105 where validation exceptions
         would prevent future validation attempts, creating a race condition.
         """
@@ -333,7 +333,7 @@ class TestRayStateManagerErrorHandling:
         # First validation should trigger exception
         time.sleep(0.02)
         state1 = manager.get_state()
-        
+
         # Verify: exception handled but cluster state preserved for retry
         assert not state1["initialized"]
         assert state1["cluster_address"] == "127.0.0.1:10001"  # Preserved!
