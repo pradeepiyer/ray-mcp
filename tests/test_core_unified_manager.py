@@ -395,6 +395,86 @@ class TestRayUnifiedManagerStateConsistency:
         if isinstance(log_mgr, RayLogManager):
             assert log_mgr.state_manager is manager._state_manager
 
+
+@pytest.mark.fast
+class TestRayClusterManagerGCSAddress:
+    """Test GCS address retrieval functionality."""
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    @pytest.mark.parametrize(
+        "ray_initialized,runtime_context,gcs_address,expected_result",
+        [
+            (
+                True,
+                Mock(gcs_address="192.168.1.100:10001"),
+                "192.168.1.100:10001",
+                "192.168.1.100:10001",
+            ),  # Success case
+            (False, None, None, None),  # Ray not initialized
+            (True, None, None, None),  # No runtime context
+            (True, Mock(gcs_address=None), None, None),  # No GCS address
+        ],
+    )
+    async def test_get_actual_gcs_address_scenarios(
+        self, mock_ray, ray_initialized, runtime_context, gcs_address, expected_result
+    ):
+        """Test GCS address retrieval for various scenarios."""
+        mock_ray.is_initialized.return_value = ray_initialized
+        mock_ray.get_runtime_context.return_value = runtime_context
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        result = await cluster_mgr._get_actual_gcs_address()
+
+        assert result == expected_result
+        mock_ray.is_initialized.assert_called_once()
+        if ray_initialized:
+            mock_ray.get_runtime_context.assert_called_once()
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_connect_to_existing_cluster_uses_actual_gcs_address(self, mock_ray):
+        """Test that connect_to_existing_cluster uses actual GCS address instead of provided address."""
+        # Mock the dashboard connection test
+        mock_job_client = Mock()
+
+        # Mock Ray initialization and runtime context
+        mock_context = Mock()
+        mock_context.gcs_address = "actual.gcs.address:10001"
+
+        # Setup mock to return False initially (not initialized), then True after init
+        mock_ray.is_initialized.side_effect = [
+            False,
+            True,
+        ]  # First call returns False, second returns True
+        mock_ray.init = Mock()
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        # Mock the dashboard connection test
+        with patch.object(
+            cluster_mgr, "_test_dashboard_connection", return_value=mock_job_client
+        ):
+            with patch.object(
+                cluster_mgr, "_validate_cluster_address", return_value=True
+            ):
+                result = await cluster_mgr._connect_to_existing_cluster(
+                    "provided.address:10001"
+                )
+
+        assert result["status"] == "success"
+
+        # Verify that ray.init was called
+        mock_ray.init.assert_called_once_with(ignore_reinit_error=True)
+
+        # Verify that the state was updated with the actual GCS address, not the provided address
+        state_manager = cluster_mgr.state_manager
+        assert state_manager.get_state()["gcs_address"] == "actual.gcs.address:10001"
+
     def test_dependency_injection_consistency(self):
         """Test that dependencies are properly injected."""
         manager = RayUnifiedManager()
