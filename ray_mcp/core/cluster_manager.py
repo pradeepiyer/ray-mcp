@@ -117,38 +117,28 @@ class RayClusterManager(RayComponent, ClusterManager):
                 ray.shutdown()
                 LoggingUtility.log_info("cluster_cleanup", "Ray shutdown completed")
 
-            # Reset state
-            self.state_manager.reset_state()
-
             return self._response_formatter.format_success_response(
                 message="Ray cluster stopped successfully",
                 cleanup_results=cleanup_results,
             )
-
-        except Exception as e:
-            LoggingUtility.log_error("stop cluster", e)
-            # Force reset state even if cleanup failed
+        finally:
+            # Always reset state, even if cleanup fails
             self.state_manager.reset_state()
-            return self._response_formatter.format_error_response("stop cluster", e)
 
     @ResponseFormatter.handle_exceptions("inspect cluster")
     async def inspect_cluster(self) -> Dict[str, Any]:
         """Get basic cluster information."""
         self._ensure_initialized()
 
-        try:
-            cluster_info = {}
+        cluster_info = {}
 
-            # Use cluster_status to avoid collision with response status
-            cluster_info["cluster_status"] = (
-                "running" if ray and ray.is_initialized() else "not_running"
-            )
-            cluster_info["ray_version"] = ray.__version__ if ray else "unavailable"
+        # Use cluster_status to avoid collision with response status
+        cluster_info["cluster_status"] = (
+            "running" if ray and ray.is_initialized() else "not_running"
+        )
+        cluster_info["ray_version"] = ray.__version__ if ray else "unavailable"
 
-            return self._response_formatter.format_success_response(**cluster_info)
-
-        except Exception as e:
-            return self._response_formatter.format_error_response("inspect cluster", e)
+        return self._response_formatter.format_success_response(**cluster_info)
 
     async def _connect_to_existing_cluster(self, address: str) -> Dict[str, Any]:
         """Connect to an existing Ray cluster via dashboard API."""

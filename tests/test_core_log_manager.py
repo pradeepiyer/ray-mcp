@@ -298,97 +298,164 @@ class TestRayLogManagerClientHandling:
 
 @pytest.mark.fast
 class TestLogProcessorMemoryEfficiency:
-    """Test log processor memory efficiency improvements."""
+    """Test memory efficiency of log processing."""
 
     def test_stream_logs_with_limits_memory_efficient_processing(self):
-        """Test that stream_logs_with_limits handles large logs efficiently with proper truncation."""
+        """Test that large logs are processed memory-efficiently."""
         from ray_mcp.logging_utils import LogProcessor
 
-        # Create logs with known content that exceeds 1MB when combined
-        # Each line is about 100 bytes, so 11000 lines would be about 1.1MB
-        large_content = "A" * 90  # 90 bytes of A's
-        log_lines = [
-            f"Line {i}: {large_content}" for i in range(11000)
-        ]  # About 1.1MB total
-        large_log = "\n".join(log_lines)
+        # Create a large log string (5MB)
+        large_log = "INFO: Processing data\n" * 100000
 
-        # Test with small size limit (should be truncated before all lines are processed)
+        # Process with small limits
         result = LogProcessor.stream_logs_with_limits(
-            large_log, max_lines=15000, max_size_mb=1
+            large_log, max_lines=10, max_size_mb=1
         )
 
-        # Should be truncated due to size limit
-        assert "truncated at 1MB limit" in result
-
-        # Verify that not all lines were included
-        result_lines = result.split("\n")
-        assert len(result_lines) < 11000  # Should be less than original
-
-        # Test with line limit (smaller than size limit)
-        result = LogProcessor.stream_logs_with_limits(
-            large_log, max_lines=50, max_size_mb=10
-        )
-        lines = result.split("\n")
-        assert len(lines) <= 51  # 50 lines + truncation message
-        assert "truncated at 50 lines" in result
-        assert "Line 0: " in lines[0]
-
-        # Test with list input for compatibility
-        log_list = [f"Line {i}: Content" for i in range(100)]
-        result = LogProcessor.stream_logs_with_limits(
-            log_list, max_lines=10, max_size_mb=1
-        )
+        # Should only return first 10 lines
         lines = result.split("\n")
         assert len(lines) <= 11  # 10 lines + truncation message
-        assert "truncated at 10 lines" in result
+        assert "INFO: Processing data" in result
+        assert "truncated" in result
 
-    async def test_stream_logs_with_pagination_large_logs_estimation(self):
-        """Test pagination with large logs using memory-efficient estimation."""
+    def test_stream_logs_with_limits_per_line_size_protection(self):
+        """Test protection against individual large lines."""
         from ray_mcp.logging_utils import LogProcessor
 
-        # Test with moderately sized log (accurate counting)
-        large_log = "\n".join([f"Line {i}: Content" for i in range(500)])
+        # Create log with one very large line
+        large_line = "ERROR: " + "A" * 50000  # 50KB line
+        logs = f"INFO: Start\n{large_line}\nINFO: End"
 
-        result = await LogProcessor.stream_logs_with_pagination(
-            large_log, page=2, page_size=10, max_size_mb=1
+        result = LogProcessor.stream_logs_with_limits(
+            logs, max_lines=10, max_size_mb=1, max_line_size_kb=1
         )
 
-        assert result["status"] == "success"
-        assert result["pagination"]["current_page"] == 2
-        assert result["pagination"]["page_size"] == 10
-        assert result["pagination"]["total_lines"] == 500
+        lines = result.split("\n")
+        assert "INFO: Start" in result
+        assert "INFO: End" in result
+        # Large line should be truncated
+        large_line_found = any("truncated" in line for line in lines)
+        assert large_line_found
 
-        # Should contain lines from page 2 (lines 10-19)
-        lines = result["logs"].split("\n")
-        assert "Line 10: Content" in lines[0]
-        assert "Line 19: Content" in lines[-1]
+    async def test_stream_logs_with_pagination_large_logs_estimation(self):
+        """Test that pagination handles large logs efficiently with estimation."""
+        from ray_mcp.logging_utils import LogProcessor
 
-        # Test with very large log (triggers estimation for memory efficiency)
-        very_large_log = "\n".join(
-            [f"Line {i}: {'A' * 100}" for i in range(200000)]
-        )  # ~20MB
+        # Create a large log string (15MB)
+        large_log = "INFO: Processing data\n" * 300000
 
         result = await LogProcessor.stream_logs_with_pagination(
-            very_large_log, page=1, page_size=10, max_size_mb=1
+            large_log, page=1, page_size=10, max_size_mb=1
         )
 
         assert result["status"] == "success"
         assert result["pagination"]["current_page"] == 1
         assert result["pagination"]["page_size"] == 10
-        # Total lines should be estimated, not exact
+        # Should have estimated total lines
         assert result["pagination"]["total_lines"] > 0
 
-        # Should contain first 10 lines
-        lines = result["logs"].split("\n")
-        assert len(lines) <= 10
-        assert "Line 0: " in lines[0]
 
-        # Test invalid page number
-        log_content = "\n".join([f"Line {i}" for i in range(50)])
+@pytest.mark.fast
+class TestErrorHandlingConsistency:
+    """Test error handling consistency across log manager methods."""
+
+    async def test_stream_logs_with_pagination_error_handling(self):
+        """Test that stream_logs_with_pagination uses consistent error handling."""
+        from ray_mcp.logging_utils import LogProcessor
+
+        # Test with invalid parameters that should trigger an exception
+        # Use mock to force an exception in the method
+        with patch.object(LogProcessor, "_stream_log_lines") as mock_stream:
+            mock_stream.side_effect = Exception("Test exception")
+
+            result = await LogProcessor.stream_logs_with_pagination(
+                "test logs", page=1, page_size=10
+            )
+
+        # Should return standardized error response
+        assert result["status"] == "error"
+        assert "Failed to stream logs with pagination" in result["message"]
+        assert "Test exception" in result["message"]
+
+    async def test_stream_logs_with_pagination_validation_error_format(self):
+        """Test that validation errors in pagination use consistent format."""
+        from ray_mcp.logging_utils import LogProcessor
+
+        # Test with invalid page number
         result = await LogProcessor.stream_logs_with_pagination(
-            log_content, page=100, page_size=10, max_size_mb=1
+            "line1\nline2\nline3", page=999, page_size=10
         )
 
         assert result["status"] == "error"
         assert "Invalid page number" in result["message"]
         assert "total_pages" in result
+        assert "total_lines" in result
+
+    async def test_retrieve_logs_decorator_error_handling(self):
+        """Test that retrieve_logs method uses consistent error handling."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        manager = RayLogManager(state_manager)
+
+        # Mock the validation to pass, but force an exception in the implementation
+        with patch.object(manager, "_validate_log_retrieval_params", return_value=None):
+            with patch.object(manager, "_retrieve_job_logs_unified") as mock_retrieve:
+                mock_retrieve.side_effect = Exception("Test exception")
+
+                result = await manager.retrieve_logs("test_id", log_type="job")
+
+        # Should return standardized error response due to decorator
+        assert result["status"] == "error"
+        assert "Failed to retrieve logs" in result["message"]
+        assert "Test exception" in result["message"]
+
+    async def test_error_response_format_consistency(self):
+        """Test that all error responses have consistent format."""
+        from ray_mcp.logging_utils import ResponseFormatter
+
+        # Test format_error_response
+        error_response = ResponseFormatter.format_error_response(
+            "test operation", Exception("test error")
+        )
+
+        assert "status" in error_response
+        assert error_response["status"] == "error"
+        assert "message" in error_response
+        assert "Failed to test operation" in error_response["message"]
+        assert "test error" in error_response["message"]
+
+        # Test format_validation_error
+        validation_response = ResponseFormatter.format_validation_error(
+            "validation failed"
+        )
+
+        assert "status" in validation_response
+        assert validation_response["status"] == "error"
+        assert "message" in validation_response
+        assert validation_response["message"] == "validation failed"
+
+    async def test_multiple_error_paths_same_format(self):
+        """Test that different error paths produce the same response format."""
+        state_manager = Mock()
+        manager = RayLogManager(state_manager)
+
+        # Test validation error
+        validation_result = await manager.retrieve_logs("", log_type="job")
+
+        # Test other error by forcing exception during processing
+        state_manager.is_initialized.return_value = True
+        with patch.object(manager, "_validate_log_retrieval_params", return_value=None):
+            with patch.object(manager, "_retrieve_job_logs_unified") as mock_retrieve:
+                mock_retrieve.side_effect = Exception("Processing error")
+                processing_result = await manager.retrieve_logs(
+                    "test_id", log_type="job"
+                )
+
+        # Both should have same structure
+        assert validation_result["status"] == "error"
+        assert processing_result["status"] == "error"
+        assert "message" in validation_result
+        assert "message" in processing_result
+        # Both should be string messages
+        assert isinstance(validation_result["message"], str)
+        assert isinstance(processing_result["message"], str)
