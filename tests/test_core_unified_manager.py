@@ -529,6 +529,165 @@ class TestRayClusterManagerGCSAddress:
 
 
 @pytest.mark.fast
+class TestRayClusterManagerAddressParsing:
+    """Test address validation and parsing functionality."""
+
+    @pytest.fixture
+    def cluster_manager(self):
+        """Create a RayClusterManager instance for testing."""
+        from ray_mcp.core.cluster_manager import RayClusterManager
+        from ray_mcp.core.port_manager import RayPortManager
+        from ray_mcp.core.state_manager import RayStateManager
+
+        state_manager = RayStateManager()
+        port_manager = RayPortManager()
+        return RayClusterManager(state_manager, port_manager)
+
+    @pytest.mark.parametrize(
+        "address,expected_valid",
+        [
+            # Valid IPv4 addresses
+            ("127.0.0.1:8000", True),
+            ("192.168.1.100:10001", True),
+            ("localhost:8000", True),
+            ("example.com:8000", True),
+            ("ray-cluster.example.com:8000", True),
+            # Invalid addresses
+            ("", False),
+            ("invalid", False),
+            ("127.0.0.1", False),  # Missing port
+            ("127.0.0.1:", False),  # Missing port number
+            ("127.0.0.1:abc", False),  # Invalid port
+            ("127.0.0.1:99999", False),  # Port out of range
+            ("127.0.0.1:0", False),  # Port zero
+            ("300.300.300.300:8000", False),  # Invalid IPv4
+        ],
+    )
+    def test_validate_cluster_address(self, cluster_manager, address, expected_valid):
+        """Test address validation for various formats."""
+        result = cluster_manager._validate_cluster_address(address)
+        assert result == expected_valid
+
+    @pytest.mark.parametrize(
+        "host,expected_valid",
+        [
+            # Valid IPv4 addresses
+            ("127.0.0.1", True),
+            ("192.168.1.100", True),
+            ("255.255.255.255", True),
+            ("0.0.0.0", True),
+            # Valid hostnames
+            ("localhost", True),
+            ("example.com", True),
+            ("ray-cluster.example.com", True),
+            ("a.b.c.d", True),
+            # Invalid IPv4
+            ("256.256.256.256", False),
+            ("127.0.0", False),
+            ("127.0.0.1.1", False),
+            # Invalid hostnames
+            ("", False),
+            ("-invalid", False),
+            ("invalid-", False),
+            ("inv@lid", False),
+        ],
+    )
+    def test_validate_ipv4_or_hostname(self, cluster_manager, host, expected_valid):
+        """Test IPv4 and hostname validation."""
+        result = cluster_manager._validate_ipv4_or_hostname(host)
+        assert result == expected_valid
+
+    @pytest.mark.parametrize(
+        "port,expected_valid",
+        [
+            # Valid ports
+            ("1", True),
+            ("80", True),
+            ("8000", True),
+            ("65535", True),
+            # Invalid ports
+            ("", False),
+            ("0", False),
+            ("65536", False),
+            ("abc", False),
+            ("8000.5", False),
+            ("-1", False),
+        ],
+    )
+    def test_validate_port(self, cluster_manager, port, expected_valid):
+        """Test port validation."""
+        result = cluster_manager._validate_port(port)
+        assert result == expected_valid
+
+    @pytest.mark.parametrize(
+        "address,expected_host,expected_port",
+        [
+            # IPv4 addresses
+            ("127.0.0.1:8000", "127.0.0.1", 8000),
+            ("192.168.1.100:10001", "192.168.1.100", 10001),
+            ("localhost:8000", "localhost", 8000),
+        ],
+    )
+    def test_parse_cluster_address_success(
+        self, cluster_manager, address, expected_host, expected_port
+    ):
+        """Test successful address parsing."""
+        host, port = cluster_manager._parse_cluster_address(address)
+        assert host == expected_host
+        assert port == expected_port
+
+    @pytest.mark.parametrize(
+        "address",
+        [
+            "",
+            "invalid",
+            "127.0.0.1",
+            "127.0.0.1:abc",
+            "300.300.300.300:8000",
+        ],
+    )
+    def test_parse_cluster_address_failure(self, cluster_manager, address):
+        """Test address parsing failures."""
+        with pytest.raises(ValueError, match="Invalid cluster address format"):
+            cluster_manager._parse_cluster_address(address)
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_connect_to_existing_cluster_ipv4_url_formatting(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that IPv4 addresses are properly formatted in URLs."""
+        # Mock the dashboard connection test
+        mock_job_client = Mock()
+        mock_context = Mock()
+        mock_context.gcs_address = "actual.gcs.address:10001"
+
+        mock_ray.is_initialized.side_effect = [False, True]
+        mock_ray.init = Mock()
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        # Test IPv4 address formatting
+        with patch.object(
+            cluster_manager, "_test_dashboard_connection", return_value=mock_job_client
+        ) as mock_test:
+            result = await cluster_manager._connect_to_existing_cluster(
+                "127.0.0.1:8000"
+            )
+
+            # Should succeed
+            assert result["status"] == "success"
+            # Check that the dashboard URL was formatted correctly
+            mock_test.assert_called_once_with("http://127.0.0.1:8265")
+
+    async def test_connect_to_existing_cluster_invalid_address(self, cluster_manager):
+        """Test that invalid addresses are rejected."""
+        result = await cluster_manager._connect_to_existing_cluster("invalid-address")
+
+        assert result["status"] == "error"
+        assert "Invalid cluster address format" in result["message"]
+
+
+@pytest.mark.fast
 class TestWorkerManagerProcessCleanup:
     """Test the simplified process cleanup logic in WorkerManager."""
 
