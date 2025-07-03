@@ -3,7 +3,8 @@
 import asyncio
 import re
 import subprocess
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 # Use TYPE_CHECKING to avoid runtime issues with imports
 if TYPE_CHECKING:
@@ -140,6 +141,85 @@ class RayClusterManager(RayComponent, ClusterManager):
 
         return self._response_formatter.format_success_response(**cluster_info)
 
+    def _validate_cluster_address(self, address: str) -> bool:
+        """Validate cluster address format supporting IPv4 and hostnames."""
+        if not address or ":" not in address:
+            return False
+
+        # Handle IPv4 addresses and hostnames with port: host:port
+        if address.count(":") == 1:
+            parts = address.split(":")
+            if len(parts) == 2:
+                host_part, port_part = parts
+                return self._validate_ipv4_or_hostname(
+                    host_part
+                ) and self._validate_port(port_part)
+
+        return False
+
+    def _validate_ipv4_or_hostname(self, host: str) -> bool:
+        """Validate IPv4 address or hostname."""
+        if not host:
+            return False
+
+        # Check if this looks like an IPv4 address (contains only digits, dots)
+        if "." in host:
+            parts = host.split(".")
+
+            # If it looks like an IPv4 pattern (all parts are digits), validate strictly
+            looks_like_ipv4 = all(part.isdigit() or not part for part in parts)
+
+            if looks_like_ipv4:
+                # This looks like an IPv4 address, validate it strictly
+                if len(parts) != 4:
+                    return False  # Invalid IPv4, don't fall through to hostname
+
+                try:
+                    for part in parts:
+                        if not part:  # Empty part
+                            return False
+                        num = int(part)
+                        if num < 0 or num > 255:
+                            return False
+                    return True  # Valid IPv4
+                except ValueError:
+                    return False  # Invalid IPv4
+
+        # Check for hostname/domain format
+        hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+        return bool(re.match(hostname_pattern, host))
+
+    def _validate_port(self, port: str) -> bool:
+        """Validate port number."""
+        try:
+            port_num = int(port)
+            return 1 <= port_num <= 65535
+        except (ValueError, TypeError):
+            return False
+
+    def _parse_cluster_address(self, address: str) -> Tuple[str, int]:
+        """Parse cluster address and return host and port.
+
+        Args:
+            address: Address in format "host:port"
+
+        Returns:
+            Tuple of (host, port)
+
+        Raises:
+            ValueError: If address format is invalid
+        """
+        if not self._validate_cluster_address(address):
+            raise ValueError(f"Invalid cluster address format: {address}")
+
+        # Handle IPv4 addresses or hostnames host:port
+        if address.count(":") == 1:
+            host, port_str = address.split(":")
+            port = int(port_str)
+            return host, port
+
+        raise ValueError(f"Unable to parse cluster address: {address}")
+
     async def _connect_to_existing_cluster(self, address: str) -> Dict[str, Any]:
         """Connect to an existing Ray cluster via dashboard API."""
         try:
@@ -150,7 +230,11 @@ class RayClusterManager(RayComponent, ClusterManager):
                 )
 
             # Parse address to construct dashboard URL
-            host, port = address.split(":")
+            try:
+                host, port = self._parse_cluster_address(address)
+            except ValueError as e:
+                return self._response_formatter.format_validation_error(str(e))
+
             dashboard_port = 8265  # Standard Ray dashboard port
             dashboard_url = f"http://{host}:{dashboard_port}"
 
@@ -392,12 +476,6 @@ class RayClusterManager(RayComponent, ClusterManager):
             Exception(f"Failed to connect to dashboard after {max_retries} attempts"),
         )
         return None
-
-    def _validate_cluster_address(self, address: str) -> bool:
-        """Validate cluster address format."""
-        # Basic validation for host:port format
-        pattern = r"^[a-zA-Z0-9.-]+:\d+$"
-        return bool(re.match(pattern, address))
 
     def _get_default_worker_config(self) -> List[Dict[str, Any]]:
         """Get default worker node configuration."""
