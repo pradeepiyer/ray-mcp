@@ -255,7 +255,7 @@ class LogProcessor:
             )
 
         except Exception as e:
-            LoggingUtility.log_error("streaming logs with pagination", e)
+            LoggingUtility.log_error("stream logs with pagination", e)
             return ResponseFormatter.format_error_response(
                 "stream logs with pagination", e
             )
