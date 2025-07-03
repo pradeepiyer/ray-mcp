@@ -395,6 +395,147 @@ class TestRayUnifiedManagerStateConsistency:
         if isinstance(log_mgr, RayLogManager):
             assert log_mgr.state_manager is manager._state_manager
 
+
+@pytest.mark.fast
+class TestRayClusterManagerGCSAddress:
+    """Test GCS address retrieval functionality."""
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_get_actual_gcs_address_success(self, mock_ray):
+        """Test successful GCS address retrieval."""
+        mock_context = Mock()
+        mock_context.gcs_address = "192.168.1.100:10001"
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        gcs_address = await cluster_mgr._get_actual_gcs_address()
+
+        assert gcs_address == "192.168.1.100:10001"
+        mock_ray.is_initialized.assert_called_once()
+        mock_ray.get_runtime_context.assert_called_once()
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_get_actual_gcs_address_ray_not_initialized(self, mock_ray):
+        """Test GCS address retrieval when Ray is not initialized."""
+        mock_ray.is_initialized.return_value = False
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        gcs_address = await cluster_mgr._get_actual_gcs_address()
+
+        assert gcs_address is None
+        mock_ray.is_initialized.assert_called_once()
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_get_actual_gcs_address_no_runtime_context(self, mock_ray):
+        """Test GCS address retrieval when runtime context is not available."""
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.return_value = None
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        gcs_address = await cluster_mgr._get_actual_gcs_address()
+
+        assert gcs_address is None
+        mock_ray.is_initialized.assert_called_once()
+        mock_ray.get_runtime_context.assert_called_once()
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_get_actual_gcs_address_no_gcs_address(self, mock_ray):
+        """Test GCS address retrieval when GCS address is not available."""
+        mock_context = Mock()
+        mock_context.gcs_address = None
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        gcs_address = await cluster_mgr._get_actual_gcs_address()
+
+        assert gcs_address is None
+        mock_ray.is_initialized.assert_called_once()
+        mock_ray.get_runtime_context.assert_called_once()
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", False)
+    async def test_get_actual_gcs_address_ray_not_available(self):
+        """Test GCS address retrieval when Ray is not available."""
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        gcs_address = await cluster_mgr._get_actual_gcs_address()
+
+        assert gcs_address is None
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_get_actual_gcs_address_exception_handling(self, mock_ray):
+        """Test GCS address retrieval with exception handling."""
+        mock_ray.is_initialized.return_value = True
+        mock_ray.get_runtime_context.side_effect = Exception("Runtime context error")
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        gcs_address = await cluster_mgr._get_actual_gcs_address()
+
+        assert gcs_address is None
+        mock_ray.is_initialized.assert_called_once()
+        mock_ray.get_runtime_context.assert_called_once()
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_connect_to_existing_cluster_uses_actual_gcs_address(self, mock_ray):
+        """Test that connect_to_existing_cluster uses actual GCS address."""
+        # Mock the dashboard connection test
+        mock_job_client = Mock()
+
+        # Mock Ray initialization and runtime context
+        mock_context = Mock()
+        mock_context.gcs_address = "actual.gcs.address:10001"
+
+        # Setup mock to return False initially (not initialized), then True after init
+        mock_ray.is_initialized.side_effect = [
+            False,
+            True,
+        ]  # First call returns False, second returns True
+        mock_ray.init = Mock()
+        mock_ray.get_runtime_context.return_value = mock_context
+
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        # Mock the dashboard connection test
+        with patch.object(
+            cluster_mgr, "_test_dashboard_connection", return_value=mock_job_client
+        ):
+            with patch.object(
+                cluster_mgr, "_validate_cluster_address", return_value=True
+            ):
+                result = await cluster_mgr._connect_to_existing_cluster(
+                    "provided.address:10001"
+                )
+
+        assert result["status"] == "success"
+
+        # Verify that ray.init was called
+        mock_ray.init.assert_called_once_with(ignore_reinit_error=True)
+
+        # Verify that the state was updated with the actual GCS address
+        state_manager = cluster_mgr.state_manager
+        # Check that update_state was called with the correct GCS address
+        # We need to verify this through the state manager calls
+        assert state_manager.get_state()["gcs_address"] == "actual.gcs.address:10001"
+
     def test_dependency_injection_consistency(self):
         """Test that dependencies are properly injected."""
         manager = RayUnifiedManager()

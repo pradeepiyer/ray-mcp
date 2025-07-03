@@ -176,11 +176,14 @@ class RayClusterManager(RayComponent, ClusterManager):
             if ray and not ray.is_initialized():
                 ray.init(ignore_reinit_error=True)
 
+            # Query the actual GCS address from the Ray cluster after connection
+            actual_gcs_address = await self._get_actual_gcs_address()
+
             # Update state with dashboard-based connection
             self.state_manager.update_state(
                 initialized=True,
                 cluster_address=address,
-                gcs_address=address,
+                gcs_address=actual_gcs_address,
                 dashboard_url=dashboard_url,
                 job_client=job_client,
             )
@@ -431,3 +434,35 @@ class RayClusterManager(RayComponent, ClusterManager):
             "head_node_ready",
             f"Head node may not be fully ready after {max_wait} seconds, proceeding anyway",
         )
+
+    async def _get_actual_gcs_address(self) -> Optional[str]:
+        """Get the actual GCS address from Ray runtime context."""
+        try:
+            if not ray or not ray.is_initialized():
+                LoggingUtility.log_warning(
+                    "get_gcs_address", "Ray is not initialized, cannot get GCS address"
+                )
+                return None
+
+            runtime_context = ray.get_runtime_context()
+            if not runtime_context:
+                LoggingUtility.log_warning(
+                    "get_gcs_address", "Ray runtime context is not available"
+                )
+                return None
+
+            gcs_address = getattr(runtime_context, "gcs_address", None)
+            if gcs_address:
+                LoggingUtility.log_info(
+                    "get_gcs_address", f"Retrieved GCS address: {gcs_address}"
+                )
+                return gcs_address
+            else:
+                LoggingUtility.log_warning(
+                    "get_gcs_address", "GCS address not available in runtime context"
+                )
+                return None
+
+        except Exception as e:
+            LoggingUtility.log_error("get_gcs_address", e)
+            return None
