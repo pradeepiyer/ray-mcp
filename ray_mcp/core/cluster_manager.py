@@ -96,6 +96,64 @@ class RayClusterManager(RayComponent, ClusterManager):
     async def stop_cluster(self) -> Dict[str, Any]:
         """Stop the Ray cluster and clean up resources."""
         try:
+            # Get connection type from state to determine appropriate cleanup
+            connection_type = self.state_manager.get_state().get("connection_type")
+
+            if connection_type == "existing":
+                return await self._disconnect_from_existing_cluster()
+            else:
+                return await self._stop_local_cluster()
+        except Exception as e:
+            LoggingUtility.log_error("stop cluster", e)
+            return self._response_formatter.format_error_response("stop cluster", e)
+        finally:
+            # Always reset state, even if cleanup fails
+            self.state_manager.reset_state()
+
+    @ResponseFormatter.handle_exceptions("inspect cluster")
+    async def inspect_cluster(self) -> Dict[str, Any]:
+        """Get basic cluster information."""
+        self._ensure_initialized()
+
+        cluster_info = {}
+
+        # Use cluster_status to avoid collision with response status
+        cluster_info["cluster_status"] = (
+            "running" if ray and ray.is_initialized() else "not_running"
+        )
+        cluster_info["ray_version"] = ray.__version__ if ray else "unavailable"
+
+        return self._response_formatter.format_success_response(**cluster_info)
+
+    async def _disconnect_from_existing_cluster(self) -> Dict[str, Any]:
+        """Disconnect from existing Ray cluster without stopping remote cluster."""
+        try:
+            LoggingUtility.log_info(
+                "cluster_disconnect", "Disconnecting from existing Ray cluster..."
+            )
+
+            # Only shutdown local Ray instance - this doesn't affect the remote cluster
+            if ray and ray.is_initialized():
+                ray.shutdown()
+                LoggingUtility.log_info(
+                    "cluster_disconnect", "Local Ray instance shutdown completed"
+                )
+
+            return self._response_formatter.format_success_response(
+                message="Successfully disconnected from existing Ray cluster",
+                connection_type="existing",
+                action="disconnected",
+            )
+
+        except Exception as e:
+            LoggingUtility.log_error("disconnect from cluster", e)
+            return self._response_formatter.format_error_response(
+                "disconnect from cluster", e
+            )
+
+    async def _stop_local_cluster(self) -> Dict[str, Any]:
+        """Stop locally-started Ray cluster and clean up all resources."""
+        try:
             cleanup_results = []
 
             # Stop worker nodes first
@@ -120,26 +178,16 @@ class RayClusterManager(RayComponent, ClusterManager):
 
             return self._response_formatter.format_success_response(
                 message="Ray cluster stopped successfully",
+                connection_type="new",
+                action="stopped",
                 cleanup_results=cleanup_results,
             )
-        finally:
-            # Always reset state, even if cleanup fails
-            self.state_manager.reset_state()
 
-    @ResponseFormatter.handle_exceptions("inspect cluster")
-    async def inspect_cluster(self) -> Dict[str, Any]:
-        """Get basic cluster information."""
-        self._ensure_initialized()
-
-        cluster_info = {}
-
-        # Use cluster_status to avoid collision with response status
-        cluster_info["cluster_status"] = (
-            "running" if ray and ray.is_initialized() else "not_running"
-        )
-        cluster_info["ray_version"] = ray.__version__ if ray else "unavailable"
-
-        return self._response_formatter.format_success_response(**cluster_info)
+        except Exception as e:
+            LoggingUtility.log_error("stop local cluster", e)
+            return self._response_formatter.format_error_response(
+                "stop local cluster", e
+            )
 
     def _validate_cluster_address(self, address: str) -> bool:
         """Validate cluster address format supporting IPv4 and hostnames."""
@@ -270,6 +318,7 @@ class RayClusterManager(RayComponent, ClusterManager):
                 gcs_address=actual_gcs_address,
                 dashboard_url=dashboard_url,
                 job_client=job_client,
+                connection_type="existing",
             )
 
             return self._response_formatter.format_success_response(
@@ -333,6 +382,7 @@ class RayClusterManager(RayComponent, ClusterManager):
                 cluster_address=cluster_address,
                 gcs_address=gcs_address,
                 dashboard_url=dashboard_url,
+                connection_type="new",
             )
 
             # Start worker nodes if requested

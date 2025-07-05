@@ -17,24 +17,29 @@ class TestRayStateManagerCore:
     """Test core state management functionality."""
 
     def test_initial_state_is_correct(self):
-        """Test that state manager initializes with correct default state."""
+        """Test that the initial state contains the expected default values."""
         manager = RayStateManager()
         state = manager.get_state()
 
+        # Check that all expected keys exist with correct initial values
         expected_keys = {
             "initialized",
             "cluster_address",
             "gcs_address",
             "dashboard_url",
             "job_client",
+            "connection_type",
             "last_validated",
         }
         assert set(state.keys()) == expected_keys
-        assert not state["initialized"]
+
+        # Check initial values
+        assert state["initialized"] is False
         assert state["cluster_address"] is None
         assert state["gcs_address"] is None
         assert state["dashboard_url"] is None
         assert state["job_client"] is None
+        assert state["connection_type"] is None
         assert state["last_validated"] == 0.0
 
     def test_update_state_modifies_values(self):
