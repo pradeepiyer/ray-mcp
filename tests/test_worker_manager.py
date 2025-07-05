@@ -151,7 +151,7 @@ class TestWorkerManagerProcessCleanup:
         worker_manager.worker_processes = [mock_process1, mock_process2]
         worker_manager.worker_configs = [
             {"node_name": "worker-1"},
-            {"node_name": "worker-2"}
+            {"node_name": "worker-2"},
         ]
 
         with patch("asyncio.get_running_loop") as mock_loop:
@@ -166,4 +166,4 @@ class TestWorkerManagerProcessCleanup:
                 assert results[0]["node_name"] == "worker-1"
                 assert results[1]["status"] == "force_stopped"
                 assert results[1]["node_name"] == "worker-2"
-                assert len(worker_manager.worker_processes) == 0 
+                assert len(worker_manager.worker_processes) == 0

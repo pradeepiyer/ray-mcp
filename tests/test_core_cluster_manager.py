@@ -162,12 +162,17 @@ class TestRayClusterManagerConnectionType:
         # Mock subprocess for head node - configure the Mock properly
         with patch("ray_mcp.core.cluster_manager.subprocess") as mock_subprocess:
             mock_process = Mock()
-            mock_process.communicate.return_value = ("stdout output", "")  # (stdout, stderr)
+            mock_process.communicate.return_value = (
+                "stdout output",
+                "",
+            )  # (stdout, stderr)
             mock_process.returncode = 0  # Success
             mock_subprocess.Popen.return_value = mock_process
-            
+
             # Mock the _wait_for_head_node_ready method to avoid dashboard connection
-            with patch.object(cluster_manager, "_wait_for_head_node_ready", return_value=None):
+            with patch.object(
+                cluster_manager, "_wait_for_head_node_ready", return_value=None
+            ):
                 await cluster_manager.init_cluster(num_cpus=2, worker_nodes=[])
 
         state = cluster_manager.state_manager.get_state()
@@ -182,14 +187,14 @@ class TestRayClusterManagerConnectionType:
         def mock_connect_to_existing(address):
             # Simulate what the real method does - update state with connection_type
             cluster_manager.state_manager.update_state(
-                initialized=True,
-                cluster_address=address,
-                connection_type="existing"
+                initialized=True, cluster_address=address, connection_type="existing"
             )
             return {"status": "success", "connection_type": "existing"}
 
         with patch.object(
-            cluster_manager, "_connect_to_existing_cluster", side_effect=mock_connect_to_existing
+            cluster_manager,
+            "_connect_to_existing_cluster",
+            side_effect=mock_connect_to_existing,
         ):
             result = await cluster_manager.init_cluster(address="127.0.0.1:10001")
 
@@ -350,4 +355,4 @@ class TestRayClusterManagerAddressParsing:
         """Test connecting to existing cluster with invalid address."""
         result = await cluster_manager._connect_to_existing_cluster("invalid:address")
         assert result["status"] == "error"
-        assert "Invalid cluster address" in result["message"] 
+        assert "Invalid cluster address" in result["message"]
