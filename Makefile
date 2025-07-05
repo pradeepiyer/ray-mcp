@@ -5,7 +5,7 @@
 # - test-smoke: Critical functionality validation (quick confidence)
 # - test:       Complete test suite including E2E (full validation)
 
-.PHONY: test test-fast test-smoke install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
+.PHONY: test test-fast test-smoke test-e2e install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
 
 # ================================================================================
 # TESTING TARGETS
@@ -20,6 +20,13 @@ test:
 test-fast:
 	@echo "🏃‍♂️ Running fast test suite..."
 	@uv run pytest tests/ -k "not e2e" --tb=short -v --cov=ray_mcp --cov-report=term-missing
+
+# Comprehensive end-to-end server tests (consolidated)
+test-e2e:
+	@echo "🚀 Running comprehensive Ray MCP server tests..."
+	@echo "📋 Testing complete end-to-end functionality..."
+	@uv run pytest tests/test_mcp_server.py --tb=short -v
+	@echo "✅ End-to-end server tests completed!"
 
 # Smoke tests - critical functionality validation for quick confidence
 test-smoke:
@@ -210,6 +217,7 @@ help:
 	@echo "  test             Run complete test suite including E2E (default)"
 	@echo "  test-fast        Run unit tests only for fast development feedback"
 	@echo "  test-smoke       Run smoke tests for quick critical functionality validation"
+	@echo "  test-e2e         Run comprehensive end-to-end server tests (consolidated)"
 	@echo "  test-cov         Run tests with coverage"
 	@echo ""
 	@echo "🔧 Development:"

@@ -1,156 +1,137 @@
-# Ray MCP Tests
+# Ray MCP Test Suite
 
-Comprehensive test suite for the modular Ray MCP architecture.
+A comprehensive test suite for the Ray MCP server, organized for efficient development and reliable validation.
 
-## Test Structure
+## Test Organization
 
-```
-tests/
-├── conftest.py                    # Shared fixtures and utilities
-├── test_core_state_manager.py     # State management unit tests  
-├── test_core_port_manager.py      # Port allocation unit tests
-├── test_core_cluster_manager.py   # Cluster lifecycle unit tests
-├── test_core_job_manager.py       # Job management unit tests
-├── test_core_log_manager.py       # Log management unit tests
-├── test_core_unified_manager.py   # Unified manager unit tests
-├── test_mcp_integration.py        # MCP integration layer tests
-├── test_e2e_smoke.py              # Fast critical functionality validation
-└── test_e2e_system.py             # System integration tests
-```
+### Core Component Tests
+- `test_core_unified_manager.py` - Unified manager architecture
+- `test_core_state_manager.py` - State management and validation
+- `test_core_cluster_manager.py` - Cluster lifecycle operations
+- `test_core_job_manager.py` - Job submission and management
+- `test_core_log_manager.py` - Log retrieval and analysis
+- `test_core_port_manager.py` - Port allocation and management
 
-## Test Categories
+### Integration Tests
+- `test_mcp_integration.py` - MCP protocol integration and tool registry
+- `test_mcp_server.py` - Comprehensive end-to-end server validation
 
-### Unit Tests (`test_core_*.py`)
-- **Purpose**: Test individual components in isolation
-- **Mocking**: Fully mocked dependencies and external services
-- **Speed**: Fast execution for development feedback
-- **Coverage**: Each core component thoroughly tested
-
-### Integration Tests (`test_mcp_integration.py`)
-- **Purpose**: Test MCP server integration layer
-- **Scope**: Tool registry, server startup, schema validation
-- **Mocking**: Minimal mocking of Ray operations
-- **Focus**: Interface contracts and protocol compliance
-
-### Smoke Tests (`test_e2e_smoke.py`) 
-- **Purpose**: Fast critical functionality validation
-- **Execution**: Real Ray operations, minimal setup
-- **Speed**: Optimized for rapid feedback
-- **Coverage**: Essential user workflows only
-
-### System Tests (`test_e2e_system.py`)
-- **Purpose**: End-to-end system integration validation
-- **Scope**: Full component integration testing
-- **Execution**: Real Ray clusters and operations
-- **Coverage**: Complex multi-component workflows
+### Test Infrastructure
+- `conftest.py` - Shared fixtures, utilities, and test configuration
 
 ## Running Tests
 
-### Make Targets
+### Development Workflow
 
 ```bash
-# Fast unit tests for development
+# Fast unit tests for development feedback
 make test-fast
 
-# Critical functionality validation  
+# Quick architecture validation
 make test-smoke
 
-# Complete test suite including E2E
+# Comprehensive end-to-end validation
+make test-e2e
+
+# Complete test suite with coverage
 make test
 ```
 
 ### Direct pytest Commands
 
 ```bash
-# Individual component tests
-pytest tests/test_core_job_manager.py
-pytest tests/test_core_state_manager.py::TestStateValidation
+# Run all tests in a specific file
+pytest tests/test_core_job_manager.py -v
 
-# Test categories
-pytest tests/test_core_*.py          # All unit tests
-pytest tests/test_e2e_*.py           # All E2E tests  
-pytest tests/test_mcp_integration.py # Integration tests
+# Run specific test method
+pytest tests/test_core_state_manager.py::TestStateValidation::test_state_transitions -v
 
-# With coverage
-pytest --cov=ray_mcp.core --cov-report=term-missing
+# Run tests by category
+pytest tests/test_core_*.py              # All unit tests
+pytest tests/test_mcp_*.py               # All integration tests
+pytest -m "not e2e"                     # Exclude end-to-end tests
 ```
 
-## Test Organization
+## Test Types
 
-### Core Component Tests
+### Unit Tests (`test_core_*.py`)
+**Purpose**: Test individual components in isolation
+- Fast execution for development feedback
+- Comprehensive mocking of external dependencies
+- Focus on component logic and error handling
+- Independent test execution
 
-Each `test_core_*.py` file follows consistent patterns:
+### Integration Tests (`test_mcp_integration.py`)
+**Purpose**: Test MCP protocol integration layer
+- Tool registry functionality
+- Server startup and configuration
+- Schema validation and compliance
+- Error handling at protocol boundaries
 
-- **Setup/Teardown**: Clean component initialization and cleanup
-- **Happy Path**: Primary functionality testing
-- **Error Cases**: Exception handling and validation
-- **Edge Cases**: Boundary conditions and unusual inputs
-- **Integration Points**: Component interaction testing
+### End-to-End Tests (`test_mcp_server.py`)
+**Purpose**: Validate complete server functionality
+- Real Ray cluster operations
+- Complete workflow validation
+- Performance and reliability testing
+- System integration scenarios
 
-### Example Test Structure
+## Test Environment
+
+### Configuration
+Tests adapt to different environments:
+- **CI**: Optimized for reliability with constrained resources
+- **Local**: Full testing with performance validation
+- **Docker**: Containerized testing environment
+
+### Dependencies
+- Ray cluster management
+- MCP protocol handling
+- Async test execution
+- Performance benchmarking
+
+## Writing Tests
+
+### Test Structure
 
 ```python
-class TestJobManager:
-    """Test suite for JobManager component."""
+class TestComponentName:
+    """Test suite for ComponentName functionality."""
     
-    def test_submit_job_success(self):
-        """Test successful job submission."""
+    def test_happy_path_scenario(self):
+        """Test primary functionality with valid inputs."""
+        # Arrange
+        component = ComponentName()
         
-    def test_submit_job_validation_error(self):
-        """Test job submission with invalid parameters."""
+        # Act
+        result = component.method()
         
-    def test_job_status_retrieval(self):
-        """Test job status retrieval functionality."""
+        # Assert
+        assert result.status == "success"
+    
+    def test_error_handling(self):
+        """Test error handling with invalid inputs."""
+        # Test implementation
 ```
 
-## Test Guidelines
+### Best Practices
 
-### ✅ Best Practices
+#### ✅ Do
+- Use descriptive test names that explain what is being tested
+- Test both success and failure scenarios
+- Keep tests focused on single behaviors
+- Use fixtures for common setup
+- Mock external dependencies in unit tests
 
-- **Single Responsibility**: Each test verifies one specific behavior
-- **Clear Naming**: Test names describe what is being tested
-- **Arrange-Act-Assert**: Clear test structure with distinct phases
-- **Mock External Dependencies**: Unit tests should be isolated
-- **Parameterized Tests**: Use `@pytest.mark.parametrize` for variations
-
-### ❌ Avoid
-
-- **Testing Implementation Details**: Focus on behavior, not internals
-- **Overly Complex Tests**: Keep tests simple and focused
-- **Brittle Assertions**: Don't assert on exact string matches
-- **Shared State**: Tests should be independent and repeatable
-
-## Component-Specific Testing
-
-### StateManager Tests
-- Thread safety validation
-- State transitions and validation
-- Concurrent access scenarios
-
-### PortManager Tests  
-- Port allocation and deallocation
-- File locking mechanisms
-- Race condition prevention
-
-### ClusterManager Tests
-- Cluster lifecycle operations
-- Process management
-- Resource configuration
-
-### JobManager Tests
-- Job submission and management
-- Client lifecycle handling  
-- Job inspection and monitoring
-
-### LogManager Tests
-- Log retrieval with memory limits
-- Error analysis functionality
-- Pagination support
+#### ❌ Avoid
+- Testing implementation details
+- Overly complex test setups
+- Brittle assertions on exact strings
+- Shared state between tests
+- Flaky or timing-dependent tests
 
 ## Debugging Tests
 
 ### Verbose Output
-
 ```bash
 # Detailed test output
 pytest -v --tb=short
@@ -158,49 +139,86 @@ pytest -v --tb=short
 # Stop on first failure
 pytest -x
 
+# Show print statements
+pytest -s
+
 # Live log output
 pytest --log-cli-level=DEBUG
 ```
 
-### Individual Test Debugging
-
+### Test Debugging
 ```bash
-# Run specific test with debug info
+# Debug specific test
 pytest tests/test_core_job_manager.py::TestJobManager::test_submit_job -v -s
 
-# With pdb debugging
+# Interactive debugging
 pytest --pdb tests/test_core_job_manager.py::TestJobManager::test_submit_job
 ```
 
 ## Coverage and Quality
 
 ### Coverage Goals
-- **Unit Tests**: High coverage of core component logic
-- **Integration Tests**: Key interface and protocol paths
-- **E2E Tests**: Critical user workflows and error paths
+- **Unit Tests**: Comprehensive coverage of core component logic
+- **Integration Tests**: Key interface and protocol validation
+- **End-to-End Tests**: Critical user workflows and error scenarios
 
-### Quality Metrics
+### Quality Standards
 - All tests must pass before merging
-- No flaky or intermittent test failures
-- Tests should complete within reasonable time limits
-- Clear failure messages that aid debugging
+- Clear failure messages for debugging
+- Reasonable execution time
+- No flaky or intermittent failures
 
 ## Adding New Tests
 
 ### For New Components
-
-1. Create `test_core_new_component.py`
-2. Follow existing test structure patterns
-3. Include comprehensive error case testing
-4. Add integration points to system tests
+1. Create `test_core_new_component.py` following existing patterns
+2. Include comprehensive unit tests for all public methods
+3. Add error case testing and edge condition validation
+4. Update integration tests if component has external interfaces
 
 ### For New Features
-
 1. Add unit tests to appropriate `test_core_*.py` file
-2. Update integration tests if MCP interface changes
-3. Add E2E tests for user-facing functionality
-4. Ensure backward compatibility testing
+2. Update `test_mcp_integration.py` if MCP interface changes
+3. Add end-to-end scenarios to `test_mcp_server.py` if needed
+4. Update fixtures in `conftest.py` if shared setup is required
 
----
+## Continuous Integration
 
-*Optimized for maintainable, comprehensive testing of the modular architecture.*
+### GitHub Actions
+- **CI Pipeline**: Runs `test-fast` for quick feedback
+- **PR Validation**: Includes comprehensive test suite
+- **Coverage Reporting**: Automated coverage analysis
+
+### Test Markers
+- `@pytest.mark.fast` - Fast unit tests
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.e2e` - End-to-end tests
+- `@pytest.mark.slow` - Tests with longer execution time
+
+## Performance Considerations
+
+### Test Optimization
+- Unit tests prioritize speed over realism
+- Integration tests balance speed with realistic scenarios
+- End-to-end tests focus on comprehensive validation
+- CI environment uses optimized configurations
+
+### Resource Management
+- Proper cleanup of Ray clusters and resources
+- Efficient use of test fixtures
+- Parallel test execution where possible
+- Environment-specific timeouts and limits
+
+## Troubleshooting
+
+### Common Issues
+- **Ray cluster conflicts**: Use `make clean` to reset environment
+- **Port conflicts**: Tests handle port allocation automatically
+- **Timeout errors**: Check resource constraints and cluster health
+- **Import errors**: Ensure proper test environment setup
+
+### Getting Help
+- Check test output for specific error messages
+- Review relevant component documentation
+- Use verbose test execution for debugging
+- Consult CI logs for environment-specific issues
