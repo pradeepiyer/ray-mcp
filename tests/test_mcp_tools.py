@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""MCP integration tests for Ray MCP server.
+"""Unit tests for MCP tools and tool registry.
 
-Tests the MCP integration layer including tool registry, server startup,
-schema validation, and tool dispatch mechanism. These tests focus on
-the MCP-specific functionality that bridges between the LLM and the
-Ray components.
+Tests the MCP tool layer including tool registry, schema validation,
+and tool dispatch mechanism. These tests focus on the MCP-specific
+functionality that bridges between the LLM and the Ray components.
+All tests are fast unit tests with 100% mocking.
 """
 
 from unittest.mock import AsyncMock, Mock, patch
@@ -16,7 +16,6 @@ from ray_mcp.tool_registry import ToolRegistry
 
 
 @pytest.mark.fast
-@pytest.mark.integration
 class TestMCPServer:
     """Test MCP server startup and core functionality."""
 
@@ -151,9 +150,9 @@ class TestToolRegistry:
         assert "Original Response:" in prompt
 
 
-@pytest.mark.integration
+@pytest.mark.fast
 class TestMCPWorkflow:
-    """Test complete MCP workflow integration."""
+    """Test MCP workflow error handling and edge cases."""
 
     @pytest.fixture(autouse=True)
     def patch_ray_manager(self):

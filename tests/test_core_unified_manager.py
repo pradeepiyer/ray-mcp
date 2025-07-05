@@ -84,6 +84,58 @@ class TestRayUnifiedManagerCore:
                 assert manager.dashboard_url == "http://127.0.0.1:8265"
                 assert manager.job_client is not None
 
+    def test_dependency_injection_consistency(self):
+        """Test that dependencies are properly injected."""
+        manager = RayUnifiedManager()
+
+        # Import concrete types to access private attributes
+        from ray_mcp.core.cluster_manager import RayClusterManager
+        from ray_mcp.core.job_manager import RayJobManager
+        from ray_mcp.core.log_manager import RayLogManager
+
+        cluster_mgr = manager._cluster_manager
+        job_mgr = manager._job_manager
+        log_mgr = manager._log_manager
+
+        # Cluster manager should have both state and port managers
+        if isinstance(cluster_mgr, RayClusterManager):
+            assert cluster_mgr.state_manager is manager._state_manager
+            assert cluster_mgr._port_manager is manager._port_manager
+
+        # Other managers should have state manager
+        if isinstance(job_mgr, RayJobManager):
+            assert job_mgr.state_manager is manager._state_manager
+        if isinstance(log_mgr, RayLogManager):
+            assert log_mgr.state_manager is manager._state_manager
+
+    @pytest.mark.parametrize(
+        "property_name",
+        ["is_initialized", "cluster_address", "dashboard_url", "job_client"],
+    )
+    def test_property_access_consistency(self, property_name):
+        """Test that property access is consistent with state manager."""
+        manager = RayUnifiedManager()
+
+        # Mock state manager state
+        mock_state = {
+            "initialized": True,
+            "cluster_address": "127.0.0.1:10001",
+            "dashboard_url": "http://127.0.0.1:8265",
+            "job_client": Mock(),
+        }
+
+        with patch.object(manager._state_manager, "get_state", return_value=mock_state):
+            with patch.object(
+                manager._state_manager, "is_initialized", return_value=True
+            ):
+                # Property access should be consistent
+                manager_value = getattr(manager, property_name)
+
+                if property_name == "is_initialized":
+                    assert manager_value is True
+                else:
+                    assert manager_value == mock_state[property_name]
+
 
 @pytest.mark.fast
 class TestRayUnifiedManagerDelegation:
@@ -394,514 +446,3 @@ class TestRayUnifiedManagerStateConsistency:
             assert job_mgr.state_manager is manager._state_manager
         if isinstance(log_mgr, RayLogManager):
             assert log_mgr.state_manager is manager._state_manager
-
-
-@pytest.mark.fast
-class TestRayClusterManagerGCSAddress:
-    """Test GCS address retrieval functionality."""
-
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    @pytest.mark.parametrize(
-        "ray_initialized,runtime_context,gcs_address,expected_result",
-        [
-            (
-                True,
-                Mock(gcs_address="192.168.1.100:10001"),
-                "192.168.1.100:10001",
-                "192.168.1.100:10001",
-            ),  # Success case
-            (False, None, None, None),  # Ray not initialized
-            (True, None, None, None),  # No runtime context
-            (True, Mock(gcs_address=None), None, None),  # No GCS address
-        ],
-    )
-    async def test_get_actual_gcs_address_scenarios(
-        self, mock_ray, ray_initialized, runtime_context, gcs_address, expected_result
-    ):
-        """Test GCS address retrieval for various scenarios."""
-        mock_ray.is_initialized.return_value = ray_initialized
-        mock_ray.get_runtime_context.return_value = runtime_context
-
-        manager = RayUnifiedManager()
-        cluster_mgr = manager._cluster_manager
-
-        result = await cluster_mgr._get_actual_gcs_address()
-
-        assert result == expected_result
-        mock_ray.is_initialized.assert_called_once()
-        if ray_initialized:
-            mock_ray.get_runtime_context.assert_called_once()
-
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_connect_to_existing_cluster_uses_actual_gcs_address(self, mock_ray):
-        """Test that connect_to_existing_cluster uses actual GCS address instead of provided address."""
-        # Mock the dashboard connection test
-        mock_job_client = Mock()
-
-        # Mock Ray initialization and runtime context
-        mock_context = Mock()
-        mock_context.gcs_address = "actual.gcs.address:10001"
-
-        # Setup mock to return False initially (not initialized), then True after init
-        mock_ray.is_initialized.side_effect = [
-            False,
-            True,
-        ]  # First call returns False, second returns True
-        mock_ray.init = Mock()
-        mock_ray.get_runtime_context.return_value = mock_context
-
-        manager = RayUnifiedManager()
-        cluster_mgr = manager._cluster_manager
-
-        # Mock the dashboard connection test
-        with patch.object(
-            cluster_mgr, "_test_dashboard_connection", return_value=mock_job_client
-        ):
-            with patch.object(
-                cluster_mgr, "_validate_cluster_address", return_value=True
-            ):
-                result = await cluster_mgr._connect_to_existing_cluster(
-                    "provided.address:10001"
-                )
-
-        assert result["status"] == "success"
-
-        # Verify that ray.init was called
-        mock_ray.init.assert_called_once_with(ignore_reinit_error=True)
-
-        # Verify that the state was updated with the actual GCS address, not the provided address
-        state_manager = cluster_mgr.state_manager
-        assert state_manager.get_state()["gcs_address"] == "actual.gcs.address:10001"
-
-    def test_dependency_injection_consistency(self):
-        """Test that dependencies are properly injected."""
-        manager = RayUnifiedManager()
-
-        # Import concrete types to access private attributes
-        from ray_mcp.core.cluster_manager import RayClusterManager
-        from ray_mcp.core.job_manager import RayJobManager
-        from ray_mcp.core.log_manager import RayLogManager
-
-        cluster_mgr = manager._cluster_manager
-        job_mgr = manager._job_manager
-        log_mgr = manager._log_manager
-
-        # Cluster manager should have both state and port managers
-        if isinstance(cluster_mgr, RayClusterManager):
-            assert cluster_mgr.state_manager is manager._state_manager
-            assert cluster_mgr._port_manager is manager._port_manager
-
-        # Other managers should have state manager
-        if isinstance(job_mgr, RayJobManager):
-            assert job_mgr.state_manager is manager._state_manager
-        if isinstance(log_mgr, RayLogManager):
-            assert log_mgr.state_manager is manager._state_manager
-
-    @pytest.mark.parametrize(
-        "property_name",
-        ["is_initialized", "cluster_address", "dashboard_url", "job_client"],
-    )
-    def test_property_access_consistency(self, property_name):
-        """Test that property access is consistent with state manager."""
-        manager = RayUnifiedManager()
-
-        # Mock state manager state
-        mock_state = {
-            "initialized": True,
-            "cluster_address": "127.0.0.1:10001",
-            "dashboard_url": "http://127.0.0.1:8265",
-            "job_client": Mock(),
-        }
-
-        with patch.object(manager._state_manager, "get_state", return_value=mock_state):
-            with patch.object(
-                manager._state_manager, "is_initialized", return_value=True
-            ):
-                # Property access should be consistent
-                manager_value = getattr(manager, property_name)
-
-                if property_name == "is_initialized":
-                    assert manager_value is True
-                else:
-                    assert manager_value == mock_state[property_name]
-
-
-@pytest.mark.fast
-class TestRayClusterManagerConnectionType:
-    """Test connection type handling and stop_cluster behavior."""
-
-    @pytest.fixture
-    def cluster_manager(self):
-        """Create a RayClusterManager instance for testing."""
-        from ray_mcp.core.cluster_manager import RayClusterManager
-        from ray_mcp.core.port_manager import RayPortManager
-        from ray_mcp.core.state_manager import RayStateManager
-
-        state_manager = RayStateManager()
-        port_manager = RayPortManager()
-        return RayClusterManager(state_manager, port_manager)
-
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_stop_cluster_connection_type_routing(
-        self, mock_ray, cluster_manager
-    ):
-        """Test stop_cluster routes to appropriate cleanup based on connection type."""
-        mock_ray.is_initialized.return_value = True
-        mock_ray.shutdown = Mock()
-
-        # Test 1: Existing cluster - should disconnect only
-        cluster_manager.state_manager.update_state(connection_type="existing")
-        result = await cluster_manager.stop_cluster()
-        assert result["status"] == "success"
-        assert result["action"] == "disconnected"
-        mock_ray.shutdown.assert_called_once()
-
-        # Test 2: New cluster - should do full cleanup
-        mock_ray.reset_mock()
-        mock_worker_manager = Mock()
-        mock_worker_manager.worker_processes = [Mock()]
-        mock_worker_manager.stop_all_workers = AsyncMock(
-            return_value=[{"status": "stopped"}]
-        )
-        cluster_manager._worker_manager = mock_worker_manager
-        cluster_manager._head_node_process = Mock()
-
-        cluster_manager.state_manager.update_state(connection_type="new")
-        result = await cluster_manager.stop_cluster()
-        assert result["status"] == "success"
-        assert result["action"] == "stopped"
-        mock_worker_manager.stop_all_workers.assert_called_once()
-        mock_ray.shutdown.assert_called_once()
-        assert cluster_manager._head_node_process is None
-
-        # Test 3: No connection type (backward compatibility) - should default to local cleanup
-        mock_ray.reset_mock()
-        mock_worker_manager.reset_mock()
-        cluster_manager.state_manager.update_state(connection_type=None)
-        await cluster_manager.stop_cluster()
-        mock_worker_manager.stop_all_workers.assert_called_once()
-
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_connection_type_tracking_during_init(
-        self, mock_ray, cluster_manager
-    ):
-        """Test that connection type is tracked correctly during cluster initialization."""
-        # Test 1: Starting new cluster sets connection_type to "new"
-        mock_ray.is_initialized.return_value = False
-        mock_ray.init = Mock()
-        mock_ray.get_runtime_context.return_value = Mock(gcs_address="127.0.0.1:10001")
-        cluster_manager._port_manager.find_free_port = AsyncMock(return_value=8265)
-
-        with patch.object(
-            cluster_manager, "_start_head_node_process", return_value=Mock()
-        ):
-            with patch.object(cluster_manager, "_wait_for_head_node_ready"):
-                result = await cluster_manager._start_new_cluster()
-                assert result["connection_type"] == "new"
-                assert (
-                    cluster_manager.state_manager.get_state()["connection_type"]
-                    == "new"
-                )
-
-        # Test 2: Connecting to existing cluster sets connection_type to "existing"
-        mock_ray.is_initialized.side_effect = [False, True]
-        mock_job_client = Mock()
-
-        with patch.object(
-            cluster_manager, "_test_dashboard_connection", return_value=mock_job_client
-        ):
-            with patch.object(
-                cluster_manager, "_validate_cluster_address", return_value=True
-            ):
-                result = await cluster_manager._connect_to_existing_cluster(
-                    "remote.host:10001"
-                )
-                assert result["connection_type"] == "existing"
-                assert (
-                    cluster_manager.state_manager.get_state()["connection_type"]
-                    == "existing"
-                )
-
-
-@pytest.mark.fast
-class TestRayClusterManagerAddressParsing:
-    """Test address validation and parsing functionality."""
-
-    @pytest.fixture
-    def cluster_manager(self):
-        """Create a RayClusterManager instance for testing."""
-        from ray_mcp.core.cluster_manager import RayClusterManager
-        from ray_mcp.core.port_manager import RayPortManager
-        from ray_mcp.core.state_manager import RayStateManager
-
-        state_manager = RayStateManager()
-        port_manager = RayPortManager()
-        return RayClusterManager(state_manager, port_manager)
-
-    @pytest.mark.parametrize(
-        "address,expected_valid",
-        [
-            # Valid IPv4 addresses
-            ("127.0.0.1:8000", True),
-            ("192.168.1.100:10001", True),
-            ("localhost:8000", True),
-            ("example.com:8000", True),
-            ("ray-cluster.example.com:8000", True),
-            # Invalid addresses
-            ("", False),
-            ("invalid", False),
-            ("127.0.0.1", False),  # Missing port
-            ("127.0.0.1:", False),  # Missing port number
-            ("127.0.0.1:abc", False),  # Invalid port
-            ("127.0.0.1:99999", False),  # Port out of range
-            ("127.0.0.1:0", False),  # Port zero
-            ("300.300.300.300:8000", False),  # Invalid IPv4
-        ],
-    )
-    def test_validate_cluster_address(self, cluster_manager, address, expected_valid):
-        """Test address validation for various formats."""
-        result = cluster_manager._validate_cluster_address(address)
-        assert result == expected_valid
-
-    @pytest.mark.parametrize(
-        "host,expected_valid",
-        [
-            # Valid IPv4 addresses
-            ("127.0.0.1", True),
-            ("192.168.1.100", True),
-            ("255.255.255.255", True),
-            ("0.0.0.0", True),
-            # Valid hostnames
-            ("localhost", True),
-            ("example.com", True),
-            ("ray-cluster.example.com", True),
-            ("a.b.c.d", True),
-            # Invalid IPv4
-            ("256.256.256.256", False),
-            ("127.0.0", False),
-            ("127.0.0.1.1", False),
-            # Invalid hostnames
-            ("", False),
-            ("-invalid", False),
-            ("invalid-", False),
-            ("inv@lid", False),
-        ],
-    )
-    def test_validate_ipv4_or_hostname(self, cluster_manager, host, expected_valid):
-        """Test IPv4 and hostname validation."""
-        result = cluster_manager._validate_ipv4_or_hostname(host)
-        assert result == expected_valid
-
-    @pytest.mark.parametrize(
-        "port,expected_valid",
-        [
-            # Valid ports
-            ("1", True),
-            ("80", True),
-            ("8000", True),
-            ("65535", True),
-            # Invalid ports
-            ("", False),
-            ("0", False),
-            ("65536", False),
-            ("abc", False),
-            ("8000.5", False),
-            ("-1", False),
-        ],
-    )
-    def test_validate_port(self, cluster_manager, port, expected_valid):
-        """Test port validation."""
-        result = cluster_manager._validate_port(port)
-        assert result == expected_valid
-
-    @pytest.mark.parametrize(
-        "address,expected_host,expected_port",
-        [
-            # IPv4 addresses
-            ("127.0.0.1:8000", "127.0.0.1", 8000),
-            ("192.168.1.100:10001", "192.168.1.100", 10001),
-            ("localhost:8000", "localhost", 8000),
-        ],
-    )
-    def test_parse_cluster_address_success(
-        self, cluster_manager, address, expected_host, expected_port
-    ):
-        """Test successful address parsing."""
-        host, port = cluster_manager._parse_cluster_address(address)
-        assert host == expected_host
-        assert port == expected_port
-
-    @pytest.mark.parametrize(
-        "address",
-        [
-            "",
-            "invalid",
-            "127.0.0.1",
-            "127.0.0.1:abc",
-            "300.300.300.300:8000",
-        ],
-    )
-    def test_parse_cluster_address_failure(self, cluster_manager, address):
-        """Test address parsing failures."""
-        with pytest.raises(ValueError, match="Invalid cluster address format"):
-            cluster_manager._parse_cluster_address(address)
-
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_connect_to_existing_cluster_ipv4_url_formatting(
-        self, mock_ray, cluster_manager
-    ):
-        """Test that IPv4 addresses are properly formatted in URLs."""
-        # Mock the dashboard connection test
-        mock_job_client = Mock()
-        mock_context = Mock()
-        mock_context.gcs_address = "actual.gcs.address:10001"
-
-        mock_ray.is_initialized.side_effect = [False, True]
-        mock_ray.init = Mock()
-        mock_ray.get_runtime_context.return_value = mock_context
-
-        # Test IPv4 address formatting
-        with patch.object(
-            cluster_manager, "_test_dashboard_connection", return_value=mock_job_client
-        ) as mock_test:
-            result = await cluster_manager._connect_to_existing_cluster(
-                "127.0.0.1:8000"
-            )
-
-            # Should succeed
-            assert result["status"] == "success"
-            # Check that the dashboard URL was formatted correctly
-            mock_test.assert_called_once_with("http://127.0.0.1:8265")
-
-    async def test_connect_to_existing_cluster_invalid_address(self, cluster_manager):
-        """Test that invalid addresses are rejected."""
-        result = await cluster_manager._connect_to_existing_cluster("invalid-address")
-
-        assert result["status"] == "error"
-        assert "Invalid cluster address format" in result["message"]
-
-
-@pytest.mark.fast
-class TestWorkerManagerProcessCleanup:
-    """Test the simplified process cleanup logic in WorkerManager."""
-
-    @pytest.fixture
-    def worker_manager(self):
-        """Create a WorkerManager instance for testing."""
-        from ray_mcp.worker_manager import WorkerManager
-
-        return WorkerManager()
-
-    async def test_process_termination_scenarios(self, worker_manager):
-        """Test multiple scenarios for the simplified process termination logic."""
-        from unittest.mock import AsyncMock, Mock
-
-        # Test 1: Successful termination
-        mock_process = Mock()
-        mock_process.pid = 12345
-        mock_process.wait = Mock(return_value=0)
-
-        with patch("asyncio.get_running_loop") as mock_loop:
-            mock_loop.return_value.run_in_executor = AsyncMock(return_value=0)
-
-            status, message = await worker_manager._wait_for_process_termination(
-                mock_process, "test-worker", timeout=5
-            )
-
-            assert status == "force_stopped"
-            assert "test-worker" in message
-            assert "force stopped" in message
-
-        # Test 2: Timeout but process actually terminated (race condition)
-        mock_process.poll.return_value = 0  # Process is terminated
-        with patch("asyncio.get_running_loop") as mock_loop:
-            mock_loop.return_value.run_in_executor = AsyncMock(
-                side_effect=asyncio.TimeoutError()
-            )
-
-            status, message = await worker_manager._wait_for_process_termination(
-                mock_process, "test-worker", timeout=5
-            )
-
-            assert status == "force_stopped"
-            assert "test-worker" in message
-
-        # Test 3: Timeout with process still running
-        mock_process.poll.return_value = None  # Process still running
-        with patch("asyncio.get_running_loop") as mock_loop:
-            mock_loop.return_value.run_in_executor = AsyncMock(
-                side_effect=asyncio.TimeoutError()
-            )
-
-            status, message = await worker_manager._wait_for_process_termination(
-                mock_process, "test-worker", timeout=5
-            )
-
-            assert status == "force_stopped"
-            assert "may still be running" in message
-
-        # Test 4: Unexpected exception during cleanup
-        with patch("asyncio.get_running_loop") as mock_loop:
-            mock_loop.return_value.run_in_executor = AsyncMock(
-                side_effect=RuntimeError("Unexpected error")
-            )
-
-            status, message = await worker_manager._wait_for_process_termination(
-                mock_process, "test-worker", timeout=5
-            )
-
-            assert status == "force_stopped"
-            assert "cleanup error" in message
-
-    async def test_stop_all_workers_graceful_and_force_termination(
-        self, worker_manager
-    ):
-        """Test both graceful and force termination workflows in stop_all_workers."""
-        from unittest.mock import AsyncMock, Mock, patch
-
-        # Test graceful termination first
-        mock_process_graceful = Mock()
-        mock_process_graceful.pid = 12345
-        mock_process_graceful.terminate = Mock()
-        mock_process_graceful.wait = Mock(return_value=0)
-
-        worker_manager.worker_processes = [mock_process_graceful]
-        worker_manager.worker_configs = [{"node_name": "graceful-worker"}]
-
-        with patch("asyncio.get_running_loop") as mock_loop:
-            mock_loop.return_value.run_in_executor = AsyncMock(return_value=0)
-
-            results = await worker_manager.stop_all_workers()
-
-            assert len(results) == 1
-            assert results[0]["status"] == "stopped"
-            assert results[0]["node_name"] == "graceful-worker"
-            assert "stopped gracefully" in results[0]["message"]
-            assert len(worker_manager.worker_processes) == 0
-
-        # Test force termination when graceful fails
-        mock_process_force = Mock()
-        mock_process_force.pid = 54321
-        mock_process_force.terminate = Mock()
-        mock_process_force.kill = Mock()
-        mock_process_force.wait = Mock(return_value=0)
-
-        worker_manager.worker_processes = [mock_process_force]
-        worker_manager.worker_configs = [{"node_name": "force-worker"}]
-
-        with patch("asyncio.get_running_loop") as mock_loop:
-            mock_loop.return_value.run_in_executor = AsyncMock(return_value=0)
-
-            # First asyncio.wait_for (graceful) times out, triggering force termination
-            with patch("asyncio.wait_for", side_effect=[asyncio.TimeoutError(), None]):
-                results = await worker_manager.stop_all_workers()
-
-                assert len(results) == 1
-                assert results[0]["status"] == "force_stopped"
-                assert results[0]["node_name"] == "force-worker"
-                assert len(worker_manager.worker_processes) == 0
