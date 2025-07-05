@@ -529,6 +529,383 @@ class TestRayClusterManagerGCSAddress:
 
 
 @pytest.mark.fast
+class TestRayClusterManagerStopClusterConnectionType:
+    """Test stop_cluster behavior based on connection type."""
+
+    @pytest.fixture
+    def cluster_manager(self):
+        """Create a RayClusterManager instance for testing."""
+        from ray_mcp.core.cluster_manager import RayClusterManager
+        from ray_mcp.core.port_manager import RayPortManager
+        from ray_mcp.core.state_manager import RayStateManager
+
+        state_manager = RayStateManager()
+        port_manager = RayPortManager()
+        return RayClusterManager(state_manager, port_manager)
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_stop_cluster_with_new_connection_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that stop_cluster calls _stop_local_cluster for new connection type."""
+        # Setup: simulate a "new" cluster connection
+        cluster_manager.state_manager.update_state(
+            initialized=True,
+            cluster_address="127.0.0.1:10001",
+            connection_type="new",
+        )
+
+        # Mock the _stop_local_cluster method
+        expected_result = {"status": "success", "message": "Local cluster stopped"}
+        with patch.object(
+            cluster_manager, "_stop_local_cluster", return_value=expected_result
+        ) as mock_stop_local:
+            result = await cluster_manager.stop_cluster()
+
+            # Verify that _stop_local_cluster was called
+            mock_stop_local.assert_called_once()
+            assert result == expected_result
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_stop_cluster_with_existing_connection_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that stop_cluster calls _disconnect_from_existing_cluster for existing connection type."""
+        # Setup: simulate an "existing" cluster connection
+        cluster_manager.state_manager.update_state(
+            initialized=True,
+            cluster_address="remote-host:10001",
+            connection_type="existing",
+        )
+
+        # Mock the _disconnect_from_existing_cluster method
+        expected_result = {
+            "status": "success",
+            "message": "Disconnected from existing cluster",
+        }
+        with patch.object(
+            cluster_manager,
+            "_disconnect_from_existing_cluster",
+            return_value=expected_result,
+        ) as mock_disconnect:
+            result = await cluster_manager.stop_cluster()
+
+            # Verify that _disconnect_from_existing_cluster was called
+            mock_disconnect.assert_called_once()
+            assert result == expected_result
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_stop_cluster_with_no_connection_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that stop_cluster defaults to _stop_local_cluster when connection_type is None."""
+        # Setup: simulate state without connection_type (backward compatibility)
+        cluster_manager.state_manager.update_state(
+            initialized=True,
+            cluster_address="127.0.0.1:10001",
+            connection_type=None,
+        )
+
+        # Mock the _stop_local_cluster method
+        expected_result = {"status": "success", "message": "Local cluster stopped"}
+        with patch.object(
+            cluster_manager, "_stop_local_cluster", return_value=expected_result
+        ) as mock_stop_local:
+            result = await cluster_manager.stop_cluster()
+
+            # Verify that _stop_local_cluster was called (default behavior)
+            mock_stop_local.assert_called_once()
+            assert result == expected_result
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_disconnect_from_existing_cluster(self, mock_ray, cluster_manager):
+        """Test _disconnect_from_existing_cluster method."""
+        # Setup: Ray is initialized
+        mock_ray.is_initialized.return_value = True
+        mock_ray.shutdown = Mock()
+
+        result = await cluster_manager._disconnect_from_existing_cluster()
+
+        # Verify Ray shutdown was called
+        mock_ray.shutdown.assert_called_once()
+
+        # Verify response format
+        assert result["status"] == "success"
+        assert result["connection_type"] == "existing"
+        assert result["action"] == "disconnected"
+        assert "disconnected from existing Ray cluster" in result["message"]
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_stop_local_cluster(self, mock_ray, cluster_manager):
+        """Test _stop_local_cluster method."""
+        # Setup: Ray is initialized, mock worker manager
+        mock_ray.is_initialized.return_value = True
+        mock_ray.shutdown = Mock()
+
+        # Mock worker manager
+        mock_worker_manager = Mock()
+        mock_worker_manager.worker_processes = [Mock(pid=123)]
+        mock_worker_manager.stop_all_workers = AsyncMock(
+            return_value=[{"status": "stopped"}]
+        )
+        cluster_manager._worker_manager = mock_worker_manager
+
+        # Mock head node process
+        cluster_manager._head_node_process = Mock()
+
+        result = await cluster_manager._stop_local_cluster()
+
+        # Verify worker cleanup was called
+        mock_worker_manager.stop_all_workers.assert_called_once()
+
+        # Verify Ray shutdown was called
+        mock_ray.shutdown.assert_called_once()
+
+        # Verify head node process was cleared
+        assert cluster_manager._head_node_process is None
+
+        # Verify response format
+        assert result["status"] == "success"
+        assert result["connection_type"] == "new"
+        assert result["action"] == "stopped"
+        assert "Ray cluster stopped successfully" in result["message"]
+        assert "cleanup_results" in result
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_disconnect_from_existing_cluster_with_ray_not_initialized(
+        self, mock_ray, cluster_manager
+    ):
+        """Test _disconnect_from_existing_cluster when Ray is not initialized."""
+        # Setup: Ray is not initialized
+        mock_ray.is_initialized.return_value = False
+        mock_ray.shutdown = Mock()
+
+        result = await cluster_manager._disconnect_from_existing_cluster()
+
+        # Verify Ray shutdown was not called
+        mock_ray.shutdown.assert_not_called()
+
+        # Verify response is still successful (no error for already disconnected)
+        assert result["status"] == "success"
+        assert result["connection_type"] == "existing"
+        assert result["action"] == "disconnected"
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_stop_local_cluster_with_no_workers(self, mock_ray, cluster_manager):
+        """Test _stop_local_cluster when no worker processes exist."""
+        # Setup: Ray is initialized, no workers
+        mock_ray.is_initialized.return_value = True
+        mock_ray.shutdown = Mock()
+
+        # Mock worker manager with no processes
+        mock_worker_manager = Mock()
+        mock_worker_manager.worker_processes = []
+        mock_worker_manager.stop_all_workers = AsyncMock(return_value=[])
+        cluster_manager._worker_manager = mock_worker_manager
+
+        result = await cluster_manager._stop_local_cluster()
+
+        # Verify worker cleanup was NOT called since there are no processes (correct behavior)
+        mock_worker_manager.stop_all_workers.assert_not_called()
+
+        # Verify Ray shutdown was called
+        mock_ray.shutdown.assert_called_once()
+
+        # Verify response format
+        assert result["status"] == "success"
+        assert result["cleanup_results"] == []
+
+    async def test_stop_cluster_error_handling(self, cluster_manager):
+        """Test error handling in stop_cluster method."""
+        # Setup: simulate state with connection_type that causes an error
+        cluster_manager.state_manager.update_state(
+            initialized=True,
+            cluster_address="127.0.0.1:10001",
+            connection_type="existing",
+        )
+
+        # Mock _disconnect_from_existing_cluster to raise an error
+        with patch.object(
+            cluster_manager,
+            "_disconnect_from_existing_cluster",
+            side_effect=Exception("Disconnect error"),
+        ):
+            result = await cluster_manager.stop_cluster()
+
+            # Verify error response
+            assert result["status"] == "error"
+            assert "Disconnect error" in result["message"]
+
+    async def test_stop_cluster_state_reset_on_success(self, cluster_manager):
+        """Test that state is reset after successful stop_cluster."""
+        # Setup: simulate state with connection_type
+        cluster_manager.state_manager.update_state(
+            initialized=True,
+            cluster_address="127.0.0.1:10001",
+            connection_type="new",
+        )
+
+        # Verify state is set
+        assert cluster_manager.state_manager.get_state()["initialized"] is True
+
+        # Mock _stop_local_cluster to return success
+        with patch.object(
+            cluster_manager, "_stop_local_cluster", return_value={"status": "success"}
+        ):
+            await cluster_manager.stop_cluster()
+
+            # Verify state was reset
+            state = cluster_manager.state_manager.get_state()
+            assert state["initialized"] is False
+            assert state["cluster_address"] is None
+            assert state["connection_type"] is None
+
+    async def test_stop_cluster_state_reset_on_error(self, cluster_manager):
+        """Test that state is reset even after error in stop_cluster."""
+        # Setup: simulate state with connection_type
+        cluster_manager.state_manager.update_state(
+            initialized=True,
+            cluster_address="127.0.0.1:10001",
+            connection_type="existing",
+        )
+
+        # Mock _disconnect_from_existing_cluster to raise an error
+        with patch.object(
+            cluster_manager,
+            "_disconnect_from_existing_cluster",
+            side_effect=Exception("Disconnect error"),
+        ):
+            await cluster_manager.stop_cluster()
+
+            # Verify state was reset even after error
+            state = cluster_manager.state_manager.get_state()
+            assert state["initialized"] is False
+            assert state["cluster_address"] is None
+            assert state["connection_type"] is None
+
+
+@pytest.mark.fast
+class TestRayClusterManagerConnectionTypeTracking:
+    """Test connection type tracking in cluster initialization."""
+
+    @pytest.fixture
+    def cluster_manager(self):
+        """Create a RayClusterManager instance for testing."""
+        from ray_mcp.core.cluster_manager import RayClusterManager
+        from ray_mcp.core.port_manager import RayPortManager
+        from ray_mcp.core.state_manager import RayStateManager
+
+        state_manager = RayStateManager()
+        port_manager = RayPortManager()
+        return RayClusterManager(state_manager, port_manager)
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_start_new_cluster_sets_connection_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that _start_new_cluster sets connection_type to 'new'."""
+        # Mock all necessary components for cluster startup
+        mock_ray.is_initialized.return_value = False
+        mock_ray.init = Mock()
+        mock_ray.get_runtime_context.return_value = Mock(gcs_address="127.0.0.1:10001")
+
+        # Mock port manager
+        cluster_manager._port_manager.find_free_port = AsyncMock(return_value=8265)
+
+        # Mock head node process creation
+        with patch.object(
+            cluster_manager, "_start_head_node_process", return_value=Mock()
+        ):
+            with patch.object(cluster_manager, "_wait_for_head_node_ready"):
+                result = await cluster_manager._start_new_cluster()
+
+                # Verify connection_type was set
+                assert result["status"] == "success"
+                assert result["connection_type"] == "new"
+
+                # Verify state was updated with connection_type
+                state = cluster_manager.state_manager.get_state()
+                assert state["connection_type"] == "new"
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_connect_to_existing_cluster_sets_connection_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that _connect_to_existing_cluster sets connection_type to 'existing'."""
+        # Mock Ray initialization and context
+        mock_ray.is_initialized.side_effect = [False, True]
+        mock_ray.init = Mock()
+        mock_ray.get_runtime_context.return_value = Mock(
+            gcs_address="remote.host:10001"
+        )
+
+        # Mock dashboard connection
+        mock_job_client = Mock()
+        with patch.object(
+            cluster_manager, "_test_dashboard_connection", return_value=mock_job_client
+        ):
+            with patch.object(
+                cluster_manager, "_validate_cluster_address", return_value=True
+            ):
+                result = await cluster_manager._connect_to_existing_cluster(
+                    "remote.host:10001"
+                )
+
+                # Verify connection_type was set
+                assert result["status"] == "success"
+                assert result["connection_type"] == "existing"
+
+                # Verify state was updated with connection_type
+                state = cluster_manager.state_manager.get_state()
+                assert state["connection_type"] == "existing"
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_init_cluster_with_address_sets_existing_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that init_cluster with address parameter sets connection_type to 'existing'."""
+        # Mock connect_to_existing_cluster
+        expected_result = {"status": "success", "connection_type": "existing"}
+        with patch.object(
+            cluster_manager,
+            "_connect_to_existing_cluster",
+            return_value=expected_result,
+        ):
+            result = await cluster_manager.init_cluster(address="remote.host:10001")
+
+            # Verify the result
+            assert result["status"] == "success"
+            assert result["connection_type"] == "existing"
+
+    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.core.cluster_manager.ray")
+    async def test_init_cluster_without_address_sets_new_type(
+        self, mock_ray, cluster_manager
+    ):
+        """Test that init_cluster without address parameter sets connection_type to 'new'."""
+        # Mock start_new_cluster
+        expected_result = {"status": "success", "connection_type": "new"}
+        with patch.object(
+            cluster_manager, "_start_new_cluster", return_value=expected_result
+        ):
+            result = await cluster_manager.init_cluster()
+
+            # Verify the result
+            assert result["status"] == "success"
+            assert result["connection_type"] == "new"
+
+
+@pytest.mark.fast
 class TestRayClusterManagerAddressParsing:
     """Test address validation and parsing functionality."""
 

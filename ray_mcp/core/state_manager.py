@@ -36,6 +36,7 @@ class RayStateManager(StateManager):
             "gcs_address": None,
             "dashboard_url": None,
             "job_client": None,
+            "connection_type": None,  # "new" or "existing"
             "last_validated": 0.0,
         }
         self._lock = threading.Lock()
@@ -80,6 +81,7 @@ class RayStateManager(StateManager):
                 "gcs_address": None,
                 "dashboard_url": None,
                 "job_client": None,
+                "connection_type": None,  # "new" or "existing"
                 "last_validated": 0.0,
             }
 
@@ -103,6 +105,7 @@ class RayStateManager(StateManager):
                         "gcs_address": None,
                         "dashboard_url": None,
                         "job_client": None,
+                        "connection_type": None,
                     }
                 )
         except Exception as e:
