@@ -1,99 +1,83 @@
 # Ray MCP Test Suite
 
-A comprehensive test suite for the Ray MCP server, organized for efficient development and reliable validation.
+A comprehensive test suite for the Ray MCP server, organized for maintainability and efficient development.
 
 ## Test Organization
 
-### Core Component Tests
-- `test_core_unified_manager.py` - Unified manager architecture
+### Core Component Tests (Unit Tests)
+- `test_core_unified_manager.py` - Unified manager facade and delegation
+- `test_core_cluster_manager.py` - Cluster lifecycle and connection management
 - `test_core_state_manager.py` - State management and validation
-- `test_core_cluster_manager.py` - Cluster lifecycle operations
 - `test_core_job_manager.py` - Job submission and management
 - `test_core_log_manager.py` - Log retrieval and analysis
 - `test_core_port_manager.py` - Port allocation and management
+- `test_worker_manager.py` - Worker process management
 
-### Integration Tests
-- `test_mcp_integration.py` - MCP protocol integration and tool registry
-- `test_mcp_server.py` - Comprehensive end-to-end server validation
+### MCP Layer Tests
+- `test_mcp_tools.py` - MCP tool registry and protocol handling (unit tests)
+- `test_mcp_server.py` - End-to-end server validation (slow integration tests)
 
 ### Test Infrastructure
 - `conftest.py` - Shared fixtures, utilities, and test configuration
+
+## Test Guidelines
+
+### File Organization Rules
+1. **`test_mcp_server.py`** - Reserved for slow, non-mocked integration tests only
+2. **All other test files** - Fast unit tests with complete mocking
+3. **Avoid adding new test files** - Consolidate into existing domain-focused files
+
+### Test Types
+
+#### Unit Tests (`test_core_*.py`, `test_mcp_tools.py`)
+- **Fast execution** for development feedback
+- **Complete mocking** of external dependencies
+- **Focus on logic** and error handling
+- **Independent execution** - no shared state
+
+#### Integration Tests (`test_mcp_server.py`)
+- **Slow, comprehensive** end-to-end validation
+- **Real Ray cluster** operations
+- **Complete workflow** testing
+- **Use sparingly** - only for critical flows
 
 ## Running Tests
 
 ### Development Workflow
 
 ```bash
-# Fast unit tests for development feedback
+# Fast unit tests for development
 make test-fast
 
-# Quick architecture validation
+# Quick validation
 make test-smoke
 
-# Comprehensive end-to-end validation
-make test-e2e
-
-# Complete test suite with coverage
+# Full test suite
 make test
 ```
 
 ### Direct pytest Commands
 
 ```bash
-# Run all tests in a specific file
+# Run all unit tests
+pytest tests/test_core_*.py tests/test_mcp_tools.py -v
+
+# Run integration tests
+pytest tests/test_mcp_server.py -v
+
+# Run specific test file
 pytest tests/test_core_job_manager.py -v
 
 # Run specific test method
 pytest tests/test_core_state_manager.py::TestStateValidation::test_state_transitions -v
-
-# Run tests by category
-pytest tests/test_core_*.py              # All unit tests
-pytest tests/test_mcp_*.py               # All integration tests
-pytest -m "not e2e"                     # Exclude end-to-end tests
 ```
-
-## Test Types
-
-### Unit Tests (`test_core_*.py`)
-**Purpose**: Test individual components in isolation
-- Fast execution for development feedback
-- Comprehensive mocking of external dependencies
-- Focus on component logic and error handling
-- Independent test execution
-
-### Integration Tests (`test_mcp_integration.py`)
-**Purpose**: Test MCP protocol integration layer
-- Tool registry functionality
-- Server startup and configuration
-- Schema validation and compliance
-- Error handling at protocol boundaries
-
-### End-to-End Tests (`test_mcp_server.py`)
-**Purpose**: Validate complete server functionality
-- Real Ray cluster operations
-- Complete workflow validation
-- Performance and reliability testing
-- System integration scenarios
-
-## Test Environment
-
-### Configuration
-Tests adapt to different environments:
-- **CI**: Optimized for reliability with constrained resources
-- **Local**: Full testing with performance validation
-- **Docker**: Containerized testing environment
-
-### Dependencies
-- Ray cluster management
-- MCP protocol handling
-- Async test execution
-- Performance benchmarking
 
 ## Writing Tests
 
 ### Test Structure
 
 ```python
+@pytest.mark.fast
 class TestComponentName:
     """Test suite for ComponentName functionality."""
     
@@ -116,18 +100,19 @@ class TestComponentName:
 ### Best Practices
 
 #### ✅ Do
-- Use descriptive test names that explain what is being tested
+- Use descriptive test names explaining what is being tested
 - Test both success and failure scenarios
 - Keep tests focused on single behaviors
 - Use fixtures for common setup
-- Mock external dependencies in unit tests
+- Mock all external dependencies in unit tests
+- Use `@pytest.mark.fast` for unit tests
 
 #### ❌ Avoid
 - Testing implementation details
 - Overly complex test setups
 - Brittle assertions on exact strings
 - Shared state between tests
-- Flaky or timing-dependent tests
+- Adding new test files without justification
 
 ## Debugging Tests
 
@@ -155,59 +140,56 @@ pytest tests/test_core_job_manager.py::TestJobManager::test_submit_job -v -s
 pytest --pdb tests/test_core_job_manager.py::TestJobManager::test_submit_job
 ```
 
-## Coverage and Quality
-
-### Coverage Goals
-- **Unit Tests**: Comprehensive coverage of core component logic
-- **Integration Tests**: Key interface and protocol validation
-- **End-to-End Tests**: Critical user workflows and error scenarios
-
-### Quality Standards
-- All tests must pass before merging
-- Clear failure messages for debugging
-- Reasonable execution time
-- No flaky or intermittent failures
-
 ## Adding New Tests
 
 ### For New Components
-1. Create `test_core_new_component.py` following existing patterns
-2. Include comprehensive unit tests for all public methods
-3. Add error case testing and edge condition validation
-4. Update integration tests if component has external interfaces
+1. Add tests to appropriate existing `test_core_*.py` file
+2. If no appropriate file exists, discuss creating a new one
+3. Include comprehensive unit tests for all public methods
+4. Add error case testing and edge condition validation
+5. Update `test_mcp_tools.py` if MCP interface changes
+6. Add to `test_mcp_server.py` only if critical end-to-end validation is needed
 
 ### For New Features
-1. Add unit tests to appropriate `test_core_*.py` file
-2. Update `test_mcp_integration.py` if MCP interface changes
-3. Add end-to-end scenarios to `test_mcp_server.py` if needed
+1. Add unit tests to appropriate domain-focused file
+2. Update integration tests only if interface changes
+3. Use complete mocking for unit tests
 4. Update fixtures in `conftest.py` if shared setup is required
 
-## Continuous Integration
+## Test Environment
 
-### GitHub Actions
-- **CI Pipeline**: Runs `test-fast` for quick feedback
-- **PR Validation**: Includes comprehensive test suite
-- **Coverage Reporting**: Automated coverage analysis
+### Configuration
+Tests adapt to different environments:
+- **CI**: Optimized for reliability with constrained resources
+- **Local**: Full testing with performance validation
+- **Docker**: Containerized testing environment
 
 ### Test Markers
-- `@pytest.mark.fast` - Fast unit tests
-- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.fast` - Fast unit tests (all files except test_mcp_server.py)
+- `@pytest.mark.integration` - Integration tests (test_mcp_server.py only)
 - `@pytest.mark.e2e` - End-to-end tests
 - `@pytest.mark.slow` - Tests with longer execution time
 
-## Performance Considerations
+## Quality Standards
 
-### Test Optimization
-- Unit tests prioritize speed over realism
-- Integration tests balance speed with realistic scenarios
-- End-to-end tests focus on comprehensive validation
-- CI environment uses optimized configurations
+### All Tests Must
+- Pass before merging
+- Have clear failure messages for debugging
+- Execute in reasonable time
+- Be reliable and non-flaky
+- Follow the mocking guidelines
 
-### Resource Management
-- Proper cleanup of Ray clusters and resources
-- Efficient use of test fixtures
-- Parallel test execution where possible
-- Environment-specific timeouts and limits
+### Unit Tests Must
+- Use complete mocking of external dependencies
+- Execute quickly for development feedback
+- Be independent of each other
+- Focus on component logic
+
+### Integration Tests Must
+- Justify their inclusion in test_mcp_server.py
+- Test critical end-to-end workflows
+- Handle real Ray cluster operations
+- Be used sparingly
 
 ## Troubleshooting
 
@@ -216,9 +198,11 @@ pytest --pdb tests/test_core_job_manager.py::TestJobManager::test_submit_job
 - **Port conflicts**: Tests handle port allocation automatically
 - **Timeout errors**: Check resource constraints and cluster health
 - **Import errors**: Ensure proper test environment setup
+- **Mocking issues**: Verify all external dependencies are mocked in unit tests
 
 ### Getting Help
 - Check test output for specific error messages
 - Review relevant component documentation
 - Use verbose test execution for debugging
 - Consult CI logs for environment-specific issues
+- Verify test follows the file organization guidelines
