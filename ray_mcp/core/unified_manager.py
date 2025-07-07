@@ -2,14 +2,15 @@
 
 from typing import Any, Dict, Optional
 
+from .cloud_provider_manager import UnifiedCloudProviderManager
 from .cluster_manager import RayClusterManager
 from .job_manager import RayJobManager
+from .kuberay_cluster_manager import KubeRayClusterManagerImpl
+from .kuberay_job_manager import KubeRayJobManagerImpl
+from .kubernetes_manager import KubernetesClusterManager
 from .log_manager import RayLogManager
 from .port_manager import RayPortManager
 from .state_manager import RayStateManager
-from .kubernetes_manager import KubernetesClusterManager
-from .kuberay_cluster_manager import KubeRayClusterManagerImpl
-from .kuberay_job_manager import KubeRayJobManagerImpl
 
 
 class RayUnifiedManager:
@@ -34,6 +35,7 @@ class RayUnifiedManager:
         self._kubernetes_manager = KubernetesClusterManager(self._state_manager)
         self._kuberay_cluster_manager = KubeRayClusterManagerImpl(self._state_manager)
         self._kuberay_job_manager = KubeRayJobManagerImpl(self._state_manager)
+        self._cloud_provider_manager = UnifiedCloudProviderManager(self._state_manager)
 
     # Delegate properties to state manager
     @property
@@ -161,10 +163,16 @@ class RayUnifiedManager:
         """Get the KubeRay job manager component."""
         return self._kuberay_job_manager
 
+    def get_cloud_provider_manager(self) -> UnifiedCloudProviderManager:
+        """Get the cloud provider manager component."""
+        return self._cloud_provider_manager
+
     # Kubernetes management methods
-    async def connect_kubernetes_cluster(self, config_file: Optional[str] = None, context: Optional[str] = None) -> Dict[str, Any]:
+    async def connect_kubernetes_cluster(
+        self, config_file: Optional[str] = None, context: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Connect to Kubernetes cluster."""
-        return await self._kubernetes_manager.connect_cluster(config_file, context)
+        return await self._kubernetes_manager.connect(context=context)
 
     async def disconnect_kubernetes_cluster(self) -> Dict[str, Any]:
         """Disconnect from Kubernetes cluster."""
@@ -215,11 +223,17 @@ class RayUnifiedManager:
         return self._state_manager.get_state().get("kubernetes_server_version")
 
     # KubeRay cluster management methods
-    async def create_kuberay_cluster(self, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+    async def create_kuberay_cluster(
+        self, cluster_spec: Dict[str, Any], namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Create a Ray cluster using KubeRay."""
-        return await self._kuberay_cluster_manager.create_ray_cluster(cluster_spec, namespace)
+        return await self._kuberay_cluster_manager.create_ray_cluster(
+            cluster_spec, namespace
+        )
 
-    async def get_kuberay_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def get_kuberay_cluster(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Get Ray cluster status."""
         return await self._kuberay_cluster_manager.get_ray_cluster(name, namespace)
 
@@ -227,24 +241,38 @@ class RayUnifiedManager:
         """List Ray clusters."""
         return await self._kuberay_cluster_manager.list_ray_clusters(namespace)
 
-    async def update_kuberay_cluster(self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+    async def update_kuberay_cluster(
+        self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Update Ray cluster configuration."""
-        return await self._kuberay_cluster_manager.update_ray_cluster(name, cluster_spec, namespace)
+        return await self._kuberay_cluster_manager.update_ray_cluster(
+            name, cluster_spec, namespace
+        )
 
-    async def delete_kuberay_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def delete_kuberay_cluster(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Delete Ray cluster."""
         return await self._kuberay_cluster_manager.delete_ray_cluster(name, namespace)
 
-    async def scale_kuberay_cluster(self, name: str, worker_replicas: int, namespace: str = "default") -> Dict[str, Any]:
+    async def scale_kuberay_cluster(
+        self, name: str, worker_replicas: int, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Scale Ray cluster workers."""
-        return await self._kuberay_cluster_manager.scale_ray_cluster(name, worker_replicas, namespace)
+        return await self._kuberay_cluster_manager.scale_ray_cluster(
+            name, worker_replicas, namespace
+        )
 
     # KubeRay job management methods
-    async def create_kuberay_job(self, job_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+    async def create_kuberay_job(
+        self, job_spec: Dict[str, Any], namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Create a Ray job using KubeRay."""
         return await self._kuberay_job_manager.create_ray_job(job_spec, namespace)
 
-    async def get_kuberay_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def get_kuberay_job(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Get Ray job status."""
         return await self._kuberay_job_manager.get_ray_job(name, namespace)
 
@@ -252,11 +280,15 @@ class RayUnifiedManager:
         """List Ray jobs."""
         return await self._kuberay_job_manager.list_ray_jobs(namespace)
 
-    async def delete_kuberay_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def delete_kuberay_job(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Delete Ray job."""
         return await self._kuberay_job_manager.delete_ray_job(name, namespace)
 
-    async def get_kuberay_job_logs(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def get_kuberay_job_logs(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Get Ray job logs."""
         return await self._kuberay_job_manager.get_ray_job_logs(name, namespace)
 
@@ -270,3 +302,168 @@ class RayUnifiedManager:
     def kuberay_jobs(self) -> Dict[str, Any]:
         """Get current KubeRay jobs."""
         return self._state_manager.get_state().get("kuberay_jobs", {})
+
+    # Cloud provider management methods
+    async def detect_cloud_provider(self) -> Dict[str, Any]:
+        """Detect available cloud providers."""
+        return await self._cloud_provider_manager.detect_cloud_provider()
+
+    async def authenticate_cloud_provider(
+        self, provider: str, auth_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Authenticate with a cloud provider."""
+        from .interfaces import CloudProvider
+
+        provider_enum = CloudProvider(provider)
+        return await self._cloud_provider_manager.authenticate_cloud_provider(
+            provider_enum, auth_config
+        )
+
+    async def list_cloud_clusters(
+        self, provider: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
+        """List clusters for a cloud provider."""
+        from .interfaces import CloudProvider
+
+        if provider:
+            provider_enum = CloudProvider(provider)
+            return await self._cloud_provider_manager.list_cloud_clusters(
+                provider_enum, **kwargs
+            )
+        else:
+            # If no provider specified, detect and use the current environment
+            detection_result = await self.detect_cloud_provider()
+            detected_provider = detection_result.get("detected_provider")
+            if detected_provider:
+                provider_enum = CloudProvider(detected_provider)
+                return await self._cloud_provider_manager.list_cloud_clusters(
+                    provider_enum, **kwargs
+                )
+            else:
+                return {
+                    "status": "error",
+                    "message": "No cloud provider detected and none specified",
+                }
+
+    async def connect_cloud_cluster(
+        self, cluster_name: str, provider: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
+        """Connect to a cloud cluster."""
+        from .interfaces import CloudProvider
+
+        if provider:
+            provider_enum = CloudProvider(provider)
+            return await self._cloud_provider_manager.connect_cloud_cluster(
+                provider_enum, cluster_name, **kwargs
+            )
+        else:
+            # If no provider specified, detect and use the current environment
+            detection_result = await self.detect_cloud_provider()
+            detected_provider = detection_result.get("detected_provider")
+            if detected_provider:
+                provider_enum = CloudProvider(detected_provider)
+                return await self._cloud_provider_manager.connect_cloud_cluster(
+                    provider_enum, cluster_name, **kwargs
+                )
+            else:
+                return {
+                    "status": "error",
+                    "message": "No cloud provider detected and none specified",
+                }
+
+    async def create_cloud_cluster(
+        self, cluster_spec: Dict[str, Any], provider: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
+        """Create a cloud cluster."""
+        from .interfaces import CloudProvider
+
+        if provider:
+            provider_enum = CloudProvider(provider)
+            return await self._cloud_provider_manager.create_cloud_cluster(
+                provider_enum, cluster_spec, **kwargs
+            )
+        else:
+            # If no provider specified, detect and use the current environment
+            detection_result = await self.detect_cloud_provider()
+            detected_provider = detection_result.get("detected_provider")
+            if detected_provider:
+                provider_enum = CloudProvider(detected_provider)
+                return await self._cloud_provider_manager.create_cloud_cluster(
+                    provider_enum, cluster_spec, **kwargs
+                )
+            else:
+                return {
+                    "status": "error",
+                    "message": "No cloud provider detected and none specified",
+                }
+
+    async def get_cloud_cluster_info(
+        self, cluster_name: str, provider: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
+        """Get cloud cluster information."""
+        from .interfaces import CloudProvider
+
+        if provider:
+            provider_enum = CloudProvider(provider)
+            return await self._cloud_provider_manager.get_cloud_cluster_info(
+                provider_enum, cluster_name, **kwargs
+            )
+        else:
+            # If no provider specified, detect and use the current environment
+            detection_result = await self.detect_cloud_provider()
+            detected_provider = detection_result.get("detected_provider")
+            if detected_provider:
+                provider_enum = CloudProvider(detected_provider)
+                return await self._cloud_provider_manager.get_cloud_cluster_info(
+                    provider_enum, cluster_name, **kwargs
+                )
+            else:
+                return {
+                    "status": "error",
+                    "message": "No cloud provider detected and none specified",
+                }
+
+    async def get_cloud_provider_status(self, provider: str) -> Dict[str, Any]:
+        """Get cloud provider status."""
+        from .interfaces import CloudProvider
+
+        provider_enum = CloudProvider(provider)
+        return await self._cloud_provider_manager.get_provider_status(provider_enum)
+
+    async def disconnect_cloud_provider(self, provider: str) -> Dict[str, Any]:
+        """Disconnect from a cloud provider."""
+        from .interfaces import CloudProvider
+
+        provider_enum = CloudProvider(provider)
+        return await self._cloud_provider_manager.disconnect_cloud_provider(
+            provider_enum
+        )
+
+    async def get_cloud_config_template(
+        self, provider: str, template_type: str = "basic"
+    ) -> Dict[str, Any]:
+        """Get cloud configuration template."""
+        from .interfaces import CloudProvider
+
+        provider_enum = CloudProvider(provider)
+        return self._cloud_provider_manager.get_config_manager().get_cluster_template(
+            provider_enum, template_type
+        )
+
+    async def check_environment(self, provider: Optional[str] = None) -> Dict[str, Any]:
+        """Check environment setup, dependencies, and authentication status."""
+        return await self._cloud_provider_manager.check_environment(provider)
+
+    # Cloud provider properties
+    @property
+    def is_cloud_authenticated(self) -> bool:
+        """Check if authenticated with any cloud provider."""
+        auth_state = self._state_manager.get_state().get("cloud_provider_auth", {})
+        return any(
+            provider.get("authenticated", False) for provider in auth_state.values()
+        )
+
+    @property
+    def cloud_provider_connections(self) -> Dict[str, Any]:
+        """Get current cloud provider connections."""
+        return self._state_manager.get_state().get("cloud_provider_connections", {})

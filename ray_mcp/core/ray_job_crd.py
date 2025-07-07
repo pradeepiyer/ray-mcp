@@ -1,11 +1,12 @@
 """RayJob Custom Resource Definition management."""
 
 import json
-import uuid
 from typing import Any, Dict, List, Optional
+import uuid
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -17,6 +18,7 @@ except ImportError:
     # Fallback for direct execution
     import os
     import sys
+
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     from logging_utils import LoggingUtility, ResponseFormatter
 
@@ -31,8 +33,8 @@ class RayJobCRDManager(RayJobCRD):
 
     @ResponseFormatter.handle_exceptions("create ray job spec")
     def create_spec(
-        self, 
-        entrypoint: str, 
+        self,
+        entrypoint: str,
         runtime_env: Optional[Dict[str, Any]] = None,
         job_name: Optional[str] = None,
         namespace: str = "default",
@@ -41,10 +43,10 @@ class RayJobCRDManager(RayJobCRD):
         ttl_seconds_after_finished: int = 86400,  # 24 hours
         active_deadline_seconds: Optional[int] = None,
         backoff_limit: int = 0,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Create RayJob specification with validation."""
-        
+
         # Generate job name if not provided
         if not job_name:
             job_name = f"ray-job-{uuid.uuid4().hex[:8]}"
@@ -53,7 +55,7 @@ class RayJobCRDManager(RayJobCRD):
         if not entrypoint or not isinstance(entrypoint, str):
             return self._response_formatter.format_error_response(
                 "create ray job spec",
-                Exception("entrypoint must be a non-empty string")
+                Exception("entrypoint must be a non-empty string"),
             )
 
         # Validate runtime environment
@@ -62,7 +64,7 @@ class RayJobCRDManager(RayJobCRD):
             if not runtime_validation["valid"]:
                 return self._response_formatter.format_error_response(
                     "create ray job spec",
-                    Exception(f"Invalid runtime_env: {runtime_validation['errors']}")
+                    Exception(f"Invalid runtime_env: {runtime_validation['errors']}"),
                 )
 
         # Build the RayJob specification
@@ -75,44 +77,48 @@ class RayJobCRDManager(RayJobCRD):
                 "labels": {
                     "app.kubernetes.io/name": "rayjob",
                     "app.kubernetes.io/component": "ray-job",
-                    "app.kubernetes.io/managed-by": "ray-mcp"
-                }
+                    "app.kubernetes.io/managed-by": "ray-mcp",
+                },
             },
             "spec": {
                 "entrypoint": entrypoint,
                 "ttlSecondsAfterFinished": ttl_seconds_after_finished,
-                "runtimeEnvYAML": self._format_runtime_env(runtime_env) if runtime_env else "",
+                "runtimeEnvYAML": (
+                    self._format_runtime_env(runtime_env) if runtime_env else ""
+                ),
                 "rayClusterSpec": self._build_default_cluster_spec(),
                 "backoffLimit": backoff_limit,
-                "suspend": suspend
-            }
+                "suspend": suspend,
+            },
         }
 
         # Add cluster selector if provided
         if cluster_selector:
             ray_job_spec["spec"]["clusterSelector"] = cluster_selector
-        
+
         # Add active deadline if provided
         if active_deadline_seconds:
             ray_job_spec["spec"]["activeDeadlineSeconds"] = active_deadline_seconds
 
         # Add any additional kwargs to metadata labels
         if kwargs:
-            ray_job_spec["metadata"]["labels"].update({
-                f"ray-mcp.{k}": str(v) for k, v in kwargs.items() 
-                if isinstance(v, (str, int, bool))
-            })
+            ray_job_spec["metadata"]["labels"].update(
+                {
+                    f"ray-mcp.{k}": str(v)
+                    for k, v in kwargs.items()
+                    if isinstance(v, (str, int, bool))
+                }
+            )
 
         return self._response_formatter.format_success_response(
-            job_spec=ray_job_spec,
-            job_name=job_name
+            job_spec=ray_job_spec, job_name=job_name
         )
 
     @ResponseFormatter.handle_exceptions("validate ray job spec")
     def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """Validate RayJob specification."""
         errors = []
-        
+
         # Check required top-level fields
         required_fields = ["apiVersion", "kind", "metadata", "spec"]
         for field in required_fields:
@@ -120,7 +126,9 @@ class RayJobCRDManager(RayJobCRD):
                 errors.append(f"Missing required field: {field}")
 
         if spec.get("apiVersion") != "ray.io/v1":
-            errors.append(f"Invalid apiVersion: expected 'ray.io/v1', got '{spec.get('apiVersion')}'")
+            errors.append(
+                f"Invalid apiVersion: expected 'ray.io/v1', got '{spec.get('apiVersion')}'"
+            )
 
         if spec.get("kind") != "RayJob":
             errors.append(f"Invalid kind: expected 'RayJob', got '{spec.get('kind')}'")
@@ -144,7 +152,9 @@ class RayJobCRDManager(RayJobCRD):
         ttl = ray_spec.get("ttlSecondsAfterFinished")
         if ttl is not None:
             if not isinstance(ttl, int) or ttl < 0:
-                errors.append("spec.ttlSecondsAfterFinished must be a non-negative integer")
+                errors.append(
+                    "spec.ttlSecondsAfterFinished must be a non-negative integer"
+                )
 
         # Validate backoff limit if present
         backoff_limit = ray_spec.get("backoffLimit")
@@ -165,15 +175,16 @@ class RayJobCRDManager(RayJobCRD):
                 errors.append("spec.clusterSelector must be a dictionary")
 
         return self._response_formatter.format_success_response(
-            valid=len(errors) == 0,
-            errors=errors
+            valid=len(errors) == 0, errors=errors
         )
 
     def to_yaml(self, spec: Dict[str, Any]) -> str:
         """Convert specification to YAML."""
         if not YAML_AVAILABLE:
-            raise RuntimeError("PyYAML is not available. Please install pyyaml package.")
-        
+            raise RuntimeError(
+                "PyYAML is not available. Please install pyyaml package."
+            )
+
         return yaml.dump(spec, default_flow_style=False, sort_keys=False)
 
     def to_json(self, spec: Dict[str, Any]) -> str:
@@ -227,7 +238,9 @@ class RayJobCRDManager(RayJobCRD):
             else:
                 for key, value in env_vars.items():
                     if not isinstance(key, str):
-                        errors.append(f"runtime_env.env_vars key '{key}' must be a string")
+                        errors.append(
+                            f"runtime_env.env_vars key '{key}' must be a string"
+                        )
                     if not isinstance(value, str):
                         errors.append(f"runtime_env.env_vars['{key}'] must be a string")
 
@@ -238,7 +251,7 @@ class RayJobCRDManager(RayJobCRD):
         if not YAML_AVAILABLE:
             # Fallback to JSON if YAML not available
             return json.dumps(runtime_env)
-        
+
         return yaml.dump(runtime_env, default_flow_style=False)
 
     def _build_default_cluster_spec(self) -> Dict[str, Any]:
@@ -252,46 +265,49 @@ class RayJobCRDManager(RayJobCRD):
                 "rayStartParams": {
                     "dashboard-host": "0.0.0.0",
                     "num-cpus": "2",
-                    "block": "true"
+                    "block": "true",
                 },
                 "template": {
                     "spec": {
-                        "containers": [{
-                            "name": "ray-head",
-                            "image": "rayproject/ray:2.47.0",
-                            "ports": [
-                                {"containerPort": 6379, "name": "gcs-server"},
-                                {"containerPort": 8265, "name": "dashboard"},
-                                {"containerPort": 10001, "name": "client"}
-                            ],
-                            "resources": {
-                                "requests": {"cpu": "2", "memory": "4Gi"},
-                                "limits": {"cpu": "2", "memory": "4Gi"}
+                        "containers": [
+                            {
+                                "name": "ray-head",
+                                "image": "rayproject/ray:2.47.0",
+                                "ports": [
+                                    {"containerPort": 6379, "name": "gcs-server"},
+                                    {"containerPort": 8265, "name": "dashboard"},
+                                    {"containerPort": 10001, "name": "client"},
+                                ],
+                                "resources": {
+                                    "requests": {"cpu": "2", "memory": "4Gi"},
+                                    "limits": {"cpu": "2", "memory": "4Gi"},
+                                },
                             }
-                        }]
+                        ]
                     }
-                }
+                },
             },
-            "workerGroupSpecs": [{
-                "groupName": "worker-group",
-                "replicas": 2,
-                "minReplicas": 0,
-                "maxReplicas": 4,
-                "rayStartParams": {
-                    "num-cpus": "2",
-                    "block": "true"
-                },
-                "template": {
-                    "spec": {
-                        "containers": [{
-                            "name": "ray-worker",
-                            "image": "rayproject/ray:2.47.0",
-                            "resources": {
-                                "requests": {"cpu": "2", "memory": "4Gi"},
-                                "limits": {"cpu": "2", "memory": "4Gi"}
-                            }
-                        }]
-                    }
+            "workerGroupSpecs": [
+                {
+                    "groupName": "worker-group",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 4,
+                    "rayStartParams": {"num-cpus": "2", "block": "true"},
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {
+                                    "name": "ray-worker",
+                                    "image": "rayproject/ray:2.47.0",
+                                    "resources": {
+                                        "requests": {"cpu": "2", "memory": "4Gi"},
+                                        "limits": {"cpu": "2", "memory": "4Gi"},
+                                    },
+                                }
+                            ]
+                        }
+                    },
                 }
-            }]
-        } 
+            ],
+        }

@@ -8,11 +8,12 @@ except ImportError:
     # Fallback for direct execution
     import os
     import sys
+
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     from logging_utils import LoggingUtility, ResponseFormatter
 
-from .interfaces import KubeRayComponent, KubeRayJobManager, StateManager
 from .crd_operations import CRDOperationsClient
+from .interfaces import KubeRayComponent, KubeRayJobManager, StateManager
 from .ray_job_crd import RayJobCRDManager
 
 
@@ -31,7 +32,9 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         self._response_formatter = ResponseFormatter()
 
     @ResponseFormatter.handle_exceptions("create ray job")
-    async def create_ray_job(self, job_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+    async def create_ray_job(
+        self, job_spec: Dict[str, Any], namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Create a Ray job using KubeRay."""
         self._ensure_kuberay_ready()
 
@@ -48,8 +51,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         # Validate required fields
         if not entrypoint:
             return self._response_formatter.format_error_response(
-                "create ray job",
-                Exception("entrypoint is required")
+                "create ray job", Exception("entrypoint is required")
             )
 
         # Create the RayJob CRD specification
@@ -63,10 +65,21 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
             ttl_seconds_after_finished=ttl_seconds_after_finished,
             active_deadline_seconds=active_deadline_seconds,
             backoff_limit=backoff_limit,
-            **{k: v for k, v in job_spec.items() if k not in [
-                "entrypoint", "runtime_env", "job_name", "cluster_selector", 
-                "suspend", "ttl_seconds_after_finished", "active_deadline_seconds", "backoff_limit"
-            ]}
+            **{
+                k: v
+                for k, v in job_spec.items()
+                if k
+                not in [
+                    "entrypoint",
+                    "runtime_env",
+                    "job_name",
+                    "cluster_selector",
+                    "suspend",
+                    "ttl_seconds_after_finished",
+                    "active_deadline_seconds",
+                    "backoff_limit",
+                ]
+            },
         )
 
         if crd_result.get("status") != "success":
@@ -77,42 +90,40 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
 
         # Create the RayJob resource in Kubernetes
         create_result = await self._crd_operations.create_resource(
-            resource_type="rayjob",
-            resource_spec=ray_job_spec,
-            namespace=namespace
+            resource_type="rayjob", resource_spec=ray_job_spec, namespace=namespace
         )
 
         if create_result.get("status") == "success":
             # Update state to track the job
             self._update_job_state(actual_job_name, namespace, "creating")
-            
+
             return self._response_formatter.format_success_response(
                 job_name=actual_job_name,
                 namespace=namespace,
                 job_status="creating",
                 entrypoint=entrypoint,
                 resource=create_result.get("resource", {}),
-                message=f"RayJob '{actual_job_name}' creation initiated"
+                message=f"RayJob '{actual_job_name}' creation initiated",
             )
         else:
             return create_result
 
     @ResponseFormatter.handle_exceptions("get ray job")
-    async def get_ray_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def get_ray_job(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Get Ray job status."""
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.get_resource(
-            resource_type="rayjob",
-            name=name,
-            namespace=namespace
+            resource_type="rayjob", name=name, namespace=namespace
         )
 
         if result.get("status") == "success":
             resource = result.get("resource", {})
             status = resource.get("status", {})
             spec = resource.get("spec", {})
-            
+
             # Extract detailed status information
             job_status = {
                 "name": name,
@@ -124,11 +135,13 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
                 "ray_cluster_namespace": status.get("rayClusterNamespace"),
                 "start_time": status.get("startTime"),
                 "end_time": status.get("endTime"),
-                "creation_timestamp": resource.get("metadata", {}).get("creationTimestamp"),
+                "creation_timestamp": resource.get("metadata", {}).get(
+                    "creationTimestamp"
+                ),
                 "entrypoint": spec.get("entrypoint"),
                 "runtime_env": spec.get("runtimeEnvYAML"),
                 "ttl_seconds_after_finished": spec.get("ttlSecondsAfterFinished"),
-                "suspend": spec.get("suspend", False)
+                "suspend": spec.get("suspend", False),
             }
 
             # Check if job is complete
@@ -139,7 +152,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
                 job=job_status,
                 complete=is_complete,
                 running=is_running,
-                raw_resource=resource
+                raw_resource=resource,
             )
         else:
             return result
@@ -150,8 +163,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.list_resources(
-            resource_type="rayjob",
-            namespace=namespace
+            resource_type="rayjob", namespace=namespace
         )
 
         if result.get("status") == "success":
@@ -159,7 +171,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
             for resource_summary in result.get("resources", []):
                 # Get additional status from the full resource if available
                 status = resource_summary.get("status", {})
-                
+
                 job_info = {
                     "name": resource_summary.get("name"),
                     "namespace": resource_summary.get("namespace"),
@@ -169,45 +181,45 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
                     "labels": resource_summary.get("labels", {}),
                     "ray_cluster_name": status.get("rayClusterName"),
                     "start_time": status.get("startTime"),
-                    "end_time": status.get("endTime")
+                    "end_time": status.get("endTime"),
                 }
                 jobs.append(job_info)
 
             return self._response_formatter.format_success_response(
-                jobs=jobs,
-                total_count=len(jobs),
-                namespace=namespace
+                jobs=jobs, total_count=len(jobs), namespace=namespace
             )
         else:
             return result
 
     @ResponseFormatter.handle_exceptions("delete ray job")
-    async def delete_ray_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def delete_ray_job(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Delete Ray job."""
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.delete_resource(
-            resource_type="rayjob",
-            name=name,
-            namespace=namespace
+            resource_type="rayjob", name=name, namespace=namespace
         )
 
         if result.get("status") == "success":
             # Update state to remove the job
             self._remove_job_state(name, namespace)
-            
+
             return self._response_formatter.format_success_response(
                 job_name=name,
                 namespace=namespace,
                 deleted=True,
                 deletion_timestamp=result.get("deletion_timestamp"),
-                message=f"RayJob '{name}' deletion initiated"
+                message=f"RayJob '{name}' deletion initiated",
             )
         else:
             return result
 
     @ResponseFormatter.handle_exceptions("get ray job logs")
-    async def get_ray_job_logs(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def get_ray_job_logs(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Get Ray job logs."""
         self._ensure_kuberay_ready()
 
@@ -218,18 +230,18 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
 
         job = job_result.get("job", {})
         ray_cluster_name = job.get("ray_cluster_name")
-        
+
         if not ray_cluster_name:
             return self._response_formatter.format_error_response(
                 "get ray job logs",
-                Exception(f"No Ray cluster associated with job '{name}'")
+                Exception(f"No Ray cluster associated with job '{name}'"),
             )
 
         # In a full implementation, this would:
         # 1. Connect to the Ray cluster dashboard API
         # 2. Retrieve job logs using the Ray Job API
         # 3. Or query Kubernetes pod logs for the job
-        
+
         # For now, return a placeholder with available information
         return self._response_formatter.format_success_response(
             job_name=name,
@@ -242,29 +254,29 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
                 f"Ray cluster: {ray_cluster_name}",
                 f"Kubernetes namespace: {namespace}",
                 "Job runner pod logs",
-                "Ray dashboard job logs API"
-            ]
+                "Ray dashboard job logs API",
+            ],
         )
 
     def _update_job_state(self, job_name: str, namespace: str, status: str) -> None:
         """Update job state in state manager."""
         state = self.state_manager.get_state()
         kuberay_jobs = state.get("kuberay_jobs", {})
-        
+
         kuberay_jobs[f"{namespace}/{job_name}"] = {
             "name": job_name,
             "namespace": namespace,
-            "job_status": status
+            "job_status": status,
         }
-        
+
         self.state_manager.update_state(kuberay_jobs=kuberay_jobs)
 
     def _remove_job_state(self, job_name: str, namespace: str) -> None:
         """Remove job state from state manager."""
         state = self.state_manager.get_state()
         kuberay_jobs = state.get("kuberay_jobs", {})
-        
+
         job_key = f"{namespace}/{job_name}"
         if job_key in kuberay_jobs:
             del kuberay_jobs[job_key]
-            self.state_manager.update_state(kuberay_jobs=kuberay_jobs) 
+            self.state_manager.update_state(kuberay_jobs=kuberay_jobs)

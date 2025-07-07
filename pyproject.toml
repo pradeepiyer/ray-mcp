@@ -30,6 +30,34 @@ dependencies = [
 examples = [
     # No additional dependencies needed for examples
 ]
+gke = [
+    "google-cloud-container>=2.17.0",
+    "google-auth>=2.16.0",
+]
+eks = [
+    "boto3>=1.26.0",
+    "botocore>=1.29.0",
+]
+aws = [
+    "boto3>=1.26.0", 
+    "botocore>=1.29.0",
+]
+gcp = [
+    "google-cloud-container>=2.17.0",
+    "google-auth>=2.16.0",
+]
+cloud = [
+    "google-cloud-container>=2.17.0",
+    "google-auth>=2.16.0",
+    "boto3>=1.26.0",
+    "botocore>=1.29.0",
+]
+all = [
+    "google-cloud-container>=2.17.0",
+    "google-auth>=2.16.0", 
+    "boto3>=1.26.0",
+    "botocore>=1.29.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/pradeepiyer/ray-mcp"

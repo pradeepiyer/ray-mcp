@@ -1,11 +1,12 @@
 """RayCluster Custom Resource Definition management."""
 
 import json
-import uuid
 from typing import Any, Dict, List, Optional
+import uuid
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -17,6 +18,7 @@ except ImportError:
     # Fallback for direct execution
     import os
     import sys
+
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     from logging_utils import LoggingUtility, ResponseFormatter
 
@@ -31,18 +33,18 @@ class RayClusterCRDManager(RayClusterCRD):
 
     @ResponseFormatter.handle_exceptions("create ray cluster spec")
     def create_spec(
-        self, 
-        head_node_spec: Dict[str, Any], 
-        worker_node_specs: List[Dict[str, Any]], 
+        self,
+        head_node_spec: Dict[str, Any],
+        worker_node_specs: List[Dict[str, Any]],
         cluster_name: Optional[str] = None,
         namespace: str = "default",
         ray_version: str = "2.47.0",
         enable_ingress: bool = False,
         suspend: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Create RayCluster specification with validation."""
-        
+
         # Generate cluster name if not provided
         if not cluster_name:
             cluster_name = f"ray-cluster-{uuid.uuid4().hex[:8]}"
@@ -52,7 +54,7 @@ class RayClusterCRDManager(RayClusterCRD):
         if not head_validation["valid"]:
             return self._response_formatter.format_error_response(
                 "create ray cluster spec",
-                Exception(f"Invalid head node spec: {head_validation['errors']}")
+                Exception(f"Invalid head node spec: {head_validation['errors']}"),
             )
 
         # Validate worker node specs
@@ -61,7 +63,9 @@ class RayClusterCRDManager(RayClusterCRD):
             if not worker_validation["valid"]:
                 return self._response_formatter.format_error_response(
                     "create ray cluster spec",
-                    Exception(f"Invalid worker node spec {i}: {worker_validation['errors']}")
+                    Exception(
+                        f"Invalid worker node spec {i}: {worker_validation['errors']}"
+                    ),
                 )
 
         # Build the RayCluster specification
@@ -74,18 +78,18 @@ class RayClusterCRDManager(RayClusterCRD):
                 "labels": {
                     "app.kubernetes.io/name": "raycluster",
                     "app.kubernetes.io/component": "ray-cluster",
-                    "app.kubernetes.io/managed-by": "ray-mcp"
-                }
+                    "app.kubernetes.io/managed-by": "ray-mcp",
+                },
             },
             "spec": {
                 "rayVersion": ray_version,
                 "enableInClusterService": True,
                 "headGroupSpec": self._build_head_group_spec(head_node_spec),
                 "workerGroupSpecs": [
-                    self._build_worker_group_spec(worker_spec, i) 
+                    self._build_worker_group_spec(worker_spec, i)
                     for i, worker_spec in enumerate(worker_node_specs)
-                ]
-            }
+                ],
+            },
         }
 
         # Add optional fields
@@ -99,21 +103,23 @@ class RayClusterCRDManager(RayClusterCRD):
 
         # Add any additional kwargs to metadata labels
         if kwargs:
-            ray_cluster_spec["metadata"]["labels"].update({
-                f"ray-mcp.{k}": str(v) for k, v in kwargs.items() 
-                if isinstance(v, (str, int, bool))
-            })
+            ray_cluster_spec["metadata"]["labels"].update(
+                {
+                    f"ray-mcp.{k}": str(v)
+                    for k, v in kwargs.items()
+                    if isinstance(v, (str, int, bool))
+                }
+            )
 
         return self._response_formatter.format_success_response(
-            cluster_spec=ray_cluster_spec,
-            cluster_name=cluster_name
+            cluster_spec=ray_cluster_spec, cluster_name=cluster_name
         )
 
     @ResponseFormatter.handle_exceptions("validate ray cluster spec")
     def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """Validate RayCluster specification."""
         errors = []
-        
+
         # Check required top-level fields
         required_fields = ["apiVersion", "kind", "metadata", "spec"]
         for field in required_fields:
@@ -121,10 +127,14 @@ class RayClusterCRDManager(RayClusterCRD):
                 errors.append(f"Missing required field: {field}")
 
         if spec.get("apiVersion") != "ray.io/v1":
-            errors.append(f"Invalid apiVersion: expected 'ray.io/v1', got '{spec.get('apiVersion')}'")
+            errors.append(
+                f"Invalid apiVersion: expected 'ray.io/v1', got '{spec.get('apiVersion')}'"
+            )
 
         if spec.get("kind") != "RayCluster":
-            errors.append(f"Invalid kind: expected 'RayCluster', got '{spec.get('kind')}'")
+            errors.append(
+                f"Invalid kind: expected 'RayCluster', got '{spec.get('kind')}'"
+            )
 
         # Validate metadata
         metadata = spec.get("metadata", {})
@@ -153,19 +163,22 @@ class RayClusterCRDManager(RayClusterCRD):
             errors.append("spec.workerGroupSpecs must be a list")
         else:
             for i, worker_spec in enumerate(worker_specs):
-                worker_validation = self._validate_group_spec(worker_spec, f"worker-{i}")
+                worker_validation = self._validate_group_spec(
+                    worker_spec, f"worker-{i}"
+                )
                 errors.extend(worker_validation.get("errors", []))
 
         return self._response_formatter.format_success_response(
-            valid=len(errors) == 0,
-            errors=errors
+            valid=len(errors) == 0, errors=errors
         )
 
     def to_yaml(self, spec: Dict[str, Any]) -> str:
         """Convert specification to YAML."""
         if not YAML_AVAILABLE:
-            raise RuntimeError("PyYAML is not available. Please install pyyaml package.")
-        
+            raise RuntimeError(
+                "PyYAML is not available. Please install pyyaml package."
+            )
+
         return yaml.dump(spec, default_flow_style=False, sort_keys=False)
 
     def to_json(self, spec: Dict[str, Any]) -> str:
@@ -181,24 +194,26 @@ class RayClusterCRDManager(RayClusterCRD):
                 "dashboard-host": "0.0.0.0",
                 "metrics-export-port": "8080",
                 "num-cpus": str(head_spec.get("num_cpus", 2)),
-                "block": "true"
+                "block": "true",
             },
             "template": {
                 "spec": {
-                    "containers": [{
-                        "name": "ray-head",
-                        "image": head_spec.get("image", "rayproject/ray:2.47.0"),
-                        "ports": [
-                            {"containerPort": 6379, "name": "gcs-server"},
-                            {"containerPort": 8265, "name": "dashboard"},
-                            {"containerPort": 10001, "name": "client"},
-                            {"containerPort": 8080, "name": "metrics"}
-                        ],
-                        "resources": self._build_resource_spec(head_spec),
-                        "env": head_spec.get("env", [])
-                    }]
+                    "containers": [
+                        {
+                            "name": "ray-head",
+                            "image": head_spec.get("image", "rayproject/ray:2.47.0"),
+                            "ports": [
+                                {"containerPort": 6379, "name": "gcs-server"},
+                                {"containerPort": 8265, "name": "dashboard"},
+                                {"containerPort": 10001, "name": "client"},
+                                {"containerPort": 8080, "name": "metrics"},
+                            ],
+                            "resources": self._build_resource_spec(head_spec),
+                            "env": head_spec.get("env", []),
+                        }
+                    ]
                 }
-            }
+            },
         }
 
         # Add node selector if provided
@@ -211,29 +226,35 @@ class RayClusterCRDManager(RayClusterCRD):
 
         return group_spec
 
-    def _build_worker_group_spec(self, worker_spec: Dict[str, Any], index: int) -> Dict[str, Any]:
+    def _build_worker_group_spec(
+        self, worker_spec: Dict[str, Any], index: int
+    ) -> Dict[str, Any]:
         """Build worker group specification."""
         group_name = worker_spec.get("group_name", f"worker-group-{index}")
-        
+
         group_spec = {
             "groupName": group_name,
             "replicas": worker_spec.get("replicas", 2),
             "minReplicas": worker_spec.get("min_replicas", 0),
-            "maxReplicas": worker_spec.get("max_replicas", worker_spec.get("replicas", 2) * 2),
+            "maxReplicas": worker_spec.get(
+                "max_replicas", worker_spec.get("replicas", 2) * 2
+            ),
             "rayStartParams": {
                 "num-cpus": str(worker_spec.get("num_cpus", 2)),
-                "block": "true"
+                "block": "true",
             },
             "template": {
                 "spec": {
-                    "containers": [{
-                        "name": "ray-worker",
-                        "image": worker_spec.get("image", "rayproject/ray:2.47.0"),
-                        "resources": self._build_resource_spec(worker_spec),
-                        "env": worker_spec.get("env", [])
-                    }]
+                    "containers": [
+                        {
+                            "name": "ray-worker",
+                            "image": worker_spec.get("image", "rayproject/ray:2.47.0"),
+                            "resources": self._build_resource_spec(worker_spec),
+                            "env": worker_spec.get("env", []),
+                        }
+                    ]
                 }
-            }
+            },
         }
 
         # Add GPU support if requested
@@ -242,7 +263,9 @@ class RayClusterCRDManager(RayClusterCRD):
 
         # Add node selector if provided
         if "node_selector" in worker_spec:
-            group_spec["template"]["spec"]["nodeSelector"] = worker_spec["node_selector"]
+            group_spec["template"]["spec"]["nodeSelector"] = worker_spec[
+                "node_selector"
+            ]
 
         # Add tolerations if provided
         if "tolerations" in worker_spec:
@@ -275,13 +298,18 @@ class RayClusterCRDManager(RayClusterCRD):
 
         return resources
 
-    def _validate_node_spec(self, node_spec: Dict[str, Any], node_type: str) -> Dict[str, Any]:
+    def _validate_node_spec(
+        self, node_spec: Dict[str, Any], node_type: str
+    ) -> Dict[str, Any]:
         """Validate individual node specification."""
         errors = []
 
         # Check for required fields
         if not isinstance(node_spec, dict):
-            return {"valid": False, "errors": [f"{node_type} spec must be a dictionary"]}
+            return {
+                "valid": False,
+                "errors": [f"{node_type} spec must be a dictionary"],
+            }
 
         # Validate CPU requirements
         num_cpus = node_spec.get("num_cpus")
@@ -300,7 +328,9 @@ class RayClusterCRDManager(RayClusterCRD):
             replicas = node_spec.get("replicas")
             if replicas is not None:
                 if not isinstance(replicas, int) or replicas < 0:
-                    errors.append(f"{node_type}: replicas must be a non-negative integer")
+                    errors.append(
+                        f"{node_type}: replicas must be a non-negative integer"
+                    )
 
         # Validate image format
         image = node_spec.get("image")
@@ -310,7 +340,9 @@ class RayClusterCRDManager(RayClusterCRD):
 
         return {"valid": len(errors) == 0, "errors": errors}
 
-    def _validate_group_spec(self, group_spec: Dict[str, Any], group_type: str) -> Dict[str, Any]:
+    def _validate_group_spec(
+        self, group_spec: Dict[str, Any], group_type: str
+    ) -> Dict[str, Any]:
         """Validate group specification."""
         errors = []
 
@@ -327,4 +359,4 @@ class RayClusterCRDManager(RayClusterCRD):
             elif "spec" not in template:
                 errors.append(f"{group_type}: missing template.spec")
 
-        return {"errors": errors} 
+        return {"errors": errors}

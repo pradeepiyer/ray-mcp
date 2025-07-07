@@ -137,17 +137,35 @@ class ToolRegistry:
                                     "requests": {
                                         "type": "object",
                                         "properties": {
-                                            "cpu": {"type": "string", "description": "CPU request (e.g., '1000m', '2')"},
-                                            "memory": {"type": "string", "description": "Memory request (e.g., '2Gi', '1024Mi')"},
-                                            "nvidia.com/gpu": {"type": "string", "description": "GPU request (e.g., '1', '2')"},
+                                            "cpu": {
+                                                "type": "string",
+                                                "description": "CPU request (e.g., '1000m', '2')",
+                                            },
+                                            "memory": {
+                                                "type": "string",
+                                                "description": "Memory request (e.g., '2Gi', '1024Mi')",
+                                            },
+                                            "nvidia.com/gpu": {
+                                                "type": "string",
+                                                "description": "GPU request (e.g., '1', '2')",
+                                            },
                                         },
                                     },
                                     "limits": {
                                         "type": "object",
                                         "properties": {
-                                            "cpu": {"type": "string", "description": "CPU limit (e.g., '2000m', '4')"},
-                                            "memory": {"type": "string", "description": "Memory limit (e.g., '4Gi', '2048Mi')"},
-                                            "nvidia.com/gpu": {"type": "string", "description": "GPU limit (e.g., '1', '2')"},
+                                            "cpu": {
+                                                "type": "string",
+                                                "description": "CPU limit (e.g., '2000m', '4')",
+                                            },
+                                            "memory": {
+                                                "type": "string",
+                                                "description": "Memory limit (e.g., '4Gi', '2048Mi')",
+                                            },
+                                            "nvidia.com/gpu": {
+                                                "type": "string",
+                                                "description": "GPU limit (e.g., '1', '2')",
+                                            },
                                         },
                                     },
                                 },
@@ -159,17 +177,35 @@ class ToolRegistry:
                                     "requests": {
                                         "type": "object",
                                         "properties": {
-                                            "cpu": {"type": "string", "description": "CPU request (e.g., '500m', '1')"},
-                                            "memory": {"type": "string", "description": "Memory request (e.g., '1Gi', '512Mi')"},
-                                            "nvidia.com/gpu": {"type": "string", "description": "GPU request (e.g., '1', '2')"},
+                                            "cpu": {
+                                                "type": "string",
+                                                "description": "CPU request (e.g., '500m', '1')",
+                                            },
+                                            "memory": {
+                                                "type": "string",
+                                                "description": "Memory request (e.g., '1Gi', '512Mi')",
+                                            },
+                                            "nvidia.com/gpu": {
+                                                "type": "string",
+                                                "description": "GPU request (e.g., '1', '2')",
+                                            },
                                         },
                                     },
                                     "limits": {
                                         "type": "object",
                                         "properties": {
-                                            "cpu": {"type": "string", "description": "CPU limit (e.g., '1000m', '2')"},
-                                            "memory": {"type": "string", "description": "Memory limit (e.g., '2Gi', '1024Mi')"},
-                                            "nvidia.com/gpu": {"type": "string", "description": "GPU limit (e.g., '1', '2')"},
+                                            "cpu": {
+                                                "type": "string",
+                                                "description": "CPU limit (e.g., '1000m', '2')",
+                                            },
+                                            "memory": {
+                                                "type": "string",
+                                                "description": "Memory limit (e.g., '2Gi', '1024Mi')",
+                                            },
+                                            "nvidia.com/gpu": {
+                                                "type": "string",
+                                                "description": "GPU limit (e.g., '1', '2')",
+                                            },
                                         },
                                     },
                                 },
@@ -348,17 +384,35 @@ class ToolRegistry:
                             "requests": {
                                 "type": "object",
                                 "properties": {
-                                    "cpu": {"type": "string", "description": "CPU request (e.g., '1000m', '2')"},
-                                    "memory": {"type": "string", "description": "Memory request (e.g., '2Gi', '1024Mi')"},
-                                    "nvidia.com/gpu": {"type": "string", "description": "GPU request (e.g., '1', '2')"},
+                                    "cpu": {
+                                        "type": "string",
+                                        "description": "CPU request (e.g., '1000m', '2')",
+                                    },
+                                    "memory": {
+                                        "type": "string",
+                                        "description": "Memory request (e.g., '2Gi', '1024Mi')",
+                                    },
+                                    "nvidia.com/gpu": {
+                                        "type": "string",
+                                        "description": "GPU request (e.g., '1', '2')",
+                                    },
                                 },
                             },
                             "limits": {
                                 "type": "object",
                                 "properties": {
-                                    "cpu": {"type": "string", "description": "CPU limit (e.g., '2000m', '4')"},
-                                    "memory": {"type": "string", "description": "Memory limit (e.g., '4Gi', '2048Mi')"},
-                                    "nvidia.com/gpu": {"type": "string", "description": "GPU limit (e.g., '1', '2')"},
+                                    "cpu": {
+                                        "type": "string",
+                                        "description": "CPU limit (e.g., '2000m', '4')",
+                                    },
+                                    "memory": {
+                                        "type": "string",
+                                        "description": "Memory limit (e.g., '4Gi', '2048Mi')",
+                                    },
+                                    "nvidia.com/gpu": {
+                                        "type": "string",
+                                        "description": "GPU limit (e.g., '1', '2')",
+                                    },
                                 },
                             },
                         },
@@ -671,6 +725,255 @@ class ToolRegistry:
             handler=self._get_kuberay_job_logs_handler,
         )
 
+        # Cloud Provider Management Tools
+        self._register_tool(
+            name="detect_cloud_provider",
+            description="Detect available cloud providers and authentication methods. Identifies if you're running in GKE or local environment and shows available authentication options.",
+            schema={"type": "object", "properties": {}},
+            handler=self._detect_cloud_provider_handler,
+        )
+
+        self._register_tool(
+            name="check_environment",
+            description="Check environment setup, dependencies, and authentication status for cloud providers",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "all"],
+                        "description": "Cloud provider to check (optional, defaults to all)",
+                    }
+                },
+                "required": [],
+            },
+            handler=self._check_environment_handler,
+        )
+
+        self._register_tool(
+            name="authenticate_cloud_provider",
+            description="Authenticate with a cloud provider (GKE). For GKE, provide service account path and project ID.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "local"],
+                        "description": "Cloud provider to authenticate with",
+                    },
+                    "service_account_path": {
+                        "type": "string",
+                        "description": "Path to GKE service account JSON file (GKE only)",
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Google Cloud project ID (GKE only)",
+                    },
+                    "zone": {
+                        "type": "string",
+                        "description": "GCP zone (GKE only)",
+                    },
+                    "config_file": {
+                        "type": "string",
+                        "description": "Kubeconfig file path (local only)",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Kubernetes context name (local only)",
+                    },
+                },
+                "required": ["provider"],
+            },
+            handler=self._authenticate_cloud_provider_handler,
+        )
+
+        self._register_tool(
+            name="list_cloud_clusters",
+            description="List clusters for a specific cloud provider. Discovers available clusters in GKE projects or local Kubernetes contexts.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "local"],
+                        "description": "Cloud provider to list clusters for",
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Google Cloud project ID (GKE only)",
+                    },
+                    "zone": {
+                        "type": "string",
+                        "description": "GKE zone to list clusters in (optional, lists all if not specified)",
+                    },
+                },
+                "required": ["provider"],
+            },
+            handler=self._list_cloud_clusters_handler,
+        )
+
+        self._register_tool(
+            name="connect_cloud_cluster",
+            description="Connect to a cloud cluster. Configures kubeconfig and tests connection to the specified cluster.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "local"],
+                        "description": "Cloud provider of the cluster",
+                    },
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the cluster to connect to",
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Google Cloud project ID (GKE only)",
+                    },
+                    "zone": {"type": "string", "description": "GKE zone (GKE only)"},
+                    "config_file": {
+                        "type": "string",
+                        "description": "Kubeconfig file path (local only)",
+                    },
+                },
+                "required": ["provider", "cluster_name"],
+            },
+            handler=self._connect_cloud_cluster_handler,
+        )
+
+        self._register_tool(
+            name="create_cloud_cluster",
+            description="Create a new cloud cluster. Supports creating GKE clusters with customizable specifications including node types, scaling, and networking.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke"],
+                        "description": "Cloud provider to create cluster in",
+                    },
+                    "cluster_spec": {
+                        "type": "object",
+                        "description": "Cluster specification including name, node configuration, networking, etc.",
+                        "properties": {
+                            "name": {"type": "string", "description": "Cluster name"},
+                            "zone": {
+                                "type": "string",
+                                "description": "GKE zone (GKE only)",
+                            },
+                            "machine_type": {
+                                "type": "string",
+                                "description": "Node machine type (GKE: n1-standard-2)",
+                            },
+                            "disk_size": {
+                                "type": "integer",
+                                "description": "Node disk size in GB",
+                            },
+                            "initial_node_count": {
+                                "type": "integer",
+                                "description": "Initial number of nodes",
+                            },
+                            "version": {
+                                "type": "string",
+                                "description": "Kubernetes version",
+                            },
+                        },
+                        "required": ["name"],
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Google Cloud project ID (GKE only)",
+                    },
+                },
+                "required": ["provider", "cluster_spec"],
+            },
+            handler=self._create_cloud_cluster_handler,
+        )
+
+        self._register_tool(
+            name="get_cloud_cluster_info",
+            description="Get detailed information about a cloud cluster including status, node pools, networking, and configuration.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "local"],
+                        "description": "Cloud provider of the cluster",
+                    },
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the cluster",
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Google Cloud project ID (GKE only)",
+                    },
+                    "zone": {"type": "string", "description": "GKE zone (GKE only)"},
+                },
+                "required": ["provider", "cluster_name"],
+            },
+            handler=self._get_cloud_cluster_info_handler,
+        )
+
+        self._register_tool(
+            name="get_cloud_provider_status",
+            description="Get authentication and connection status for a cloud provider.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "local"],
+                        "description": "Cloud provider to check status for",
+                    }
+                },
+                "required": ["provider"],
+            },
+            handler=self._get_cloud_provider_status_handler,
+        )
+
+        self._register_tool(
+            name="disconnect_cloud_provider",
+            description="Disconnect from a cloud provider and reset connection state.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke", "local"],
+                        "description": "Cloud provider to disconnect from",
+                    }
+                },
+                "required": ["provider"],
+            },
+            handler=self._disconnect_cloud_provider_handler,
+        )
+
+        self._register_tool(
+            name="get_cloud_config_template",
+            description="Get cluster configuration template for a cloud provider. Returns YAML/JSON templates for creating clusters with different configurations (basic, production, GPU).",
+            schema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gke"],
+                        "description": "Cloud provider to get template for",
+                    },
+                    "template_type": {
+                        "type": "string",
+                        "enum": ["basic", "production", "gpu"],
+                        "default": "basic",
+                        "description": "Type of cluster template",
+                    },
+                },
+                "required": ["provider"],
+            },
+            handler=self._get_cloud_config_template_handler,
+        )
+
     def _register_tool(
         self, name: str, description: str, schema: Dict[str, Any], handler: Callable
     ) -> None:
@@ -710,20 +1013,24 @@ class ToolRegistry:
         # If address is provided, connect to existing cluster regardless of cluster_type
         if kwargs.get("address"):
             return await self.ray_manager.init_cluster(**kwargs)
-        
+
         # Determine cluster type
         cluster_type = kwargs.get("cluster_type", "local").lower()
-        
+
         # For local clusters, use existing init_cluster method
         if cluster_type == "local":
             # Remove cluster_type and kubernetes_config from kwargs for local clusters
-            local_kwargs = {k: v for k, v in kwargs.items() if k not in ["cluster_type", "kubernetes_config"]}
+            local_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k not in ["cluster_type", "kubernetes_config"]
+            }
             return await self.ray_manager.init_cluster(**local_kwargs)
-        
+
         # For Kubernetes clusters, create KubeRay cluster
         elif cluster_type in ["kubernetes", "k8s"]:
             return await self._create_kuberay_cluster(**kwargs)
-        
+
         else:
             return ResponseFormatter.format_validation_error(
                 f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', or 'k8s'"
@@ -736,16 +1043,15 @@ class ToolRegistry:
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
             cluster_name = kubernetes_config.get("cluster_name")
-            
+
             # Build cluster specification from parameters
             cluster_spec = await self._build_kuberay_cluster_spec(**kwargs)
-            
+
             # Create the cluster
             result = await self.ray_manager.create_kuberay_cluster(
-                cluster_spec=cluster_spec,
-                namespace=namespace
+                cluster_spec=cluster_spec, namespace=namespace
             )
-            
+
             return result
         except Exception as e:
             return ResponseFormatter.format_error_response("create kuberay cluster", e)
@@ -755,7 +1061,7 @@ class ToolRegistry:
         kubernetes_config = kwargs.get("kubernetes_config", {})
         resources = kwargs.get("resources", {})
         worker_nodes = kwargs.get("worker_nodes")
-        
+
         # Basic cluster configuration
         cluster_spec = {
             "cluster_name": kubernetes_config.get("cluster_name"),
@@ -765,35 +1071,35 @@ class ToolRegistry:
             "enable_ingress": kubernetes_config.get("enable_ingress", False),
             "auto_scale": kubernetes_config.get("auto_scale", False),
         }
-        
+
         # Head node configuration
-        head_node_config = {
-            "ray_start_params": {}
-        }
-        
+        head_node_config = {"ray_start_params": {}}
+
         # Add CPU/GPU/memory from direct parameters
         if kwargs.get("num_cpus"):
             head_node_config["ray_start_params"]["num_cpus"] = kwargs["num_cpus"]
         if kwargs.get("num_gpus"):
             head_node_config["ray_start_params"]["num_gpus"] = kwargs["num_gpus"]
         if kwargs.get("object_store_memory"):
-            head_node_config["ray_start_params"]["object_store_memory"] = kwargs["object_store_memory"]
-        
+            head_node_config["ray_start_params"]["object_store_memory"] = kwargs[
+                "object_store_memory"
+            ]
+
         # Add Kubernetes resources for head node
         if resources.get("head_node"):
             head_node_config["resources"] = resources["head_node"]
-        
+
         # Add scheduling constraints
         if kubernetes_config.get("node_selector"):
             head_node_config["node_selector"] = kubernetes_config["node_selector"]
         if kubernetes_config.get("tolerations"):
             head_node_config["tolerations"] = kubernetes_config["tolerations"]
-        
+
         cluster_spec["head_node"] = head_node_config
-        
+
         # Worker nodes configuration
         worker_groups = []
-        
+
         # Handle worker_nodes parameter
         if worker_nodes is not None:
             if len(worker_nodes) == 0:
@@ -803,19 +1109,27 @@ class ToolRegistry:
                 # Custom worker configuration
                 for i, worker_config in enumerate(worker_nodes):
                     worker_group = {
-                        "group_name": worker_config.get("node_name", f"worker-group-{i}"),
+                        "group_name": worker_config.get(
+                            "node_name", f"worker-group-{i}"
+                        ),
                         "replicas": 1,
-                        "ray_start_params": {}
+                        "ray_start_params": {},
                     }
-                    
+
                     # Add Ray parameters
                     if worker_config.get("num_cpus"):
-                        worker_group["ray_start_params"]["num_cpus"] = worker_config["num_cpus"]
+                        worker_group["ray_start_params"]["num_cpus"] = worker_config[
+                            "num_cpus"
+                        ]
                     if worker_config.get("num_gpus"):
-                        worker_group["ray_start_params"]["num_gpus"] = worker_config["num_gpus"]
+                        worker_group["ray_start_params"]["num_gpus"] = worker_config[
+                            "num_gpus"
+                        ]
                     if worker_config.get("object_store_memory"):
-                        worker_group["ray_start_params"]["object_store_memory"] = worker_config["object_store_memory"]
-                    
+                        worker_group["ray_start_params"]["object_store_memory"] = (
+                            worker_config["object_store_memory"]
+                        )
+
                     # Add Kubernetes-specific parameters
                     if worker_config.get("image"):
                         worker_group["image"] = worker_config["image"]
@@ -823,24 +1137,24 @@ class ToolRegistry:
                         worker_group["node_selector"] = worker_config["node_selector"]
                     if worker_config.get("tolerations"):
                         worker_group["tolerations"] = worker_config["tolerations"]
-                    
+
                     worker_groups.append(worker_group)
         else:
             # Default: create 2 worker groups
             default_worker_config = {
                 "group_name": "worker-group",
                 "replicas": 2,
-                "ray_start_params": {"num_cpus": 1}
+                "ray_start_params": {"num_cpus": 1},
             }
-            
+
             # Add default worker resources
             if resources.get("worker_nodes"):
                 default_worker_config["resources"] = resources["worker_nodes"]
-            
+
             worker_groups.append(default_worker_config)
-        
+
         cluster_spec["worker_groups"] = worker_groups
-        
+
         # Auto-scaling configuration
         if kubernetes_config.get("auto_scale"):
             cluster_spec["auto_scale"] = {
@@ -848,7 +1162,7 @@ class ToolRegistry:
                 "min_replicas": kubernetes_config.get("min_replicas", 1),
                 "max_replicas": kubernetes_config.get("max_replicas", 10),
             }
-        
+
         return cluster_spec
 
     async def _stop_ray_handler(self, **kwargs) -> Dict[str, Any]:
@@ -863,28 +1177,39 @@ class ToolRegistry:
         """Handler for submit_job tool with support for both local and Kubernetes jobs."""
         # Determine job type
         job_type = kwargs.get("job_type", "auto").lower()
-        
+
         if job_type == "auto":
             # Auto-detect based on cluster state
             job_type = await self._detect_job_type()
-        
+
         # For local jobs, use existing submit_job method
         if job_type == "local":
             # Remove job_type and kubernetes_config from kwargs for local jobs
-            local_kwargs = {k: v for k, v in kwargs.items() if k not in [
-                "job_type", "kubernetes_config", "image", "tolerations", 
-                "node_selector", "service_account", "environment", "working_dir"
-            ]}
+            local_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k
+                not in [
+                    "job_type",
+                    "kubernetes_config",
+                    "image",
+                    "tolerations",
+                    "node_selector",
+                    "service_account",
+                    "environment",
+                    "working_dir",
+                ]
+            }
             # Filter to only include valid parameters for local job submission
             sig = inspect.signature(self.ray_manager.submit_job)
             valid_params = {k for k in sig.parameters.keys() if k != "self"}
             filtered = {k: v for k, v in local_kwargs.items() if k in valid_params}
             return await self.ray_manager.submit_job(**filtered)
-        
+
         # For Kubernetes jobs, create KubeRay job
         elif job_type in ["kubernetes", "k8s"]:
             return await self._create_kuberay_job(**kwargs)
-        
+
         else:
             return ResponseFormatter.format_validation_error(
                 f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
@@ -896,15 +1221,15 @@ class ToolRegistry:
             # Check if we have KubeRay clusters
             if self.ray_manager.kuberay_clusters:
                 return "kubernetes"
-            
+
             # Check if we have Kubernetes connection
             if self.ray_manager.is_kubernetes_connected:
                 return "kubernetes"
-            
+
             # Check if we have local Ray cluster
             if self.ray_manager.is_initialized:
                 return "local"
-            
+
             # Default to local if no cluster is detected
             return "local"
         except Exception:
@@ -917,16 +1242,15 @@ class ToolRegistry:
             # Extract Kubernetes configuration
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
-            
+
             # Build job specification from parameters
             job_spec = await self._build_kuberay_job_spec(**kwargs)
-            
+
             # Create the job
             result = await self.ray_manager.create_kuberay_job(
-                job_spec=job_spec,
-                namespace=namespace
+                job_spec=job_spec, namespace=namespace
             )
-            
+
             return result
         except Exception as e:
             return ResponseFormatter.format_error_response("create kuberay job", e)
@@ -934,7 +1258,7 @@ class ToolRegistry:
     async def _build_kuberay_job_spec(self, **kwargs) -> Dict[str, Any]:
         """Build KubeRay job specification from submit_job parameters."""
         kubernetes_config = kwargs.get("kubernetes_config", {})
-        
+
         # Basic job configuration
         job_spec = {
             "entrypoint": kwargs["entrypoint"],
@@ -943,53 +1267,55 @@ class ToolRegistry:
             "namespace": kubernetes_config.get("namespace", "default"),
             "cluster_selector": kubernetes_config.get("cluster_selector"),
             "suspend": kubernetes_config.get("suspend", False),
-            "ttl_seconds_after_finished": kubernetes_config.get("ttl_seconds_after_finished", 86400),
+            "ttl_seconds_after_finished": kubernetes_config.get(
+                "ttl_seconds_after_finished", 86400
+            ),
             "active_deadline_seconds": kubernetes_config.get("active_deadline_seconds"),
             "backoff_limit": kubernetes_config.get("backoff_limit", 0),
         }
-        
+
         # Add container image
         if kwargs.get("image"):
             job_spec["image"] = kwargs["image"]
-        
+
         # Add resources
         if kwargs.get("resources"):
             job_spec["resources"] = kwargs["resources"]
-        
+
         # Add scheduling constraints
         if kwargs.get("tolerations"):
             job_spec["tolerations"] = kwargs["tolerations"]
         if kwargs.get("node_selector"):
             job_spec["node_selector"] = kwargs["node_selector"]
-        
+
         # Add service account
         if kwargs.get("service_account"):
             job_spec["service_account"] = kwargs["service_account"]
-        
+
         # Add environment variables
         if kwargs.get("environment"):
             job_spec["environment"] = kwargs["environment"]
-        
+
         # Add working directory
         if kwargs.get("working_dir"):
             job_spec["working_dir"] = kwargs["working_dir"]
-        
+
         # Add metadata
         if kwargs.get("metadata"):
             job_spec["metadata"] = kwargs["metadata"]
-        
+
         return job_spec
 
     async def _list_jobs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_jobs tool."""
         job_type = kwargs.get("job_type", "auto").lower()
-        
+
         if job_type == "auto":
             # Auto-detect based on cluster state
             job_type = await self._detect_job_type()
-        
+
         namespace = kwargs.get("namespace", "default")
-        
+
         if job_type == "local":
             return await self.ray_manager.list_jobs()
         elif job_type in ["kubernetes", "k8s"]:
@@ -1031,7 +1357,9 @@ class ToolRegistry:
         cluster_name = kwargs["cluster_name"]
         worker_replicas = kwargs["worker_replicas"]
         namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.scale_kuberay_cluster(cluster_name, worker_replicas, namespace)
+        return await self.ray_manager.scale_kuberay_cluster(
+            cluster_name, worker_replicas, namespace
+        )
 
     async def _delete_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for delete_kuberay_cluster tool."""
@@ -1061,6 +1389,155 @@ class ToolRegistry:
         job_name = kwargs["job_name"]
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.get_kuberay_job_logs(job_name, namespace)
+
+    # Cloud Provider Tool Handlers
+
+    async def _detect_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for detect_cloud_provider tool."""
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.detect_cloud_provider()
+
+    async def _check_environment_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for check_environment tool."""
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        provider_str = kwargs.get("provider", "all")
+        if provider_str == "all":
+            return await cloud_manager.check_environment()
+        else:
+            return await cloud_manager.check_environment(provider_str)
+
+    async def _authenticate_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for authenticate_cloud_provider tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+
+        # Build auth config from kwargs
+        auth_config = {}
+        for key in [
+            "service_account_path",
+            "project_id",
+            "aws_access_key_id",
+            "aws_secret_access_key",
+            "region",
+            "config_file",
+            "context",
+        ]:
+            if key in kwargs:
+                auth_config[key] = kwargs[key]
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.authenticate_cloud_provider(provider, auth_config)
+
+    async def _list_cloud_clusters_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for list_cloud_clusters tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+
+        # Extract provider-specific parameters
+        provider_kwargs = {}
+        if "project_id" in kwargs:
+            provider_kwargs["project_id"] = kwargs["project_id"]
+        if "zone" in kwargs:
+            provider_kwargs["zone"] = kwargs["zone"]
+        if "region" in kwargs:
+            provider_kwargs["region"] = kwargs["region"]
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.list_cloud_clusters(provider, **provider_kwargs)
+
+    async def _connect_cloud_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for connect_cloud_cluster tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+        cluster_name = kwargs["cluster_name"]
+
+        # Extract provider-specific parameters
+        provider_kwargs = {}
+        for key in ["project_id", "zone", "region", "config_file"]:
+            if key in kwargs:
+                provider_kwargs[key] = kwargs[key]
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.connect_cloud_cluster(
+            provider, cluster_name, **provider_kwargs
+        )
+
+    async def _create_cloud_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for create_cloud_cluster tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+        cluster_spec = kwargs["cluster_spec"]
+
+        # Extract provider-specific parameters
+        provider_kwargs = {}
+        if "project_id" in kwargs:
+            provider_kwargs["project_id"] = kwargs["project_id"]
+        if "region" in kwargs:
+            provider_kwargs["region"] = kwargs["region"]
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.create_cloud_cluster(
+            provider, cluster_spec, **provider_kwargs
+        )
+
+    async def _get_cloud_cluster_info_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for get_cloud_cluster_info tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+        cluster_name = kwargs["cluster_name"]
+
+        # Extract provider-specific parameters
+        provider_kwargs = {}
+        for key in ["project_id", "zone", "region"]:
+            if key in kwargs:
+                provider_kwargs[key] = kwargs[key]
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.get_cloud_cluster_info(
+            provider, cluster_name, **provider_kwargs
+        )
+
+    async def _get_cloud_provider_status_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for get_cloud_provider_status tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.get_provider_status(provider)
+
+    async def _disconnect_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for disconnect_cloud_provider tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        return await cloud_manager.disconnect_cloud_provider(provider)
+
+    async def _get_cloud_config_template_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for get_cloud_config_template tool."""
+        from ray_mcp.core.interfaces import CloudProvider
+
+        provider_str = kwargs["provider"]
+        provider = CloudProvider(provider_str)
+        template_type = kwargs.get("template_type", "basic")
+
+        cloud_manager = self.ray_manager.get_cloud_provider_manager()
+        config_manager = cloud_manager.get_config_manager()
+        return config_manager.get_cluster_template(provider, template_type)
 
     def _wrap_with_system_prompt(self, tool_name: str, result: Dict[str, Any]) -> str:
         """Wrap tool output with a system prompt for LLM enhancement."""

@@ -8,11 +8,12 @@ except ImportError:
     # Fallback for direct execution
     import os
     import sys
+
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     from logging_utils import LoggingUtility, ResponseFormatter
 
-from .interfaces import KubeRayComponent, KubeRayClusterManager, StateManager
 from .crd_operations import CRDOperationsClient
+from .interfaces import KubeRayClusterManager, KubeRayComponent, StateManager
 from .ray_cluster_crd import RayClusterCRDManager
 
 
@@ -31,7 +32,9 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         self._response_formatter = ResponseFormatter()
 
     @ResponseFormatter.handle_exceptions("create ray cluster")
-    async def create_ray_cluster(self, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+    async def create_ray_cluster(
+        self, cluster_spec: Dict[str, Any], namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Create a Ray cluster using KubeRay."""
         self._ensure_kuberay_ready()
 
@@ -46,8 +49,7 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         # Validate required fields
         if not head_node_spec:
             return self._response_formatter.format_error_response(
-                "create ray cluster",
-                Exception("head_node_spec is required")
+                "create ray cluster", Exception("head_node_spec is required")
             )
 
         # Create the RayCluster CRD specification
@@ -59,10 +61,19 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
             ray_version=ray_version,
             enable_ingress=enable_ingress,
             suspend=suspend,
-            **{k: v for k, v in cluster_spec.items() if k not in [
-                "cluster_name", "head_node_spec", "worker_node_specs", 
-                "ray_version", "enable_ingress", "suspend"
-            ]}
+            **{
+                k: v
+                for k, v in cluster_spec.items()
+                if k
+                not in [
+                    "cluster_name",
+                    "head_node_spec",
+                    "worker_node_specs",
+                    "ray_version",
+                    "enable_ingress",
+                    "suspend",
+                ]
+            },
         )
 
         if crd_result.get("status") != "success":
@@ -75,39 +86,39 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         create_result = await self._crd_operations.create_resource(
             resource_type="raycluster",
             resource_spec=ray_cluster_spec,
-            namespace=namespace
+            namespace=namespace,
         )
 
         if create_result.get("status") == "success":
             # Update state to track the cluster
             self._update_cluster_state(actual_cluster_name, namespace, "creating")
-            
+
             return self._response_formatter.format_success_response(
                 cluster_name=actual_cluster_name,
                 namespace=namespace,
                 cluster_status="creating",
                 resource=create_result.get("resource", {}),
                 dashboard_url=self._get_dashboard_url(actual_cluster_name, namespace),
-                message=f"RayCluster '{actual_cluster_name}' creation initiated"
+                message=f"RayCluster '{actual_cluster_name}' creation initiated",
             )
         else:
             return create_result
 
     @ResponseFormatter.handle_exceptions("get ray cluster")
-    async def get_ray_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def get_ray_cluster(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Get Ray cluster status."""
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.get_resource(
-            resource_type="raycluster",
-            name=name,
-            namespace=namespace
+            resource_type="raycluster", name=name, namespace=namespace
         )
 
         if result.get("status") == "success":
             resource = result.get("resource", {})
             status = resource.get("status", {})
-            
+
             # Extract detailed status information
             cluster_status = {
                 "name": name,
@@ -121,20 +132,19 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                 "head_pod_ip": status.get("head", {}).get("podIP"),
                 "dashboard_url": self._get_dashboard_url(name, namespace),
                 "service_ips": status.get("head", {}).get("serviceIP"),
-                "creation_timestamp": resource.get("metadata", {}).get("creationTimestamp"),
-                "ray_version": resource.get("spec", {}).get("rayVersion")
+                "creation_timestamp": resource.get("metadata", {}).get(
+                    "creationTimestamp"
+                ),
+                "ray_version": resource.get("spec", {}).get("rayVersion"),
             }
 
             # Check if cluster is ready
-            is_ready = (
-                status.get("state") == "ready" and 
-                status.get("readyWorkerReplicas", 0) >= status.get("minWorkerReplicas", 0)
-            )
+            is_ready = status.get("state") == "ready" and status.get(
+                "readyWorkerReplicas", 0
+            ) >= status.get("minWorkerReplicas", 0)
 
             return self._response_formatter.format_success_response(
-                cluster=cluster_status,
-                ready=is_ready,
-                raw_resource=resource
+                cluster=cluster_status, ready=is_ready, raw_resource=resource
             )
         else:
             return result
@@ -145,8 +155,7 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.list_resources(
-            resource_type="raycluster",
-            namespace=namespace
+            resource_type="raycluster", namespace=namespace
         )
 
         if result.get("status") == "success":
@@ -159,22 +168,21 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                     "creation_timestamp": resource_summary.get("creation_timestamp"),
                     "labels": resource_summary.get("labels", {}),
                     "dashboard_url": self._get_dashboard_url(
-                        resource_summary.get("name"), 
-                        resource_summary.get("namespace")
-                    )
+                        resource_summary.get("name"), resource_summary.get("namespace")
+                    ),
                 }
                 clusters.append(cluster_info)
 
             return self._response_formatter.format_success_response(
-                clusters=clusters,
-                total_count=len(clusters),
-                namespace=namespace
+                clusters=clusters, total_count=len(clusters), namespace=namespace
             )
         else:
             return result
 
     @ResponseFormatter.handle_exceptions("update ray cluster")
-    async def update_ray_cluster(self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+    async def update_ray_cluster(
+        self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Update Ray cluster configuration."""
         self._ensure_kuberay_ready()
 
@@ -199,9 +207,18 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
             ray_version=ray_version or "2.47.0",
             enable_ingress=enable_ingress or False,
             suspend=suspend or False,
-            **{k: v for k, v in cluster_spec.items() if k not in [
-                "head_node_spec", "worker_node_specs", "ray_version", "enable_ingress", "suspend"
-            ]}
+            **{
+                k: v
+                for k, v in cluster_spec.items()
+                if k
+                not in [
+                    "head_node_spec",
+                    "worker_node_specs",
+                    "ray_version",
+                    "enable_ingress",
+                    "suspend",
+                ]
+            },
         )
 
         if crd_result.get("status") != "success":
@@ -214,55 +231,56 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
             resource_type="raycluster",
             name=name,
             resource_spec=ray_cluster_spec,
-            namespace=namespace
+            namespace=namespace,
         )
 
         if update_result.get("status") == "success":
             self._update_cluster_state(name, namespace, "updating")
-            
+
             return self._response_formatter.format_success_response(
                 cluster_name=name,
                 namespace=namespace,
                 cluster_status="updating",
-                message=f"RayCluster '{name}' update initiated"
+                message=f"RayCluster '{name}' update initiated",
             )
         else:
             return update_result
 
     @ResponseFormatter.handle_exceptions("delete ray cluster")
-    async def delete_ray_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+    async def delete_ray_cluster(
+        self, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Delete Ray cluster."""
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.delete_resource(
-            resource_type="raycluster",
-            name=name,
-            namespace=namespace
+            resource_type="raycluster", name=name, namespace=namespace
         )
 
         if result.get("status") == "success":
             # Update state to remove the cluster
             self._remove_cluster_state(name, namespace)
-            
+
             return self._response_formatter.format_success_response(
                 cluster_name=name,
                 namespace=namespace,
                 deleted=True,
                 deletion_timestamp=result.get("deletion_timestamp"),
-                message=f"RayCluster '{name}' deletion initiated"
+                message=f"RayCluster '{name}' deletion initiated",
             )
         else:
             return result
 
     @ResponseFormatter.handle_exceptions("scale ray cluster")
-    async def scale_ray_cluster(self, name: str, worker_replicas: int, namespace: str = "default") -> Dict[str, Any]:
+    async def scale_ray_cluster(
+        self, name: str, worker_replicas: int, namespace: str = "default"
+    ) -> Dict[str, Any]:
         """Scale Ray cluster workers."""
         self._ensure_kuberay_ready()
 
         if worker_replicas < 0:
             return self._response_formatter.format_error_response(
-                "scale ray cluster",
-                Exception("worker_replicas must be non-negative")
+                "scale ray cluster", Exception("worker_replicas must be non-negative")
             )
 
         # Get current cluster configuration
@@ -272,29 +290,28 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
 
         current_resource = current_result.get("raw_resource", {})
         current_spec = current_resource.get("spec", {})
-        
+
         # Update worker group replicas
         worker_groups = current_spec.get("workerGroupSpecs", [])
         if not worker_groups:
             return self._response_formatter.format_error_response(
-                "scale ray cluster",
-                Exception("No worker groups found in cluster")
+                "scale ray cluster", Exception("No worker groups found in cluster")
             )
 
         # Scale the first worker group (could be enhanced to scale specific groups)
         worker_groups[0]["replicas"] = worker_replicas
-        worker_groups[0]["maxReplicas"] = max(worker_replicas * 2, worker_groups[0].get("maxReplicas", worker_replicas))
+        worker_groups[0]["maxReplicas"] = max(
+            worker_replicas * 2, worker_groups[0].get("maxReplicas", worker_replicas)
+        )
 
         # Update the cluster
-        update_spec = {
-            "spec": current_spec
-        }
+        update_spec = {"spec": current_spec}
 
         update_result = await self._crd_operations.update_resource(
             resource_type="raycluster",
             name=name,
             resource_spec=update_spec,
-            namespace=namespace
+            namespace=namespace,
         )
 
         if update_result.get("status") == "success":
@@ -303,30 +320,32 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                 namespace=namespace,
                 worker_replicas=worker_replicas,
                 cluster_status="scaling",
-                message=f"RayCluster '{name}' scaling to {worker_replicas} worker replicas"
+                message=f"RayCluster '{name}' scaling to {worker_replicas} worker replicas",
             )
         else:
             return update_result
 
-    def _update_cluster_state(self, cluster_name: str, namespace: str, status: str) -> None:
+    def _update_cluster_state(
+        self, cluster_name: str, namespace: str, status: str
+    ) -> None:
         """Update cluster state in state manager."""
         state = self.state_manager.get_state()
         kuberay_clusters = state.get("kuberay_clusters", {})
-        
+
         kuberay_clusters[f"{namespace}/{cluster_name}"] = {
             "name": cluster_name,
             "namespace": namespace,
             "cluster_status": status,
-            "dashboard_url": self._get_dashboard_url(cluster_name, namespace)
+            "dashboard_url": self._get_dashboard_url(cluster_name, namespace),
         }
-        
+
         self.state_manager.update_state(kuberay_clusters=kuberay_clusters)
 
     def _remove_cluster_state(self, cluster_name: str, namespace: str) -> None:
         """Remove cluster state from state manager."""
         state = self.state_manager.get_state()
         kuberay_clusters = state.get("kuberay_clusters", {})
-        
+
         cluster_key = f"{namespace}/{cluster_name}"
         if cluster_key in kuberay_clusters:
             del kuberay_clusters[cluster_key]
@@ -336,4 +355,4 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         """Get the dashboard URL for a Ray cluster."""
         # This would typically be constructed based on ingress or port-forwarding setup
         # For now, return a template URL
-        return f"http://{cluster_name}-head-svc.{namespace}.svc.cluster.local:8265" 
+        return f"http://{cluster_name}-head-svc.{namespace}.svc.cluster.local:8265"
