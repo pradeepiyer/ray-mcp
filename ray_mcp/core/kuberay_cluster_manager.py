@@ -39,7 +39,7 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         cluster_name = cluster_spec.get("cluster_name")
         head_node_spec = cluster_spec.get("head_node_spec", {})
         worker_node_specs = cluster_spec.get("worker_node_specs", [])
-        ray_version = cluster_spec.get("ray_version", "2.9.0")
+        ray_version = cluster_spec.get("ray_version", "2.47.0")
         enable_ingress = cluster_spec.get("enable_ingress", False)
         suspend = cluster_spec.get("suspend", False)
 
@@ -196,7 +196,7 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
             worker_node_specs=worker_node_specs or [],
             cluster_name=name,
             namespace=namespace,
-            ray_version=ray_version or "2.9.0",
+            ray_version=ray_version or "2.47.0",
             enable_ingress=enable_ingress or False,
             suspend=suspend or False,
             **{k: v for k, v in cluster_spec.items() if k not in [

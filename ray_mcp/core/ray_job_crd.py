@@ -244,7 +244,7 @@ class RayJobCRDManager(RayJobCRD):
     def _build_default_cluster_spec(self) -> Dict[str, Any]:
         """Build default RayCluster specification for the job."""
         return {
-            "rayVersion": "2.9.0",
+            "rayVersion": "2.47.0",
             "enableInClusterService": True,
             "headGroupSpec": {
                 "serviceType": "ClusterIP",
@@ -258,7 +258,7 @@ class RayJobCRDManager(RayJobCRD):
                     "spec": {
                         "containers": [{
                             "name": "ray-head",
-                            "image": "rayproject/ray:2.9.0",
+                            "image": "rayproject/ray:2.47.0",
                             "ports": [
                                 {"containerPort": 6379, "name": "gcs-server"},
                                 {"containerPort": 8265, "name": "dashboard"},
@@ -285,7 +285,7 @@ class RayJobCRDManager(RayJobCRD):
                     "spec": {
                         "containers": [{
                             "name": "ray-worker",
-                            "image": "rayproject/ray:2.9.0",
+                            "image": "rayproject/ray:2.47.0",
                             "resources": {
                                 "requests": {"cpu": "2", "memory": "4Gi"},
                                 "limits": {"cpu": "2", "memory": "4Gi"}

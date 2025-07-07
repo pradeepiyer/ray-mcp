@@ -36,7 +36,7 @@ class RayClusterCRDManager(RayClusterCRD):
         worker_node_specs: List[Dict[str, Any]], 
         cluster_name: Optional[str] = None,
         namespace: str = "default",
-        ray_version: str = "2.9.0",
+        ray_version: str = "2.47.0",
         enable_ingress: bool = False,
         suspend: bool = False,
         **kwargs: Any
@@ -187,7 +187,7 @@ class RayClusterCRDManager(RayClusterCRD):
                 "spec": {
                     "containers": [{
                         "name": "ray-head",
-                        "image": head_spec.get("image", "rayproject/ray:2.9.0"),
+                        "image": head_spec.get("image", "rayproject/ray:2.47.0"),
                         "ports": [
                             {"containerPort": 6379, "name": "gcs-server"},
                             {"containerPort": 8265, "name": "dashboard"},
@@ -228,7 +228,7 @@ class RayClusterCRDManager(RayClusterCRD):
                 "spec": {
                     "containers": [{
                         "name": "ray-worker",
-                        "image": worker_spec.get("image", "rayproject/ray:2.9.0"),
+                        "image": worker_spec.get("image", "rayproject/ray:2.47.0"),
                         "resources": self._build_resource_spec(worker_spec),
                         "env": worker_spec.get("env", [])
                     }]

@@ -65,7 +65,7 @@ class TestRayClusterCRD:
             "kind": "RayCluster",
             "metadata": {"name": "test-cluster"},
             "spec": {
-                "rayVersion": "2.9.0",
+                "rayVersion": "2.47.0",
                 "headGroupSpec": {"template": {"spec": {}}},
                 "workerGroupSpecs": [{"template": {"spec": {}}}]
             }
@@ -241,7 +241,7 @@ class TestKubeRayClusterManager:
             "status": "success",
             "resource": {
                 "metadata": {"name": "test-cluster", "creationTimestamp": "2023-01-01T00:00:00Z"},
-                "spec": {"rayVersion": "2.9.0"},
+                "spec": {"rayVersion": "2.47.0"},
                 "status": {
                     "phase": "running",
                     "state": "ready",
@@ -257,7 +257,7 @@ class TestKubeRayClusterManager:
         cluster = result.get("cluster", {})
         assert cluster["name"] == "test-cluster"
         assert cluster["phase"] == "running"
-        assert cluster["ray_version"] == "2.9.0"
+        assert cluster["ray_version"] == "2.47.0"
 
     @pytest.mark.asyncio
     async def test_scale_ray_cluster(self):
