@@ -179,6 +179,131 @@ class KubernetesManager(Protocol):
         ...
 
 
+@runtime_checkable
+class CRDOperations(Protocol):
+    """Protocol for Custom Resource Definition operations."""
+
+    async def create_resource(self, resource_type: str, resource_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Create a custom resource."""
+        ...
+
+    async def get_resource(self, resource_type: str, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get a custom resource by name."""
+        ...
+
+    async def list_resources(self, resource_type: str, namespace: str = "default") -> Dict[str, Any]:
+        """List custom resources."""
+        ...
+
+    async def update_resource(self, resource_type: str, name: str, resource_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Update a custom resource."""
+        ...
+
+    async def delete_resource(self, resource_type: str, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Delete a custom resource."""
+        ...
+
+    async def watch_resource(self, resource_type: str, namespace: str = "default") -> Dict[str, Any]:
+        """Watch custom resource changes."""
+        ...
+
+
+@runtime_checkable
+class RayClusterCRD(Protocol):
+    """Protocol for RayCluster Custom Resource Definition."""
+
+    def create_spec(self, head_node_spec: Dict[str, Any], worker_node_specs: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
+        """Create RayCluster specification."""
+        ...
+
+    def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate RayCluster specification."""
+        ...
+
+    def to_yaml(self, spec: Dict[str, Any]) -> str:
+        """Convert specification to YAML."""
+        ...
+
+    def to_json(self, spec: Dict[str, Any]) -> str:
+        """Convert specification to JSON."""
+        ...
+
+
+@runtime_checkable
+class RayJobCRD(Protocol):
+    """Protocol for RayJob Custom Resource Definition."""
+
+    def create_spec(self, entrypoint: str, runtime_env: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
+        """Create RayJob specification."""
+        ...
+
+    def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate RayJob specification."""
+        ...
+
+    def to_yaml(self, spec: Dict[str, Any]) -> str:
+        """Convert specification to YAML."""
+        ...
+
+    def to_json(self, spec: Dict[str, Any]) -> str:
+        """Convert specification to JSON."""
+        ...
+
+
+@runtime_checkable
+class KubeRayClusterManager(Protocol):
+    """Protocol for KubeRay cluster management."""
+
+    async def create_ray_cluster(self, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Create a Ray cluster using KubeRay."""
+        ...
+
+    async def get_ray_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get Ray cluster status."""
+        ...
+
+    async def list_ray_clusters(self, namespace: str = "default") -> Dict[str, Any]:
+        """List Ray clusters."""
+        ...
+
+    async def update_ray_cluster(self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Update Ray cluster configuration."""
+        ...
+
+    async def delete_ray_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Delete Ray cluster."""
+        ...
+
+    async def scale_ray_cluster(self, name: str, worker_replicas: int, namespace: str = "default") -> Dict[str, Any]:
+        """Scale Ray cluster workers."""
+        ...
+
+
+@runtime_checkable
+class KubeRayJobManager(Protocol):
+    """Protocol for KubeRay job management."""
+
+    async def create_ray_job(self, job_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Create a Ray job using KubeRay."""
+        ...
+
+    async def get_ray_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get Ray job status."""
+        ...
+
+    async def list_ray_jobs(self, namespace: str = "default") -> Dict[str, Any]:
+        """List Ray jobs."""
+        ...
+
+    async def delete_ray_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Delete Ray job."""
+        ...
+
+    async def get_ray_job_logs(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get Ray job logs."""
+        ...
+
+
 class RayComponent(ABC):
     """Base class for Ray MCP components."""
 
@@ -212,3 +337,24 @@ class KubernetesComponent(ABC):
         state = self._state_manager.get_state()
         if not state.get("kubernetes_connected", False):
             raise RuntimeError("Kubernetes is not connected. Please connect to a cluster first.")
+
+
+class KubeRayComponent(ABC):
+    """Base class for KubeRay MCP components."""
+
+    def __init__(self, state_manager: StateManager):
+        self._state_manager = state_manager
+
+    @property
+    def state_manager(self) -> StateManager:
+        """Get the state manager."""
+        return self._state_manager
+
+    def _ensure_kuberay_ready(self) -> None:
+        """Ensure Kubernetes is connected and KubeRay is available."""
+        state = self._state_manager.get_state()
+        if not state.get("kubernetes_connected", False):
+            raise RuntimeError("Kubernetes is not connected. Please connect to a cluster first.")
+        
+        # Could add additional checks for KubeRay CRDs being installed
+        # This would be expanded in a real implementation

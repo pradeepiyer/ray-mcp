@@ -23,6 +23,7 @@ dependencies = [
     "rich>=13.0.0",
     "tqdm>=4.64.0",
     "kubernetes>=26.1.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]

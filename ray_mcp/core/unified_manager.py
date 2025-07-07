@@ -8,6 +8,8 @@ from .log_manager import RayLogManager
 from .port_manager import RayPortManager
 from .state_manager import RayStateManager
 from .kubernetes_manager import KubernetesClusterManager
+from .kuberay_cluster_manager import KubeRayClusterManagerImpl
+from .kuberay_job_manager import KubeRayJobManagerImpl
 
 
 class RayUnifiedManager:
@@ -30,6 +32,8 @@ class RayUnifiedManager:
         self._job_manager = RayJobManager(self._state_manager)
         self._log_manager = RayLogManager(self._state_manager)
         self._kubernetes_manager = KubernetesClusterManager(self._state_manager)
+        self._kuberay_cluster_manager = KubeRayClusterManagerImpl(self._state_manager)
+        self._kuberay_job_manager = KubeRayJobManagerImpl(self._state_manager)
 
     # Delegate properties to state manager
     @property
@@ -149,6 +153,14 @@ class RayUnifiedManager:
         """Get the Kubernetes manager component."""
         return self._kubernetes_manager
 
+    def get_kuberay_cluster_manager(self) -> KubeRayClusterManagerImpl:
+        """Get the KubeRay cluster manager component."""
+        return self._kuberay_cluster_manager
+
+    def get_kuberay_job_manager(self) -> KubeRayJobManagerImpl:
+        """Get the KubeRay job manager component."""
+        return self._kuberay_job_manager
+
     # Kubernetes management methods
     async def connect_kubernetes_cluster(self, config_file: Optional[str] = None, context: Optional[str] = None) -> Dict[str, Any]:
         """Connect to Kubernetes cluster."""
@@ -201,3 +213,60 @@ class RayUnifiedManager:
     def kubernetes_server_version(self) -> Optional[str]:
         """Get Kubernetes server version."""
         return self._state_manager.get_state().get("kubernetes_server_version")
+
+    # KubeRay cluster management methods
+    async def create_kuberay_cluster(self, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Create a Ray cluster using KubeRay."""
+        return await self._kuberay_cluster_manager.create_ray_cluster(cluster_spec, namespace)
+
+    async def get_kuberay_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get Ray cluster status."""
+        return await self._kuberay_cluster_manager.get_ray_cluster(name, namespace)
+
+    async def list_kuberay_clusters(self, namespace: str = "default") -> Dict[str, Any]:
+        """List Ray clusters."""
+        return await self._kuberay_cluster_manager.list_ray_clusters(namespace)
+
+    async def update_kuberay_cluster(self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Update Ray cluster configuration."""
+        return await self._kuberay_cluster_manager.update_ray_cluster(name, cluster_spec, namespace)
+
+    async def delete_kuberay_cluster(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Delete Ray cluster."""
+        return await self._kuberay_cluster_manager.delete_ray_cluster(name, namespace)
+
+    async def scale_kuberay_cluster(self, name: str, worker_replicas: int, namespace: str = "default") -> Dict[str, Any]:
+        """Scale Ray cluster workers."""
+        return await self._kuberay_cluster_manager.scale_ray_cluster(name, worker_replicas, namespace)
+
+    # KubeRay job management methods
+    async def create_kuberay_job(self, job_spec: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """Create a Ray job using KubeRay."""
+        return await self._kuberay_job_manager.create_ray_job(job_spec, namespace)
+
+    async def get_kuberay_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get Ray job status."""
+        return await self._kuberay_job_manager.get_ray_job(name, namespace)
+
+    async def list_kuberay_jobs(self, namespace: str = "default") -> Dict[str, Any]:
+        """List Ray jobs."""
+        return await self._kuberay_job_manager.list_ray_jobs(namespace)
+
+    async def delete_kuberay_job(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Delete Ray job."""
+        return await self._kuberay_job_manager.delete_ray_job(name, namespace)
+
+    async def get_kuberay_job_logs(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """Get Ray job logs."""
+        return await self._kuberay_job_manager.get_ray_job_logs(name, namespace)
+
+    # KubeRay properties
+    @property
+    def kuberay_clusters(self) -> Dict[str, Any]:
+        """Get current KubeRay clusters."""
+        return self._state_manager.get_state().get("kuberay_clusters", {})
+
+    @property
+    def kuberay_jobs(self) -> Dict[str, Any]:
+        """Get current KubeRay jobs."""
+        return self._state_manager.get_state().get("kuberay_jobs", {})
