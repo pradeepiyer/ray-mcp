@@ -98,7 +98,7 @@ Ray MCP uses a modular architecture with focused components:
                                        │ │LogManager   │ │
                                        │ └─────────────┘ │
                                        │ ┌─────────────┐ │
-                                       │ │PortManager │ │
+                                       │ │PortManager  │ │
                                        │ └─────────────┘ │
                                        └─────────┬───────┘
                                                  │
