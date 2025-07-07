@@ -33,29 +33,148 @@ class ToolRegistry:
         # Basic cluster management
         self._register_tool(
             name="init_ray",
-            description="Initialize Ray cluster - start a new cluster or connect to existing one. If address is provided, connects to existing cluster; otherwise starts a new cluster. IMPORTANT: For head-node-only clusters (no worker nodes), explicitly pass worker_nodes=[] (empty array). For default behavior (2 workers), omit worker_nodes parameter. For custom workers, specify worker configurations. All cluster management is done through the dashboard API.",
+            description="Initialize Ray cluster - start a new local cluster, connect to existing cluster, or create a Kubernetes cluster via KubeRay. Supports both local Ray clusters and Kubernetes-based clusters using KubeRay operator. If address is provided, connects to existing cluster; otherwise creates new cluster based on cluster_type. IMPORTANT: For head-node-only clusters (no worker nodes), explicitly pass worker_nodes=[] (empty array). For default behavior (2 workers), omit worker_nodes parameter.",
             schema={
                 "type": "object",
                 "properties": {
                     "address": {
                         "type": "string",
-                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster via dashboard API; if not provided, starts a new cluster. Connection uses dashboard API (port 8265) for all cluster operations.",
+                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster via dashboard API; if not provided, creates new cluster based on cluster_type. Connection uses dashboard API (port 8265) for all cluster operations.",
+                    },
+                    "cluster_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s"],
+                        "default": "local",
+                        "description": "Type of cluster to create. 'local' creates a local Ray cluster, 'kubernetes' or 'k8s' creates a cluster using KubeRay operator on Kubernetes.",
+                    },
+                    "kubernetes_config": {
+                        "type": "object",
+                        "description": "Kubernetes-specific configuration for KubeRay clusters. Only used when cluster_type is 'kubernetes' or 'k8s'.",
+                        "properties": {
+                            "namespace": {
+                                "type": "string",
+                                "default": "default",
+                                "description": "Kubernetes namespace to deploy the Ray cluster in",
+                            },
+                            "cluster_name": {
+                                "type": "string",
+                                "description": "Name for the Ray cluster (auto-generated if not provided)",
+                            },
+                            "image": {
+                                "type": "string",
+                                "description": "Container image for Ray pods (defaults to ray:2.47.0)",
+                            },
+                            "service_account": {
+                                "type": "string",
+                                "description": "Kubernetes service account for Ray pods",
+                            },
+                            "node_selector": {
+                                "type": "object",
+                                "description": "Node selector for pod scheduling",
+                            },
+                            "tolerations": {
+                                "type": "array",
+                                "description": "Tolerations for pod scheduling",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "key": {"type": "string"},
+                                        "operator": {"type": "string"},
+                                        "value": {"type": "string"},
+                                        "effect": {"type": "string"},
+                                        "tolerationSeconds": {"type": "integer"},
+                                    },
+                                },
+                            },
+                            "enable_ingress": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Whether to enable ingress for Ray dashboard",
+                            },
+                            "auto_scale": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Whether to enable autoscaling for worker nodes",
+                            },
+                            "min_replicas": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 1,
+                                "description": "Minimum number of worker replicas when autoscaling is enabled",
+                            },
+                            "max_replicas": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "default": 10,
+                                "description": "Maximum number of worker replicas when autoscaling is enabled",
+                            },
+                        },
                     },
                     "num_cpus": {
                         "type": "integer",
                         "minimum": 1,
                         "default": 1,
-                        "description": "Number of CPUs for head node (only used when starting new cluster)",
+                        "description": "Number of CPUs for head node (local clusters) or head node pod (Kubernetes clusters)",
                     },
                     "num_gpus": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Number of GPUs for head node (only used when starting new cluster)",
+                        "description": "Number of GPUs for head node (local clusters) or head node pod (Kubernetes clusters)",
                     },
                     "object_store_memory": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Object store memory in bytes for head node (only used when starting new cluster)",
+                        "description": "Object store memory in bytes for head node (local clusters) or head node pod (Kubernetes clusters)",
+                    },
+                    "resources": {
+                        "type": "object",
+                        "description": "Resource requests and limits for Kubernetes pods. Only used when cluster_type is 'kubernetes' or 'k8s'.",
+                        "properties": {
+                            "head_node": {
+                                "type": "object",
+                                "description": "Resources for head node pod",
+                                "properties": {
+                                    "requests": {
+                                        "type": "object",
+                                        "properties": {
+                                            "cpu": {"type": "string", "description": "CPU request (e.g., '1000m', '2')"},
+                                            "memory": {"type": "string", "description": "Memory request (e.g., '2Gi', '1024Mi')"},
+                                            "nvidia.com/gpu": {"type": "string", "description": "GPU request (e.g., '1', '2')"},
+                                        },
+                                    },
+                                    "limits": {
+                                        "type": "object",
+                                        "properties": {
+                                            "cpu": {"type": "string", "description": "CPU limit (e.g., '2000m', '4')"},
+                                            "memory": {"type": "string", "description": "Memory limit (e.g., '4Gi', '2048Mi')"},
+                                            "nvidia.com/gpu": {"type": "string", "description": "GPU limit (e.g., '1', '2')"},
+                                        },
+                                    },
+                                },
+                            },
+                            "worker_nodes": {
+                                "type": "object",
+                                "description": "Resources for worker node pods",
+                                "properties": {
+                                    "requests": {
+                                        "type": "object",
+                                        "properties": {
+                                            "cpu": {"type": "string", "description": "CPU request (e.g., '500m', '1')"},
+                                            "memory": {"type": "string", "description": "Memory request (e.g., '1Gi', '512Mi')"},
+                                            "nvidia.com/gpu": {"type": "string", "description": "GPU request (e.g., '1', '2')"},
+                                        },
+                                    },
+                                    "limits": {
+                                        "type": "object",
+                                        "properties": {
+                                            "cpu": {"type": "string", "description": "CPU limit (e.g., '1000m', '2')"},
+                                            "memory": {"type": "string", "description": "Memory limit (e.g., '2Gi', '1024Mi')"},
+                                            "nvidia.com/gpu": {"type": "string", "description": "GPU limit (e.g., '1', '2')"},
+                                        },
+                                    },
+                                },
+                            },
+                        },
                     },
                     "worker_nodes": {
                         "type": "array",
@@ -86,6 +205,28 @@ class ToolRegistry:
                                     "type": "string",
                                     "description": "Optional name for this worker node",
                                 },
+                                "image": {
+                                    "type": "string",
+                                    "description": "Container image for this worker node (Kubernetes only)",
+                                },
+                                "node_selector": {
+                                    "type": "object",
+                                    "description": "Node selector for this worker node (Kubernetes only)",
+                                },
+                                "tolerations": {
+                                    "type": "array",
+                                    "description": "Tolerations for this worker node (Kubernetes only)",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "key": {"type": "string"},
+                                            "operator": {"type": "string"},
+                                            "value": {"type": "string"},
+                                            "effect": {"type": "string"},
+                                            "tolerationSeconds": {"type": "integer"},
+                                        },
+                                    },
+                                },
                             },
                             "required": ["num_cpus"],
                         },
@@ -94,18 +235,18 @@ class ToolRegistry:
                         "type": ["integer", "null"],
                         "minimum": 10000,
                         "maximum": 65535,
-                        "description": "Port for head node (only used when starting new cluster, if None, a free port will be found)",
+                        "description": "Port for head node (only used for local clusters, if None, a free port will be found)",
                     },
                     "dashboard_port": {
                         "type": ["integer", "null"],
                         "minimum": 1000,
                         "maximum": 65535,
-                        "description": "Port for Ray dashboard (only used when starting new cluster, if None, a free port will be found)",
+                        "description": "Port for Ray dashboard (only used for local clusters, if None, a free port will be found)",
                     },
                     "head_node_host": {
                         "type": "string",
                         "default": "127.0.0.1",
-                        "description": "Host address for head node (only used when starting new cluster)",
+                        "description": "Host address for head node (only used for local clusters)",
                     },
                 },
             },
@@ -129,14 +270,130 @@ class ToolRegistry:
         # Job management
         self._register_tool(
             name="submit_job",
-            description="Submit a job to the Ray cluster",
+            description="Submit a job to the Ray cluster. Supports both local Ray clusters and Kubernetes-based clusters using KubeRay operator. Automatically detects job type based on cluster state or explicit job_type parameter. For local clusters, uses Ray job submission API. For Kubernetes clusters, creates RayJob CRD resources.",
             schema={
                 "type": "object",
                 "properties": {
-                    "entrypoint": {"type": "string"},
-                    "runtime_env": {"type": "object"},
-                    "job_id": {"type": "string"},
-                    "metadata": {"type": "object"},
+                    "entrypoint": {
+                        "type": "string",
+                        "description": "Entry point command for the job (required)",
+                    },
+                    "job_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of job to submit. 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection based on cluster state",
+                    },
+                    "runtime_env": {
+                        "type": "object",
+                        "description": "Runtime environment configuration for the job",
+                    },
+                    "job_id": {
+                        "type": "string",
+                        "description": "Optional job ID (auto-generated if not provided)",
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "Optional metadata for the job",
+                    },
+                    "kubernetes_config": {
+                        "type": "object",
+                        "description": "Kubernetes-specific configuration for KubeRay jobs. Only used when job_type is 'kubernetes', 'k8s', or auto-detected as Kubernetes",
+                        "properties": {
+                            "namespace": {
+                                "type": "string",
+                                "default": "default",
+                                "description": "Kubernetes namespace to deploy the job in",
+                            },
+                            "job_name": {
+                                "type": "string",
+                                "description": "Name for the RayJob resource (auto-generated if not provided)",
+                            },
+                            "cluster_selector": {
+                                "type": "object",
+                                "description": "Selector to choose existing Ray cluster for the job",
+                            },
+                            "suspend": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Whether to suspend the job initially",
+                            },
+                            "ttl_seconds_after_finished": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 86400,
+                                "description": "Time to live for the job after completion (in seconds)",
+                            },
+                            "active_deadline_seconds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "Maximum time the job can run before being terminated (in seconds)",
+                            },
+                            "backoff_limit": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 0,
+                                "description": "Number of retry attempts for failed jobs",
+                            },
+                        },
+                    },
+                    "image": {
+                        "type": "string",
+                        "description": "Container image for the job (Kubernetes only, defaults to ray:2.47.0)",
+                    },
+                    "resources": {
+                        "type": "object",
+                        "description": "Resource requests and limits for Kubernetes job pods. Only used for Kubernetes jobs",
+                        "properties": {
+                            "requests": {
+                                "type": "object",
+                                "properties": {
+                                    "cpu": {"type": "string", "description": "CPU request (e.g., '1000m', '2')"},
+                                    "memory": {"type": "string", "description": "Memory request (e.g., '2Gi', '1024Mi')"},
+                                    "nvidia.com/gpu": {"type": "string", "description": "GPU request (e.g., '1', '2')"},
+                                },
+                            },
+                            "limits": {
+                                "type": "object",
+                                "properties": {
+                                    "cpu": {"type": "string", "description": "CPU limit (e.g., '2000m', '4')"},
+                                    "memory": {"type": "string", "description": "Memory limit (e.g., '4Gi', '2048Mi')"},
+                                    "nvidia.com/gpu": {"type": "string", "description": "GPU limit (e.g., '1', '2')"},
+                                },
+                            },
+                        },
+                    },
+                    "tolerations": {
+                        "type": "array",
+                        "description": "Tolerations for job pod scheduling (Kubernetes only)",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": {"type": "string"},
+                                "operator": {"type": "string"},
+                                "value": {"type": "string"},
+                                "effect": {"type": "string"},
+                                "tolerationSeconds": {"type": "integer"},
+                            },
+                        },
+                    },
+                    "node_selector": {
+                        "type": "object",
+                        "description": "Node selector for job pod scheduling (Kubernetes only)",
+                    },
+                    "service_account": {
+                        "type": "string",
+                        "description": "Kubernetes service account for job pods (Kubernetes only)",
+                    },
+                    "environment": {
+                        "type": "object",
+                        "description": "Environment variables for the job",
+                        "additionalProperties": {"type": "string"},
+                    },
+                    "working_dir": {
+                        "type": "string",
+                        "description": "Working directory for the job",
+                    },
                 },
                 "required": ["entrypoint"],
             },
@@ -145,8 +402,23 @@ class ToolRegistry:
 
         self._register_tool(
             name="list_jobs",
-            description="List all jobs in the Ray cluster",
-            schema={"type": "object", "properties": {}},
+            description="List all jobs in the Ray cluster. Supports both local Ray clusters and Kubernetes-based clusters using KubeRay operator. Automatically detects job type based on cluster state or explicit job_type parameter.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "job_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto", "all"],
+                        "default": "auto",
+                        "description": "Type of jobs to list. 'local' for local Ray jobs, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection, 'all' for both types",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace to list jobs from (only used for Kubernetes jobs)",
+                    },
+                },
+            },
             handler=self._list_jobs_handler,
         )
 
@@ -235,6 +507,170 @@ class ToolRegistry:
             handler=self._retrieve_logs_handler,
         )
 
+        # KubeRay-specific tools
+        self._register_tool(
+            name="list_kuberay_clusters",
+            description="List all KubeRay clusters in Kubernetes namespace",
+            schema={
+                "type": "object",
+                "properties": {
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace to list clusters from",
+                    },
+                },
+            },
+            handler=self._list_kuberay_clusters_handler,
+        )
+
+        self._register_tool(
+            name="inspect_kuberay_cluster",
+            description="Inspect a KubeRay cluster status and configuration",
+            schema={
+                "type": "object",
+                "properties": {
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the Ray cluster to inspect",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace of the cluster",
+                    },
+                },
+                "required": ["cluster_name"],
+            },
+            handler=self._inspect_kuberay_cluster_handler,
+        )
+
+        self._register_tool(
+            name="scale_kuberay_cluster",
+            description="Scale a KubeRay cluster by adjusting worker replicas",
+            schema={
+                "type": "object",
+                "properties": {
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the Ray cluster to scale",
+                    },
+                    "worker_replicas": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Number of worker replicas to scale to",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace of the cluster",
+                    },
+                },
+                "required": ["cluster_name", "worker_replicas"],
+            },
+            handler=self._scale_kuberay_cluster_handler,
+        )
+
+        self._register_tool(
+            name="delete_kuberay_cluster",
+            description="Delete a KubeRay cluster from Kubernetes",
+            schema={
+                "type": "object",
+                "properties": {
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the Ray cluster to delete",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace of the cluster",
+                    },
+                },
+                "required": ["cluster_name"],
+            },
+            handler=self._delete_kuberay_cluster_handler,
+        )
+
+        self._register_tool(
+            name="list_kuberay_jobs",
+            description="List all KubeRay jobs in Kubernetes namespace",
+            schema={
+                "type": "object",
+                "properties": {
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace to list jobs from",
+                    },
+                },
+            },
+            handler=self._list_kuberay_jobs_handler,
+        )
+
+        self._register_tool(
+            name="inspect_kuberay_job",
+            description="Inspect a KubeRay job status and configuration",
+            schema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the Ray job to inspect",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace of the job",
+                    },
+                },
+                "required": ["job_name"],
+            },
+            handler=self._inspect_kuberay_job_handler,
+        )
+
+        self._register_tool(
+            name="delete_kuberay_job",
+            description="Delete a KubeRay job from Kubernetes",
+            schema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the Ray job to delete",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace of the job",
+                    },
+                },
+                "required": ["job_name"],
+            },
+            handler=self._delete_kuberay_job_handler,
+        )
+
+        self._register_tool(
+            name="get_kuberay_job_logs",
+            description="Get logs from a KubeRay job",
+            schema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the Ray job to get logs from",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace of the job",
+                    },
+                },
+                "required": ["job_name"],
+            },
+            handler=self._get_kuberay_job_logs_handler,
+        )
+
     def _register_tool(
         self, name: str, description: str, schema: Dict[str, Any], handler: Callable
     ) -> None:
@@ -270,8 +706,150 @@ class ToolRegistry:
     # Tool handlers - these replace the duplicated logic in main.py and tools.py
 
     async def _init_ray_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for init_ray tool."""
-        return await self.ray_manager.init_cluster(**kwargs)
+        """Handler for init_ray tool with support for both local and Kubernetes clusters."""
+        # If address is provided, connect to existing cluster regardless of cluster_type
+        if kwargs.get("address"):
+            return await self.ray_manager.init_cluster(**kwargs)
+        
+        # Determine cluster type
+        cluster_type = kwargs.get("cluster_type", "local").lower()
+        
+        # For local clusters, use existing init_cluster method
+        if cluster_type == "local":
+            # Remove cluster_type and kubernetes_config from kwargs for local clusters
+            local_kwargs = {k: v for k, v in kwargs.items() if k not in ["cluster_type", "kubernetes_config"]}
+            return await self.ray_manager.init_cluster(**local_kwargs)
+        
+        # For Kubernetes clusters, create KubeRay cluster
+        elif cluster_type in ["kubernetes", "k8s"]:
+            return await self._create_kuberay_cluster(**kwargs)
+        
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', or 'k8s'"
+            )
+
+    async def _create_kuberay_cluster(self, **kwargs) -> Dict[str, Any]:
+        """Create a KubeRay cluster from init_ray parameters."""
+        try:
+            # Extract Kubernetes configuration
+            kubernetes_config = kwargs.get("kubernetes_config", {})
+            namespace = kubernetes_config.get("namespace", "default")
+            cluster_name = kubernetes_config.get("cluster_name")
+            
+            # Build cluster specification from parameters
+            cluster_spec = await self._build_kuberay_cluster_spec(**kwargs)
+            
+            # Create the cluster
+            result = await self.ray_manager.create_kuberay_cluster(
+                cluster_spec=cluster_spec,
+                namespace=namespace
+            )
+            
+            return result
+        except Exception as e:
+            return ResponseFormatter.format_error_response("create kuberay cluster", e)
+
+    async def _build_kuberay_cluster_spec(self, **kwargs) -> Dict[str, Any]:
+        """Build KubeRay cluster specification from init_ray parameters."""
+        kubernetes_config = kwargs.get("kubernetes_config", {})
+        resources = kwargs.get("resources", {})
+        worker_nodes = kwargs.get("worker_nodes")
+        
+        # Basic cluster configuration
+        cluster_spec = {
+            "cluster_name": kubernetes_config.get("cluster_name"),
+            "namespace": kubernetes_config.get("namespace", "default"),
+            "image": kubernetes_config.get("image", "ray:2.47.0"),
+            "service_account": kubernetes_config.get("service_account"),
+            "enable_ingress": kubernetes_config.get("enable_ingress", False),
+            "auto_scale": kubernetes_config.get("auto_scale", False),
+        }
+        
+        # Head node configuration
+        head_node_config = {
+            "ray_start_params": {}
+        }
+        
+        # Add CPU/GPU/memory from direct parameters
+        if kwargs.get("num_cpus"):
+            head_node_config["ray_start_params"]["num_cpus"] = kwargs["num_cpus"]
+        if kwargs.get("num_gpus"):
+            head_node_config["ray_start_params"]["num_gpus"] = kwargs["num_gpus"]
+        if kwargs.get("object_store_memory"):
+            head_node_config["ray_start_params"]["object_store_memory"] = kwargs["object_store_memory"]
+        
+        # Add Kubernetes resources for head node
+        if resources.get("head_node"):
+            head_node_config["resources"] = resources["head_node"]
+        
+        # Add scheduling constraints
+        if kubernetes_config.get("node_selector"):
+            head_node_config["node_selector"] = kubernetes_config["node_selector"]
+        if kubernetes_config.get("tolerations"):
+            head_node_config["tolerations"] = kubernetes_config["tolerations"]
+        
+        cluster_spec["head_node"] = head_node_config
+        
+        # Worker nodes configuration
+        worker_groups = []
+        
+        # Handle worker_nodes parameter
+        if worker_nodes is not None:
+            if len(worker_nodes) == 0:
+                # Head-only cluster
+                pass
+            else:
+                # Custom worker configuration
+                for i, worker_config in enumerate(worker_nodes):
+                    worker_group = {
+                        "group_name": worker_config.get("node_name", f"worker-group-{i}"),
+                        "replicas": 1,
+                        "ray_start_params": {}
+                    }
+                    
+                    # Add Ray parameters
+                    if worker_config.get("num_cpus"):
+                        worker_group["ray_start_params"]["num_cpus"] = worker_config["num_cpus"]
+                    if worker_config.get("num_gpus"):
+                        worker_group["ray_start_params"]["num_gpus"] = worker_config["num_gpus"]
+                    if worker_config.get("object_store_memory"):
+                        worker_group["ray_start_params"]["object_store_memory"] = worker_config["object_store_memory"]
+                    
+                    # Add Kubernetes-specific parameters
+                    if worker_config.get("image"):
+                        worker_group["image"] = worker_config["image"]
+                    if worker_config.get("node_selector"):
+                        worker_group["node_selector"] = worker_config["node_selector"]
+                    if worker_config.get("tolerations"):
+                        worker_group["tolerations"] = worker_config["tolerations"]
+                    
+                    worker_groups.append(worker_group)
+        else:
+            # Default: create 2 worker groups
+            default_worker_config = {
+                "group_name": "worker-group",
+                "replicas": 2,
+                "ray_start_params": {"num_cpus": 1}
+            }
+            
+            # Add default worker resources
+            if resources.get("worker_nodes"):
+                default_worker_config["resources"] = resources["worker_nodes"]
+            
+            worker_groups.append(default_worker_config)
+        
+        cluster_spec["worker_groups"] = worker_groups
+        
+        # Auto-scaling configuration
+        if kubernetes_config.get("auto_scale"):
+            cluster_spec["auto_scale"] = {
+                "enabled": True,
+                "min_replicas": kubernetes_config.get("min_replicas", 1),
+                "max_replicas": kubernetes_config.get("max_replicas", 10),
+            }
+        
+        return cluster_spec
 
     async def _stop_ray_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for stop_ray tool."""
@@ -282,16 +860,144 @@ class ToolRegistry:
         return await self.ray_manager.inspect_ray()
 
     async def _submit_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for submit_job tool."""
-        sig = inspect.signature(self.ray_manager.submit_job)
-        # Exclude 'self' parameter from filtering since it's not in kwargs
-        valid_params = {k for k in sig.parameters.keys() if k != "self"}
-        filtered = {k: v for k, v in kwargs.items() if k in valid_params}
-        return await self.ray_manager.submit_job(**filtered)
+        """Handler for submit_job tool with support for both local and Kubernetes jobs."""
+        # Determine job type
+        job_type = kwargs.get("job_type", "auto").lower()
+        
+        if job_type == "auto":
+            # Auto-detect based on cluster state
+            job_type = await self._detect_job_type()
+        
+        # For local jobs, use existing submit_job method
+        if job_type == "local":
+            # Remove job_type and kubernetes_config from kwargs for local jobs
+            local_kwargs = {k: v for k, v in kwargs.items() if k not in [
+                "job_type", "kubernetes_config", "image", "tolerations", 
+                "node_selector", "service_account", "environment", "working_dir"
+            ]}
+            # Filter to only include valid parameters for local job submission
+            sig = inspect.signature(self.ray_manager.submit_job)
+            valid_params = {k for k in sig.parameters.keys() if k != "self"}
+            filtered = {k: v for k, v in local_kwargs.items() if k in valid_params}
+            return await self.ray_manager.submit_job(**filtered)
+        
+        # For Kubernetes jobs, create KubeRay job
+        elif job_type in ["kubernetes", "k8s"]:
+            return await self._create_kuberay_job(**kwargs)
+        
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
+
+    async def _detect_job_type(self) -> str:
+        """Detect job type based on cluster state."""
+        try:
+            # Check if we have KubeRay clusters
+            if self.ray_manager.kuberay_clusters:
+                return "kubernetes"
+            
+            # Check if we have Kubernetes connection
+            if self.ray_manager.is_kubernetes_connected:
+                return "kubernetes"
+            
+            # Check if we have local Ray cluster
+            if self.ray_manager.is_initialized:
+                return "local"
+            
+            # Default to local if no cluster is detected
+            return "local"
+        except Exception:
+            # Fall back to local on any error
+            return "local"
+
+    async def _create_kuberay_job(self, **kwargs) -> Dict[str, Any]:
+        """Create a KubeRay job from submit_job parameters."""
+        try:
+            # Extract Kubernetes configuration
+            kubernetes_config = kwargs.get("kubernetes_config", {})
+            namespace = kubernetes_config.get("namespace", "default")
+            
+            # Build job specification from parameters
+            job_spec = await self._build_kuberay_job_spec(**kwargs)
+            
+            # Create the job
+            result = await self.ray_manager.create_kuberay_job(
+                job_spec=job_spec,
+                namespace=namespace
+            )
+            
+            return result
+        except Exception as e:
+            return ResponseFormatter.format_error_response("create kuberay job", e)
+
+    async def _build_kuberay_job_spec(self, **kwargs) -> Dict[str, Any]:
+        """Build KubeRay job specification from submit_job parameters."""
+        kubernetes_config = kwargs.get("kubernetes_config", {})
+        
+        # Basic job configuration
+        job_spec = {
+            "entrypoint": kwargs["entrypoint"],
+            "runtime_env": kwargs.get("runtime_env"),
+            "job_name": kubernetes_config.get("job_name"),
+            "namespace": kubernetes_config.get("namespace", "default"),
+            "cluster_selector": kubernetes_config.get("cluster_selector"),
+            "suspend": kubernetes_config.get("suspend", False),
+            "ttl_seconds_after_finished": kubernetes_config.get("ttl_seconds_after_finished", 86400),
+            "active_deadline_seconds": kubernetes_config.get("active_deadline_seconds"),
+            "backoff_limit": kubernetes_config.get("backoff_limit", 0),
+        }
+        
+        # Add container image
+        if kwargs.get("image"):
+            job_spec["image"] = kwargs["image"]
+        
+        # Add resources
+        if kwargs.get("resources"):
+            job_spec["resources"] = kwargs["resources"]
+        
+        # Add scheduling constraints
+        if kwargs.get("tolerations"):
+            job_spec["tolerations"] = kwargs["tolerations"]
+        if kwargs.get("node_selector"):
+            job_spec["node_selector"] = kwargs["node_selector"]
+        
+        # Add service account
+        if kwargs.get("service_account"):
+            job_spec["service_account"] = kwargs["service_account"]
+        
+        # Add environment variables
+        if kwargs.get("environment"):
+            job_spec["environment"] = kwargs["environment"]
+        
+        # Add working directory
+        if kwargs.get("working_dir"):
+            job_spec["working_dir"] = kwargs["working_dir"]
+        
+        # Add metadata
+        if kwargs.get("metadata"):
+            job_spec["metadata"] = kwargs["metadata"]
+        
+        return job_spec
 
     async def _list_jobs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_jobs tool."""
-        return await self.ray_manager.list_jobs()
+        job_type = kwargs.get("job_type", "auto").lower()
+        
+        if job_type == "auto":
+            # Auto-detect based on cluster state
+            job_type = await self._detect_job_type()
+        
+        namespace = kwargs.get("namespace", "default")
+        
+        if job_type == "local":
+            return await self.ray_manager.list_jobs()
+        elif job_type in ["kubernetes", "k8s"]:
+            return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
     async def _inspect_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for inspect_job tool."""
@@ -306,6 +1012,55 @@ class ToolRegistry:
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for retrieve_logs tool."""
         return await self.ray_manager.retrieve_logs(**kwargs)
+
+    # KubeRay-specific handlers
+
+    async def _list_kuberay_clusters_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for list_kuberay_clusters tool."""
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.list_kuberay_clusters(namespace=namespace)
+
+    async def _inspect_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for inspect_kuberay_cluster tool."""
+        cluster_name = kwargs["cluster_name"]
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.get_kuberay_cluster(cluster_name, namespace)
+
+    async def _scale_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for scale_kuberay_cluster tool."""
+        cluster_name = kwargs["cluster_name"]
+        worker_replicas = kwargs["worker_replicas"]
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.scale_kuberay_cluster(cluster_name, worker_replicas, namespace)
+
+    async def _delete_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for delete_kuberay_cluster tool."""
+        cluster_name = kwargs["cluster_name"]
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.delete_kuberay_cluster(cluster_name, namespace)
+
+    async def _list_kuberay_jobs_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for list_kuberay_jobs tool."""
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
+
+    async def _inspect_kuberay_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for inspect_kuberay_job tool."""
+        job_name = kwargs["job_name"]
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.get_kuberay_job(job_name, namespace)
+
+    async def _delete_kuberay_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for delete_kuberay_job tool."""
+        job_name = kwargs["job_name"]
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.delete_kuberay_job(job_name, namespace)
+
+    async def _get_kuberay_job_logs_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for get_kuberay_job_logs tool."""
+        job_name = kwargs["job_name"]
+        namespace = kwargs.get("namespace", "default")
+        return await self.ray_manager.get_kuberay_job_logs(job_name, namespace)
 
     def _wrap_with_system_prompt(self, tool_name: str, result: Dict[str, Any]) -> str:
         """Wrap tool output with a system prompt for LLM enhancement."""

@@ -21,7 +21,7 @@ class TestKubernetesManager:
         assert self.kubernetes_manager.get_config_manager() is not None
         assert self.kubernetes_manager.get_client() is not None
 
-    @patch('ray_mcp.core.kubernetes_manager.KUBERNETES_AVAILABLE', False)
+    @patch('ray_mcp.core.kubernetes_config.KUBERNETES_AVAILABLE', False)
     @pytest.mark.asyncio
     async def test_connect_cluster_without_kubernetes_lib(self):
         """Test connecting to cluster without kubernetes library."""
