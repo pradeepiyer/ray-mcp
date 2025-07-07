@@ -108,6 +108,77 @@ class ProcessManager(Protocol):
         ...
 
 
+@runtime_checkable
+class KubernetesClient(Protocol):
+    """Protocol for Kubernetes API client interactions."""
+
+    async def test_connection(self) -> Dict[str, Any]:
+        """Test connection to Kubernetes cluster."""
+        ...
+
+    async def get_cluster_info(self) -> Dict[str, Any]:
+        """Get cluster information."""
+        ...
+
+    async def list_namespaces(self) -> Dict[str, Any]:
+        """List available namespaces."""
+        ...
+
+    async def get_nodes(self) -> Dict[str, Any]:
+        """Get cluster nodes information."""
+        ...
+
+    async def get_pods(self, namespace: str = "default") -> Dict[str, Any]:
+        """Get pods in a namespace."""
+        ...
+
+    def get_current_context(self) -> Optional[str]:
+        """Get current kubeconfig context."""
+        ...
+
+
+@runtime_checkable
+class KubernetesConfig(Protocol):
+    """Protocol for Kubernetes configuration management."""
+
+    def load_config(self, config_file: Optional[str] = None, context: Optional[str] = None) -> Dict[str, Any]:
+        """Load Kubernetes configuration."""
+        ...
+
+    def validate_config(self) -> Dict[str, Any]:
+        """Validate Kubernetes configuration."""
+        ...
+
+    def list_contexts(self) -> Dict[str, Any]:
+        """List available contexts."""
+        ...
+
+    def get_current_context(self) -> Optional[str]:
+        """Get current context."""
+        ...
+
+
+@runtime_checkable
+class KubernetesManager(Protocol):
+    """Protocol for Kubernetes cluster management."""
+
+    async def connect_cluster(self, config_file: Optional[str] = None, context: Optional[str] = None) -> Dict[str, Any]:
+        """Connect to Kubernetes cluster."""
+        ...
+
+    async def disconnect_cluster(self) -> Dict[str, Any]:
+        """Disconnect from Kubernetes cluster."""
+        ...
+
+    async def inspect_cluster(self) -> Dict[str, Any]:
+        """Inspect Kubernetes cluster."""
+        ...
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform health check on Kubernetes cluster."""
+        ...
+
+
 class RayComponent(ABC):
     """Base class for Ray MCP components."""
 
@@ -123,3 +194,21 @@ class RayComponent(ABC):
         """Ensure Ray is initialized."""
         if not self._state_manager.is_initialized():
             raise RuntimeError("Ray is not initialized. Please start Ray first.")
+
+
+class KubernetesComponent(ABC):
+    """Base class for Kubernetes MCP components."""
+
+    def __init__(self, state_manager: StateManager):
+        self._state_manager = state_manager
+
+    @property
+    def state_manager(self) -> StateManager:
+        """Get the state manager."""
+        return self._state_manager
+
+    def _ensure_connected(self) -> None:
+        """Ensure Kubernetes is connected."""
+        state = self._state_manager.get_state()
+        if not state.get("kubernetes_connected", False):
+            raise RuntimeError("Kubernetes is not connected. Please connect to a cluster first.")

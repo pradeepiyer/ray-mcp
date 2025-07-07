@@ -7,6 +7,7 @@ from .job_manager import RayJobManager
 from .log_manager import RayLogManager
 from .port_manager import RayPortManager
 from .state_manager import RayStateManager
+from .kubernetes_manager import KubernetesClusterManager
 
 
 class RayUnifiedManager:
@@ -28,6 +29,7 @@ class RayUnifiedManager:
         )
         self._job_manager = RayJobManager(self._state_manager)
         self._log_manager = RayLogManager(self._state_manager)
+        self._kubernetes_manager = KubernetesClusterManager(self._state_manager)
 
     # Delegate properties to state manager
     @property
@@ -142,3 +144,60 @@ class RayUnifiedManager:
     def get_port_manager(self) -> RayPortManager:
         """Get the port manager component."""
         return self._port_manager
+
+    def get_kubernetes_manager(self) -> KubernetesClusterManager:
+        """Get the Kubernetes manager component."""
+        return self._kubernetes_manager
+
+    # Kubernetes management methods
+    async def connect_kubernetes_cluster(self, config_file: Optional[str] = None, context: Optional[str] = None) -> Dict[str, Any]:
+        """Connect to Kubernetes cluster."""
+        return await self._kubernetes_manager.connect_cluster(config_file, context)
+
+    async def disconnect_kubernetes_cluster(self) -> Dict[str, Any]:
+        """Disconnect from Kubernetes cluster."""
+        return await self._kubernetes_manager.disconnect_cluster()
+
+    async def inspect_kubernetes_cluster(self) -> Dict[str, Any]:
+        """Inspect Kubernetes cluster."""
+        return await self._kubernetes_manager.inspect_cluster()
+
+    async def kubernetes_health_check(self) -> Dict[str, Any]:
+        """Perform health check on Kubernetes cluster."""
+        return await self._kubernetes_manager.health_check()
+
+    async def list_kubernetes_contexts(self) -> Dict[str, Any]:
+        """List available Kubernetes contexts."""
+        return await self._kubernetes_manager.list_contexts()
+
+    async def get_kubernetes_namespaces(self) -> Dict[str, Any]:
+        """Get list of Kubernetes namespaces."""
+        return await self._kubernetes_manager.get_namespaces()
+
+    async def get_kubernetes_nodes(self) -> Dict[str, Any]:
+        """Get Kubernetes cluster nodes."""
+        return await self._kubernetes_manager.get_nodes()
+
+    async def get_kubernetes_pods(self, namespace: str = "default") -> Dict[str, Any]:
+        """Get pods in a Kubernetes namespace."""
+        return await self._kubernetes_manager.get_pods(namespace)
+
+    async def validate_kubernetes_config(self) -> Dict[str, Any]:
+        """Validate Kubernetes configuration."""
+        return await self._kubernetes_manager.validate_config()
+
+    # Kubernetes properties
+    @property
+    def is_kubernetes_connected(self) -> bool:
+        """Check if connected to Kubernetes cluster."""
+        return self._state_manager.get_state().get("kubernetes_connected", False)
+
+    @property
+    def kubernetes_context(self) -> Optional[str]:
+        """Get current Kubernetes context."""
+        return self._state_manager.get_state().get("kubernetes_context")
+
+    @property
+    def kubernetes_server_version(self) -> Optional[str]:
+        """Get Kubernetes server version."""
+        return self._state_manager.get_state().get("kubernetes_server_version")
