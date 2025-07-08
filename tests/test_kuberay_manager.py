@@ -452,10 +452,10 @@ class TestKubeRayUnifiedManagerIntegration:
         cluster_methods = [
             "create_kuberay_cluster",
             "get_kuberay_cluster",
-            "list_kuberay_clusters",
+            "list_ray_clusters",
             "update_kuberay_cluster",
             "delete_kuberay_cluster",
-            "scale_kuberay_cluster",
+            "scale_ray_cluster",
         ]
 
         job_methods = [

@@ -171,8 +171,8 @@ class TestRayUnifiedManagerDelegation:
         assert result["message"] == "Cluster stopped"
         mock_cluster_manager.stop_cluster.assert_called_once()
 
-        # Test inspect_ray delegation
-        result = await manager.inspect_ray()
+        # Test inspect_ray_cluster delegation
+        result = await manager.inspect_ray_cluster()
         assert result["status"] == "running"
         mock_cluster_manager.inspect_cluster.assert_called_once()
 
@@ -197,26 +197,26 @@ class TestRayUnifiedManagerDelegation:
 
         manager._job_manager = mock_job_manager
 
-        # Test submit_job delegation
-        result = await manager.submit_job(
+        # Test submit_ray_job delegation
+        result = await manager.submit_ray_job(
             "python script.py", runtime_env={"pip": ["numpy"]}
         )
         assert result["job_id"] == "job_123"
         # Check that submit_job was called (signature may vary between implementations)
         mock_job_manager.submit_job.assert_called_once()
 
-        # Test list_jobs delegation
-        result = await manager.list_jobs()
+        # Test list_ray_jobs delegation
+        result = await manager.list_ray_jobs()
         assert result["jobs"] == []
         mock_job_manager.list_jobs.assert_called_once()
 
-        # Test cancel_job delegation
-        result = await manager.cancel_job("job_123")
+        # Test cancel_ray_job delegation
+        result = await manager.cancel_ray_job("job_123")
         assert result["cancelled"] is True
         mock_job_manager.cancel_job.assert_called_with("job_123")
 
-        # Test inspect_job delegation
-        result = await manager.inspect_job("job_123", mode="debug")
+        # Test inspect_ray_job delegation
+        result = await manager.inspect_ray_job("job_123", mode="debug")
         assert "job_info" in result
         mock_job_manager.inspect_job.assert_called_with("job_123", "debug")
 
@@ -302,11 +302,11 @@ class TestRayUnifiedManagerBackwardCompatibility:
         expected_methods = [
             "init_cluster",
             "stop_cluster",
-            "inspect_ray",
-            "submit_job",
-            "list_jobs",
-            "cancel_job",
-            "inspect_job",
+            "inspect_ray_cluster",
+            "submit_ray_job",
+            "list_ray_jobs",
+            "cancel_ray_job",
+            "inspect_ray_job",
             "retrieve_logs",
             "find_free_port",
             "cleanup_port_lock",
@@ -349,8 +349,8 @@ class TestRayUnifiedManagerBackwardCompatibility:
 
         # Test that core methods can be called
         await manager.init_cluster(num_cpus=2)
-        await manager.submit_job("python script.py")
-        await manager.list_jobs()
+        await manager.submit_ray_job("python script.py")
+        await manager.list_ray_jobs()
         await manager.retrieve_logs("job_123")
         port = await manager.find_free_port()
         assert port == 10001
@@ -386,7 +386,7 @@ class TestRayUnifiedManagerErrorPropagation:
         )
         manager._job_manager = mock_job_manager
 
-        result = await manager.submit_job("python script.py")
+        result = await manager.submit_ray_job("python script.py")
         assert result["status"] == "error"
         assert "Job submission failed" in result["message"]
 

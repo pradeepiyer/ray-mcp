@@ -73,12 +73,12 @@ class RayUnifiedManager:
         """Stop Ray cluster."""
         return await self._cluster_manager.stop_cluster()
 
-    async def inspect_ray(self) -> Dict[str, Any]:
+    async def inspect_ray_cluster(self) -> Dict[str, Any]:
         """Inspect Ray cluster."""
         return await self._cluster_manager.inspect_cluster()
 
     # Job management methods
-    async def submit_job(
+    async def submit_ray_job(
         self,
         entrypoint: str,
         runtime_env: Optional[Dict[str, Any]] = None,
@@ -91,15 +91,15 @@ class RayUnifiedManager:
             entrypoint, runtime_env, job_id, metadata, **kwargs
         )
 
-    async def list_jobs(self) -> Dict[str, Any]:
+    async def list_ray_jobs(self) -> Dict[str, Any]:
         """List all jobs in the Ray cluster."""
         return await self._job_manager.list_jobs()
 
-    async def cancel_job(self, job_id: str) -> Dict[str, Any]:
+    async def cancel_ray_job(self, job_id: str) -> Dict[str, Any]:
         """Cancel a running job."""
         return await self._job_manager.cancel_job(job_id)
 
-    async def inspect_job(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
+    async def inspect_ray_job(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
         """Inspect job details."""
         return await self._job_manager.inspect_job(job_id, mode)
 
@@ -247,9 +247,10 @@ class RayUnifiedManager:
         await self._ensure_kuberay_gke_coordination()
         return await self._kuberay_cluster_manager.get_ray_cluster(name, namespace)
 
-    async def list_kuberay_clusters(self, namespace: str = "default") -> Dict[str, Any]:
-        """List Ray clusters."""
-        # Ensure GKE coordination is in place if we have a GKE connection
+    async def list_ray_clusters(self, namespace: str = "default") -> Dict[str, Any]:
+        """List Ray clusters (both local and KubeRay)."""
+        # This method is used by the unified list_ray_clusters tool
+        # The tool handler _list_ray_clusters_handler handles local vs KubeRay detection
         await self._ensure_kuberay_gke_coordination()
         return await self._kuberay_cluster_manager.list_ray_clusters(namespace)
 
@@ -267,10 +268,12 @@ class RayUnifiedManager:
         """Delete Ray cluster."""
         return await self._kuberay_cluster_manager.delete_ray_cluster(name, namespace)
 
-    async def scale_kuberay_cluster(
+    async def scale_ray_cluster(
         self, name: str, worker_replicas: int, namespace: str = "default"
     ) -> Dict[str, Any]:
-        """Scale Ray cluster workers."""
+        """Scale Ray cluster workers (unified method)."""
+        # This method is used by the unified scale_ray_cluster tool
+        # The tool handler _scale_ray_cluster_handler handles local vs KubeRay detection
         return await self._kuberay_cluster_manager.scale_ray_cluster(
             name, worker_replicas, namespace
         )

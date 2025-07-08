@@ -50,13 +50,13 @@ class TestMCPServer:
         # Check that we have the expected tools
         tool_names = [tool.name for tool in tools]
         expected_tools = [
-            "init_ray",
-            "stop_ray",
-            "inspect_ray",
-            "submit_job",
-            "list_jobs",
-            "inspect_job",
-            "cancel_job",
+            "init_ray_cluster",
+            "stop_ray_cluster",
+            "inspect_ray_cluster",
+            "submit_ray_job",
+            "list_ray_jobs",
+            "inspect_ray_job",
+            "cancel_ray_job",
             "retrieve_logs",
         ]
 
@@ -92,7 +92,7 @@ class TestToolRegistry:
         assert len(tools) > 0
 
         # Test tool handler functionality
-        handler = self.registry.get_tool_handler("init_ray")
+        handler = self.registry.get_tool_handler("init_ray_cluster")
         assert handler is not None
         assert callable(handler)
 
@@ -102,8 +102,8 @@ class TestToolRegistry:
         # Test list_tool_names
         names = self.registry.list_tool_names()
         assert len(names) > 0
-        assert "init_ray" in names
-        assert "stop_ray" in names
+        assert "init_ray_cluster" in names
+        assert "stop_ray_cluster" in names
 
     @pytest.mark.asyncio
     async def test_tool_dispatch_mechanism(self):
@@ -123,7 +123,7 @@ class TestToolRegistry:
             }
         )
 
-        result = await self.registry.execute_tool("init_ray", {"num_cpus": 4})
+        result = await self.registry.execute_tool("init_ray_cluster", {"num_cpus": 4})
         assert result["status"] == "success"
         assert result.get("result_type") == "connected"
         self.mock_ray_manager.init_cluster.assert_called_once()
@@ -133,7 +133,7 @@ class TestToolRegistry:
             side_effect=Exception("Test error")
         )
 
-        result = await self.registry.execute_tool("init_ray", {})
+        result = await self.registry.execute_tool("init_ray_cluster", {})
         assert result["status"] == "error"
         assert "Test error" in result["message"]
 
@@ -167,7 +167,7 @@ class TestMCPWorkflow:
 
         # Test Ray unavailable scenario - patch at the cluster manager level
         with patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", False):
-            result = await registry.execute_tool("init_ray", {"num_cpus": 4})
+            result = await registry.execute_tool("init_ray_cluster", {"num_cpus": 4})
             assert result["status"] == "error"
             assert "Ray is not available" in result["message"]
 

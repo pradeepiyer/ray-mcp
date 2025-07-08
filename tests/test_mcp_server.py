@@ -104,8 +104,8 @@ class TestRayMCPServer:
 
         # Test core API endpoints with performance measurement
         core_endpoints = [
-            ("inspect_ray", {}),
-            ("list_jobs", {}),
+            ("inspect_ray_cluster", {}),
+            ("list_ray_jobs", {}),
         ]
 
         for endpoint, args in core_endpoints:
@@ -139,8 +139,8 @@ class TestRayMCPServer:
 
         tasks = []
         for i in range(5):
-            tasks.append(call_tool("inspect_ray"))
-            tasks.append(call_tool("list_jobs"))
+            tasks.append(call_tool("inspect_ray_cluster"))
+            tasks.append(call_tool("list_ray_jobs"))
 
         results = await asyncio.gather(*tasks)
         concurrent_time = time.time() - start_time
@@ -161,7 +161,7 @@ class TestRayMCPServer:
         print("\n🔄 Testing job management workflow...")
 
         # Test job listing
-        jobs_result = await call_tool("list_jobs")
+        jobs_result = await call_tool("list_ray_jobs")
         jobs_data = parse_tool_result(jobs_result)
         assert jobs_data["status"] == "success"
         assert "jobs" in jobs_data
@@ -172,7 +172,7 @@ class TestRayMCPServer:
         try:
             with TempScriptManager(TestScripts.QUICK_SUCCESS) as script_path:
                 job_result = await call_tool(
-                    "submit_job", {"entrypoint": f"python {script_path}"}
+                    "submit_ray_job", {"entrypoint": f"python {script_path}"}
                 )
                 job_data = parse_tool_result(job_result)
 
@@ -192,7 +192,7 @@ class TestRayMCPServer:
 
                     # Test component state sharing
                     print("🔗 Testing component state sharing...")
-                    jobs_result = await call_tool("list_jobs")
+                    jobs_result = await call_tool("list_ray_jobs")
                     jobs_data = parse_tool_result(jobs_result)
                     assert jobs_data["status"] == "success"
                     found_job = any(
@@ -230,7 +230,7 @@ class TestRayMCPServer:
                 "error",
             ),
             (
-                "inspect_job",
+                "inspect_ray_job",
                 {"job_id": "non_existent_job_12345", "mode": "status"},
                 "error",
             ),
@@ -249,8 +249,8 @@ class TestRayMCPServer:
 
         # System should remain functional after error conditions
         recovery_tests = [
-            ("inspect_ray", {}),
-            ("list_jobs", {}),
+            ("inspect_ray_cluster", {}),
+            ("list_ray_jobs", {}),
         ]
 
         for endpoint, args in recovery_tests:
@@ -264,11 +264,11 @@ class TestRayMCPServer:
 
         # Multiple calls should return consistent results
         for i in range(3):
-            status_result = await call_tool("inspect_ray")
+            status_result = await call_tool("inspect_ray_cluster")
             status_data = parse_tool_result(status_result)
             assert status_data["status"] in ["success", "active"]
 
-            jobs_result = await call_tool("list_jobs")
+            jobs_result = await call_tool("list_ray_jobs")
             jobs_data = parse_tool_result(jobs_result)
             assert jobs_data["status"] == "success"
         print("✅ Component independence and state consistency verified")
@@ -279,7 +279,7 @@ class TestRayMCPServer:
         # Test various error conditions to ensure graceful handling
         degradation_tests = [
             ("retrieve_logs", {"identifier": "dummy", "log_type": "invalid_type"}),
-            ("inspect_job", {"job_id": "non_existent", "mode": "status"}),
+            ("inspect_ray_job", {"job_id": "non_existent", "mode": "status"}),
             ("retrieve_logs", {"identifier": "non_existent", "log_type": "job"}),
         ]
 

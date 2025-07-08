@@ -107,7 +107,7 @@ async def wait_for_job_completion(
         max_wait = E2EConfig.get_wait_time()
 
     for i in range(max_wait):
-        status_result = await call_tool("inspect_job", {"job_id": job_id})
+        status_result = await call_tool("inspect_ray_job", {"job_id": job_id})
         status_data = parse_tool_result(status_result)
         job_status = status_data.get("job_status", "UNKNOWN")
         print(f"Job {job_id} status at {i+1}s: {job_status}")
@@ -207,7 +207,7 @@ async def _wait_for_cluster_ready(
 
     while time.time() - start_time < max_wait:
         try:
-            status_result = await call_tool("inspect_ray", {})
+            status_result = await call_tool("inspect_ray_cluster", {})
             status_data = parse_tool_result(status_result)
 
             # Check if cluster is ready (either "active" or "success" status)
@@ -261,7 +261,7 @@ async def start_ray_cluster(
 
     print(f"Starting Ray cluster with {cpu_limit} CPU(s)...")
     start_result = await call_tool(
-        "init_ray", {"num_cpus": cpu_limit, "worker_nodes": worker_nodes}
+        "init_ray_cluster", {"num_cpus": cpu_limit, "worker_nodes": worker_nodes}
     )
 
     start_data = parse_tool_result(start_result)
@@ -288,7 +288,7 @@ async def stop_ray_cluster() -> Dict[str, Any]:
         Stop result data
     """
     print("Stopping Ray cluster...")
-    stop_result = await call_tool("stop_ray")
+    stop_result = await call_tool("stop_ray_cluster")
     stop_data = parse_tool_result(stop_result)
 
     assert stop_data["status"] == "success"
@@ -314,7 +314,7 @@ async def stop_ray_cluster() -> Dict[str, Any]:
 
     # Verify cluster is stopped
     print("Verifying cluster is stopped...")
-    final_status_result = await call_tool("inspect_ray")
+    final_status_result = await call_tool("inspect_ray_cluster")
     final_status_data = parse_tool_result(final_status_result)
     # Check for either "not_running" or "error" status when cluster is stopped
     assert final_status_data["status"] in ["not_running", "error"]
@@ -331,7 +331,7 @@ async def verify_cluster_status() -> Dict[str, Any]:
         Cluster status data
     """
     print("Checking cluster status...")
-    status_result = await call_tool("inspect_ray")
+    status_result = await call_tool("inspect_ray_cluster")
     status_data = parse_tool_result(status_result)
 
     # Accept both "active" (cluster running) and "success" (operation succeeded)
@@ -375,7 +375,7 @@ async def submit_and_wait_for_job(
         if runtime_env is not None:
             job_args["runtime_env"] = runtime_env
 
-        job_result = await call_tool("submit_job", job_args)
+        job_result = await call_tool("submit_ray_job", job_args)
         job_data = parse_tool_result(job_result)
 
         assert job_data["status"] == "success"

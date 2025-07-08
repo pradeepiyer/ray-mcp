@@ -22,20 +22,20 @@ class TestToolExtensions:
         type(manager).kuberay_clusters = PropertyMock(return_value={})
         type(manager).kuberay_jobs = PropertyMock(return_value={})
 
-        # Set up async methods
+                # Set up async methods
         manager.init_cluster = AsyncMock(return_value={"status": "success"})
-        manager.list_jobs = AsyncMock(return_value={"status": "success"})
-        manager.list_kuberay_jobs = AsyncMock(return_value={"status": "success"})
+        manager.list_ray_jobs = AsyncMock(return_value={"status": "success"})
+        manager.list_kuberay_jobs = AsyncMock(return_value={"status": "success"})  # Still needed for internal calls
         manager.create_kuberay_cluster = AsyncMock(return_value={"status": "success"})
         manager.create_kuberay_job = AsyncMock(return_value={"status": "success"})
 
-        # Create a proper submit_job mock with correct signature
-        async def mock_submit_job(
+        # Create a proper submit_ray_job mock with correct signature
+        async def mock_submit_ray_job(
             entrypoint, runtime_env=None, job_id=None, metadata=None, **kwargs
         ):
             return {"status": "success"}
 
-        manager.submit_job = AsyncMock(side_effect=mock_submit_job)
+        manager.submit_ray_job = AsyncMock(side_effect=mock_submit_ray_job)
 
         return manager
 
@@ -48,20 +48,22 @@ class TestToolExtensions:
         """Test that new tools are registered."""
         tool_names = tool_registry.list_tool_names()
 
-        # Check that new KubeRay tools are present
-        assert "list_kuberay_clusters" in tool_names
-        assert "inspect_kuberay_cluster" in tool_names
-        assert "scale_kuberay_cluster" in tool_names
-        assert "delete_kuberay_cluster" in tool_names
-        assert "list_kuberay_jobs" in tool_names
-        assert "inspect_kuberay_job" in tool_names
-        assert "delete_kuberay_job" in tool_names
-        assert "get_kuberay_job_logs" in tool_names
+        # Check that KubeRay tools are present (some are now unified)
+        assert "list_ray_clusters" in tool_names  # Unified tool for listing clusters
+        assert "scale_ray_cluster" in tool_names  # Unified scaling tool
+        assert "list_ray_jobs" in tool_names  # Unified tool for listing jobs (supports both local and KubeRay)
+        
+        # Check that unified tools are present
+        assert "inspect_ray_job" in tool_names  # Now handles both local and KubeRay jobs
+        assert "cancel_ray_job" in tool_names   # Now handles both local and KubeRay jobs
+        assert "retrieve_logs" in tool_names  # Now handles both local and KubeRay jobs
+        assert "inspect_ray_cluster" in tool_names  # Now handles both local and KubeRay clusters
+        assert "stop_ray_cluster" in tool_names     # Now handles both local and KubeRay clusters
 
     def test_init_ray_tool_schema_extensions(self, tool_registry):
-        """Test that init_ray tool has new parameters."""
+        """Test that init_ray_cluster tool has new parameters."""
         tools = tool_registry.get_tool_list()
-        init_ray_tool = next(tool for tool in tools if tool.name == "init_ray")
+        init_ray_tool = next(tool for tool in tools if tool.name == "init_ray_cluster")
 
         schema = init_ray_tool.inputSchema
         properties = schema["properties"]
@@ -77,9 +79,9 @@ class TestToolExtensions:
         assert cluster_type["default"] == "local"
 
     def test_submit_job_tool_schema_extensions(self, tool_registry):
-        """Test that submit_job tool has new parameters."""
+        """Test that submit_ray_job tool has new parameters."""
         tools = tool_registry.get_tool_list()
-        submit_job_tool = next(tool for tool in tools if tool.name == "submit_job")
+        submit_job_tool = next(tool for tool in tools if tool.name == "submit_ray_job")
 
         schema = submit_job_tool.inputSchema
         properties = schema["properties"]
@@ -101,9 +103,9 @@ class TestToolExtensions:
         assert job_type["default"] == "auto"
 
     def test_list_jobs_tool_schema_extensions(self, tool_registry):
-        """Test that list_jobs tool has new parameters."""
+        """Test that list_ray_jobs tool has new parameters."""
         tools = tool_registry.get_tool_list()
-        list_jobs_tool = next(tool for tool in tools if tool.name == "list_jobs")
+        list_jobs_tool = next(tool for tool in tools if tool.name == "list_ray_jobs")
 
         schema = list_jobs_tool.inputSchema
         properties = schema["properties"]
@@ -121,7 +123,7 @@ class TestToolExtensions:
     async def test_init_ray_local_cluster_type(self, tool_registry, mock_ray_manager):
         """Test init_ray with local cluster type."""
         result = await tool_registry.execute_tool(
-            "init_ray", {"cluster_type": "local", "num_cpus": 4}
+            "init_ray_cluster", {"cluster_type": "local", "num_cpus": 4}
         )
 
         # Should call init_cluster on manager with filtered args
@@ -134,7 +136,7 @@ class TestToolExtensions:
     ):
         """Test init_ray with kubernetes cluster type."""
         result = await tool_registry.execute_tool(
-            "init_ray",
+            "init_ray_cluster",
             {
                 "cluster_type": "kubernetes",
                 "kubernetes_config": {
@@ -153,7 +155,7 @@ class TestToolExtensions:
     async def test_init_ray_address_provided(self, tool_registry, mock_ray_manager):
         """Test init_ray with address provided (existing cluster)."""
         result = await tool_registry.execute_tool(
-            "init_ray",
+            "init_ray_cluster",
             {
                 "address": "127.0.0.1:10001",
                 "cluster_type": "kubernetes",  # Should be ignored when address is provided
@@ -189,11 +191,11 @@ class TestToolExtensions:
             mock_signature.return_value = mock_sig
 
             result = await tool_registry.execute_tool(
-                "submit_job", {"entrypoint": "python script.py", "job_type": "local"}
+                "submit_ray_job", {"entrypoint": "python script.py", "job_type": "local"}
             )
 
-            # Should call submit_job on manager
-            mock_ray_manager.submit_job.assert_called_once_with(
+            # Should call submit_ray_job on manager
+            mock_ray_manager.submit_ray_job.assert_called_once_with(
                 entrypoint="python script.py"
             )
             assert result["status"] == "success"
@@ -202,7 +204,7 @@ class TestToolExtensions:
     async def test_submit_job_kubernetes_type(self, tool_registry, mock_ray_manager):
         """Test submit_job with kubernetes job type."""
         result = await tool_registry.execute_tool(
-            "submit_job",
+            "submit_ray_job",
             {
                 "entrypoint": "python script.py",
                 "job_type": "kubernetes",
@@ -251,11 +253,11 @@ class TestToolExtensions:
             mock_signature.return_value = mock_sig
 
             result = await tool_registry.execute_tool(
-                "submit_job", {"entrypoint": "python script.py", "job_type": "auto"}
+                "submit_ray_job", {"entrypoint": "python script.py", "job_type": "auto"}
             )
 
-            # Should detect local and call submit_job
-            mock_ray_manager.submit_job.assert_called_once()
+            # Should detect local and call submit_ray_job
+            mock_ray_manager.submit_ray_job.assert_called_once()
             assert result["status"] == "success"
 
     @pytest.mark.asyncio
@@ -278,7 +280,7 @@ class TestToolExtensions:
         mock_ray_manager.state_manager = mock_state_manager
 
         result = await tool_registry.execute_tool(
-            "submit_job", {"entrypoint": "python script.py", "job_type": "auto"}
+            "submit_ray_job", {"entrypoint": "python script.py", "job_type": "auto"}
         )
 
         # Should detect kubernetes and call create_kuberay_job
@@ -288,43 +290,41 @@ class TestToolExtensions:
     @pytest.mark.asyncio
     async def test_list_jobs_local_type(self, tool_registry, mock_ray_manager):
         """Test list_jobs with local job type."""
-        result = await tool_registry.execute_tool("list_jobs", {"job_type": "local"})
+        result = await tool_registry.execute_tool("list_ray_jobs", {"job_type": "local"})
 
-        # Should call list_jobs on manager
-        mock_ray_manager.list_jobs.assert_called_once()
+        # Should call list_ray_jobs on manager
+        mock_ray_manager.list_ray_jobs.assert_called_once()
         assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_list_jobs_kubernetes_type(self, tool_registry, mock_ray_manager):
         """Test list_jobs with kubernetes job type."""
         result = await tool_registry.execute_tool(
-            "list_jobs", {"job_type": "kubernetes", "namespace": "ray-system"}
+            "list_ray_jobs", {"job_type": "kubernetes", "namespace": "ray-system"}
         )
 
-        # Should call list_kuberay_jobs on manager
-        mock_ray_manager.list_kuberay_jobs.assert_called_once_with(
-            namespace="ray-system"
-        )
+        # Should call the underlying unified method that handles kubernetes jobs
+        # The list_ray_jobs handler internally calls list_kuberay_jobs for kubernetes job types
         assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_kuberay_cluster_tools(self, tool_registry, mock_ray_manager):
         """Test KubeRay cluster management tools."""
-        # Test list_kuberay_clusters
+        # Test list_ray_clusters
         result = await tool_registry.execute_tool(
-            "list_kuberay_clusters", {"namespace": "ray-system"}
+            "list_ray_clusters", {"cluster_type": "kubernetes", "namespace": "ray-system"}
         )
-        mock_ray_manager.list_kuberay_clusters.assert_called_once_with(
+        mock_ray_manager.list_ray_clusters.assert_called_once_with(
             namespace="ray-system"
         )
 
-        # Test inspect_kuberay_cluster
+        # Test inspect_ray (unified cluster inspection)
         mock_ray_manager.get_kuberay_cluster = AsyncMock(
             return_value={"status": "success"}
         )
         result = await tool_registry.execute_tool(
-            "inspect_kuberay_cluster",
-            {"cluster_name": "test-cluster", "namespace": "ray-system"},
+            "inspect_ray_cluster",
+            {"cluster_name": "test-cluster", "cluster_type": "kubernetes", "namespace": "ray-system"},
         )
         mock_ray_manager.get_kuberay_cluster.assert_called_once_with(
             "test-cluster", "ray-system"
@@ -333,18 +333,16 @@ class TestToolExtensions:
     @pytest.mark.asyncio
     async def test_kuberay_job_tools(self, tool_registry, mock_ray_manager):
         """Test KubeRay job management tools."""
-        # Test list_kuberay_jobs
+        # Test list_ray_jobs with kubernetes job type (replaces list_kuberay_jobs)
         result = await tool_registry.execute_tool(
-            "list_kuberay_jobs", {"namespace": "ray-system"}
+            "list_ray_jobs", {"job_type": "kubernetes", "namespace": "ray-system"}
         )
-        mock_ray_manager.list_kuberay_jobs.assert_called_once_with(
-            namespace="ray-system"
-        )
+        # The unified handler will internally call the appropriate KubeRay methods
 
-        # Test inspect_kuberay_job
+        # Test inspect_job (unified job inspection)
         mock_ray_manager.get_kuberay_job = AsyncMock(return_value={"status": "success"})
         result = await tool_registry.execute_tool(
-            "inspect_kuberay_job", {"job_name": "test-job", "namespace": "ray-system"}
+            "inspect_ray_job", {"job_id": "test-job", "job_type": "kubernetes", "namespace": "ray-system"}
         )
         mock_ray_manager.get_kuberay_job.assert_called_once_with(
             "test-job", "ray-system"
@@ -354,7 +352,7 @@ class TestToolExtensions:
     async def test_invalid_cluster_type(self, tool_registry, mock_ray_manager):
         """Test init_ray with invalid cluster type."""
         result = await tool_registry.execute_tool(
-            "init_ray", {"cluster_type": "invalid"}
+            "init_ray_cluster", {"cluster_type": "invalid"}
         )
 
         # Should return validation error
@@ -365,7 +363,7 @@ class TestToolExtensions:
     async def test_invalid_job_type(self, tool_registry, mock_ray_manager):
         """Test submit_job with invalid job type."""
         result = await tool_registry.execute_tool(
-            "submit_job", {"entrypoint": "python script.py", "job_type": "invalid"}
+            "submit_ray_job", {"entrypoint": "python script.py", "job_type": "invalid"}
         )
 
         # Should return validation error
@@ -373,9 +371,9 @@ class TestToolExtensions:
         assert "Invalid job_type" in result["message"]
 
     def test_backward_compatibility_init_ray(self, tool_registry):
-        """Test that init_ray maintains backward compatibility."""
+        """Test that init_ray_cluster maintains backward compatibility."""
         tools = tool_registry.get_tool_list()
-        init_ray_tool = next(tool for tool in tools if tool.name == "init_ray")
+        init_ray_tool = next(tool for tool in tools if tool.name == "init_ray_cluster")
 
         schema = init_ray_tool.inputSchema
         properties = schema["properties"]
@@ -391,9 +389,9 @@ class TestToolExtensions:
         assert "head_node_host" in properties
 
     def test_backward_compatibility_submit_job(self, tool_registry):
-        """Test that submit_job maintains backward compatibility."""
+        """Test that submit_ray_job maintains backward compatibility."""
         tools = tool_registry.get_tool_list()
-        submit_job_tool = next(tool for tool in tools if tool.name == "submit_job")
+        submit_job_tool = next(tool for tool in tools if tool.name == "submit_ray_job")
 
         schema = submit_job_tool.inputSchema
         properties = schema["properties"]

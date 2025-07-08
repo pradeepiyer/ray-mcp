@@ -201,9 +201,9 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 
 ```python
 # Local Ray cluster
-init_ray()
-submit_job(entrypoint="python my_script.py")
-inspect_ray()
+init_ray_cluster()
+submit_ray_job(entrypoint="python my_script.py")
+inspect_ray_cluster()
 
 # Cloud provider workflow
 detect_cloud_provider()
@@ -225,17 +225,18 @@ create_cloud_cluster(
 
 ## Available Tools
 
-### Core Ray Cluster Management
-- `init_ray` - Initialize or connect to Ray cluster
-- `stop_ray` - Stop Ray cluster
-- `inspect_ray` - Get cluster status and information
+### Unified Ray Management (Local & Kubernetes)
+- `init_ray_cluster` - Initialize or connect to Ray cluster (supports both local and KubeRay)
+- `stop_ray_cluster` - Stop Ray cluster or delete KubeRay cluster
+- `inspect_ray_cluster` - Get cluster status and information (local and KubeRay)
+- `list_ray_clusters` - List Ray clusters (both local and Kubernetes)
 
-### Job Management
-- `submit_job` - Submit jobs to the cluster
-- `list_jobs` - List all jobs
-- `inspect_job` - Inspect specific job with logs/debug info
-- `cancel_job` - Cancel running jobs
-- `retrieve_logs` - Get logs with optional pagination and error analysis
+### Job Management (Local & KubeRay)
+- `submit_ray_job` - Submit jobs to the cluster (auto-detects local vs KubeRay)
+- `list_ray_jobs` - List all jobs (auto-detects local vs KubeRay)
+- `inspect_ray_job` - Inspect job with logs/debug info (supports both local and KubeRay jobs)
+- `cancel_ray_job` - Cancel/delete running jobs (supports both local and KubeRay jobs)
+- `retrieve_logs` - Get logs with pagination and error analysis (supports both local and KubeRay jobs)
 
 ### Cloud Provider Management
 - `detect_cloud_provider` - Auto-detect available cloud environments
@@ -249,12 +250,14 @@ create_cloud_cluster(
 - `get_cloud_config_template` - Get cluster configuration templates
 
 ### Kubernetes & KubeRay
-- `list_kuberay_clusters` - List Ray clusters on Kubernetes
-- `scale_kuberay_cluster` - Scale Ray cluster workers
-- `delete_kuberay_cluster` - Delete Ray clusters
+- `list_ray_clusters` - List Ray clusters (both local and Kubernetes)
+- `scale_ray_cluster` - Scale Ray cluster workers (KubeRay only, local returns info)  
 - `list_kuberay_jobs` - List KubeRay jobs
-- `inspect_kuberay_job` - Inspect KubeRay job details
-- `delete_kuberay_job` - Delete KubeRay jobs
+
+**Note**: Most KubeRay operations are now unified with their local counterparts:
+- Use `inspect_ray_cluster` for both local clusters and KubeRay clusters
+- Use `stop_ray_cluster` for both stopping local clusters and deleting KubeRay clusters  
+- Use `inspect_ray_job`, `cancel_ray_job`, `retrieve_logs` for both local and KubeRay jobs
 
 ## Architecture
 

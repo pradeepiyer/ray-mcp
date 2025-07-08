@@ -32,7 +32,7 @@ class ToolRegistry:
 
         # Basic cluster management
         self._register_tool(
-            name="init_ray",
+            name="init_ray_cluster",
             description="Initialize Ray cluster - start a new local cluster, connect to existing cluster, or create a Kubernetes cluster via KubeRay. Supports both local Ray clusters and Kubernetes-based clusters using KubeRay operator. If address is provided, connects to existing cluster; otherwise creates new cluster based on cluster_type. IMPORTANT: For head-node-only clusters (no worker nodes), explicitly pass worker_nodes=[] (empty array). For default behavior (2 workers), omit worker_nodes parameter.",
             schema={
                 "type": "object",
@@ -297,26 +297,64 @@ class ToolRegistry:
                     },
                 },
             },
-            handler=self._init_ray_handler,
+            handler=self._init_ray_cluster_handler,
         )
 
         self._register_tool(
-            name="stop_ray",
-            description="Stop the Ray cluster",
-            schema={"type": "object", "properties": {}},
-            handler=self._stop_ray_handler,
+            name="stop_ray_cluster",
+            description="Stop or delete a Ray cluster. Supports both local Ray clusters (stop) and KubeRay clusters (delete). For KubeRay clusters, provide cluster_name and namespace.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the Ray cluster to stop/delete (required for KubeRay clusters, ignored for local clusters)",
+                    },
+                    "cluster_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of cluster: 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay clusters, 'auto' for automatic detection",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace (only used for KubeRay clusters)",
+                    },
+                },
+            },
+            handler=self._stop_ray_cluster_handler,
         )
 
         self._register_tool(
-            name="inspect_ray",
-            description="Get comprehensive cluster information including status, resources, and nodes",
-            schema={"type": "object", "properties": {}},
-            handler=self._inspect_ray_handler,
+            name="inspect_ray_cluster",
+            description="Get comprehensive cluster information including status, resources, and nodes. Supports both local Ray clusters and KubeRay clusters. For KubeRay clusters, provide cluster_name and namespace.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "cluster_name": {
+                        "type": "string",
+                        "description": "Name of the Ray cluster to inspect (required for KubeRay clusters, ignored for local clusters)",
+                    },
+                    "cluster_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of cluster: 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay clusters, 'auto' for automatic detection",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace (only used for KubeRay clusters)",
+                    },
+                },
+            },
+            handler=self._inspect_ray_cluster_handler,
         )
 
         # Job management
         self._register_tool(
-            name="submit_job",
+            name="submit_ray_job",
             description="Submit a job to the Ray cluster. Supports both local Ray clusters and Kubernetes-based clusters using KubeRay operator. Automatically detects job type based on cluster state or explicit job_type parameter. For local clusters, uses Ray job submission API. For Kubernetes clusters, creates RayJob CRD resources.",
             schema={
                 "type": "object",
@@ -466,11 +504,11 @@ class ToolRegistry:
                 },
                 "required": ["entrypoint"],
             },
-            handler=self._submit_job_handler,
+            handler=self._submit_ray_job_handler,
         )
 
         self._register_tool(
-            name="list_jobs",
+            name="list_ray_jobs",
             description="List all jobs in the Ray cluster. Supports both local Ray clusters and Kubernetes-based clusters using KubeRay operator. Automatically detects job type based on cluster state or explicit job_type parameter.",
             schema={
                 "type": "object",
@@ -488,16 +526,27 @@ class ToolRegistry:
                     },
                 },
             },
-            handler=self._list_jobs_handler,
+            handler=self._list_ray_jobs_handler,
         )
 
         self._register_tool(
-            name="inspect_job",
-            description="Inspect a job with different modes: 'status' (basic info), 'logs' (with logs), or 'debug' (comprehensive debugging info)",
+            name="inspect_ray_job",
+            description="Inspect a job with different modes. Supports both local Ray jobs (using job_id) and KubeRay jobs (using job_name + namespace). Automatically detects job type based on ID format or uses explicit job_type parameter.",
             schema={
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string", "description": "Job ID to inspect"},
+                    "job_id": {"type": "string", "description": "Job ID (for local Ray) or job name (for KubeRay) to inspect"},
+                    "job_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of job: 'local' for local Ray jobs, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection based on job_id format",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace (only used for KubeRay jobs)",
+                    },
                     "mode": {
                         "type": "string",
                         "enum": ["status", "logs", "debug"],
@@ -507,31 +556,53 @@ class ToolRegistry:
                 },
                 "required": ["job_id"],
             },
-            handler=self._inspect_job_handler,
+            handler=self._inspect_ray_job_handler,
         )
 
         self._register_tool(
-            name="cancel_job",
-            description="Cancel a running job",
+            name="cancel_ray_job",
+            description="Cancel or delete a running job. Supports both local Ray jobs (cancel) and KubeRay jobs (delete). Automatically detects job type based on ID format or uses explicit job_type parameter.",
             schema={
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string", "description": "Job ID to cancel"}
+                    "job_id": {"type": "string", "description": "Job ID (for local Ray) or job name (for KubeRay) to cancel/delete"},
+                    "job_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of job: 'local' for local Ray jobs, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection based on job_id format",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace (only used for KubeRay jobs)",
+                    },
                 },
                 "required": ["job_id"],
             },
-            handler=self._cancel_job_handler,
+            handler=self._cancel_ray_job_handler,
         )
 
         self._register_tool(
             name="retrieve_logs",
-            description="Retrieve job logs from Ray cluster with optional pagination, comprehensive error analysis and memory protection",
+            description="Retrieve job logs from Ray cluster. Supports both local Ray jobs and KubeRay jobs. Automatically detects job type based on ID format or uses explicit job_type parameter. For local jobs, supports pagination and error analysis.",
             schema={
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Job ID to get logs for (required)",
+                        "description": "Job ID (for local Ray) or job name (for KubeRay) to get logs for",
+                    },
+                    "job_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of job: 'local' for local Ray jobs, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection based on identifier format",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "default": "default",
+                        "description": "Kubernetes namespace (only used for KubeRay jobs)",
                     },
                     "log_type": {
                         "type": "string",
@@ -544,31 +615,31 @@ class ToolRegistry:
                         "minimum": 1,
                         "maximum": 10000,
                         "default": 100,
-                        "description": "Number of log lines to retrieve (0 for all lines, max 10000). Ignored if page is specified",
+                        "description": "Number of log lines to retrieve (0 for all lines, max 10000). Ignored if page is specified. Only supported for local Ray jobs.",
                     },
                     "include_errors": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Whether to include error analysis for job logs",
+                        "description": "Whether to include error analysis for job logs (only supported for local Ray jobs)",
                     },
                     "max_size_mb": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 100,
                         "default": 10,
-                        "description": "Maximum size of logs in MB (1-100, default 10) to prevent memory exhaustion",
+                        "description": "Maximum size of logs in MB (1-100, default 10) to prevent memory exhaustion (only supported for local Ray jobs)",
                     },
                     "page": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "Page number (1-based) for paginated log retrieval. If specified, enables pagination mode",
+                        "description": "Page number (1-based) for paginated log retrieval. If specified, enables pagination mode (only supported for local Ray jobs)",
                     },
                     "page_size": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 1000,
                         "default": 100,
-                        "description": "Number of lines per page (1-1000). Only used when page is specified",
+                        "description": "Number of lines per page (1-1000). Only used when page is specified (only supported for local Ray jobs)",
                     },
                 },
                 "required": ["identifier"],
@@ -576,169 +647,72 @@ class ToolRegistry:
             handler=self._retrieve_logs_handler,
         )
 
-        # KubeRay-specific tools
+        # Ray cluster listing (unified for local and KubeRay)
         self._register_tool(
-            name="list_kuberay_clusters",
-            description="List all KubeRay clusters in Kubernetes namespace",
+            name="list_ray_clusters",
+            description="List Ray clusters. Supports both local Ray clusters and KubeRay clusters. For local clusters, returns information about the current Ray cluster if running. For KubeRay clusters, lists all clusters in the specified namespace.",
             schema={
                 "type": "object",
                 "properties": {
+                    "cluster_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of clusters to list: 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay clusters, 'auto' for automatic detection based on cluster state",
+                    },
                     "namespace": {
                         "type": "string",
                         "default": "default",
-                        "description": "Kubernetes namespace to list clusters from",
+                        "description": "Kubernetes namespace to list clusters from (only used for KubeRay clusters)",
                     },
                 },
             },
-            handler=self._list_kuberay_clusters_handler,
+            handler=self._list_ray_clusters_handler,
         )
 
+
+
         self._register_tool(
-            name="inspect_kuberay_cluster",
-            description="Inspect a KubeRay cluster status and configuration",
+            name="scale_ray_cluster",
+            description="Scale a Ray cluster by adjusting worker replicas. For KubeRay clusters, adjusts worker replicas. For local Ray clusters, returns information about scaling limitations.",
             schema={
                 "type": "object",
                 "properties": {
                     "cluster_name": {
                         "type": "string",
-                        "description": "Name of the Ray cluster to inspect",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "default": "default",
-                        "description": "Kubernetes namespace of the cluster",
-                    },
-                },
-                "required": ["cluster_name"],
-            },
-            handler=self._inspect_kuberay_cluster_handler,
-        )
-
-        self._register_tool(
-            name="scale_kuberay_cluster",
-            description="Scale a KubeRay cluster by adjusting worker replicas",
-            schema={
-                "type": "object",
-                "properties": {
-                    "cluster_name": {
-                        "type": "string",
-                        "description": "Name of the Ray cluster to scale",
+                        "description": "Name of the Ray cluster to scale (required for KubeRay clusters, ignored for local clusters)",
                     },
                     "worker_replicas": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Number of worker replicas to scale to",
+                        "description": "Number of worker replicas to scale to (only supported for KubeRay clusters)",
+                    },
+                    "cluster_type": {
+                        "type": "string",
+                        "enum": ["local", "kubernetes", "k8s", "auto"],
+                        "default": "auto",
+                        "description": "Type of Ray cluster: 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay clusters, 'auto' for auto-detection",
                     },
                     "namespace": {
                         "type": "string",
                         "default": "default",
-                        "description": "Kubernetes namespace of the cluster",
+                        "description": "Kubernetes namespace of the cluster (only applies to KubeRay clusters)",
                     },
                 },
-                "required": ["cluster_name", "worker_replicas"],
+                "required": ["worker_replicas"],
             },
-            handler=self._scale_kuberay_cluster_handler,
+            handler=self._scale_ray_cluster_handler,
         )
 
-        self._register_tool(
-            name="delete_kuberay_cluster",
-            description="Delete a KubeRay cluster from Kubernetes",
-            schema={
-                "type": "object",
-                "properties": {
-                    "cluster_name": {
-                        "type": "string",
-                        "description": "Name of the Ray cluster to delete",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "default": "default",
-                        "description": "Kubernetes namespace of the cluster",
-                    },
-                },
-                "required": ["cluster_name"],
-            },
-            handler=self._delete_kuberay_cluster_handler,
-        )
 
-        self._register_tool(
-            name="list_kuberay_jobs",
-            description="List all KubeRay jobs in Kubernetes namespace",
-            schema={
-                "type": "object",
-                "properties": {
-                    "namespace": {
-                        "type": "string",
-                        "default": "default",
-                        "description": "Kubernetes namespace to list jobs from",
-                    },
-                },
-            },
-            handler=self._list_kuberay_jobs_handler,
-        )
 
-        self._register_tool(
-            name="inspect_kuberay_job",
-            description="Inspect a KubeRay job status and configuration",
-            schema={
-                "type": "object",
-                "properties": {
-                    "job_name": {
-                        "type": "string",
-                        "description": "Name of the Ray job to inspect",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "default": "default",
-                        "description": "Kubernetes namespace of the job",
-                    },
-                },
-                "required": ["job_name"],
-            },
-            handler=self._inspect_kuberay_job_handler,
-        )
 
-        self._register_tool(
-            name="delete_kuberay_job",
-            description="Delete a KubeRay job from Kubernetes",
-            schema={
-                "type": "object",
-                "properties": {
-                    "job_name": {
-                        "type": "string",
-                        "description": "Name of the Ray job to delete",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "default": "default",
-                        "description": "Kubernetes namespace of the job",
-                    },
-                },
-                "required": ["job_name"],
-            },
-            handler=self._delete_kuberay_job_handler,
-        )
 
-        self._register_tool(
-            name="get_kuberay_job_logs",
-            description="Get logs from a KubeRay job",
-            schema={
-                "type": "object",
-                "properties": {
-                    "job_name": {
-                        "type": "string",
-                        "description": "Name of the Ray job to get logs from",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "default": "default",
-                        "description": "Kubernetes namespace of the job",
-                    },
-                },
-                "required": ["job_name"],
-            },
-            handler=self._get_kuberay_job_logs_handler,
-        )
+
+
+
+
+
 
         # Cloud Provider Management Tools
         self._register_tool(
@@ -1023,8 +997,8 @@ class ToolRegistry:
 
     # Tool handlers - these replace the duplicated logic in main.py and tools.py
 
-    async def _init_ray_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for init_ray tool with support for both local and Kubernetes clusters."""
+    async def _init_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for init_ray_cluster tool with support for both local and Kubernetes clusters."""
         # Determine cluster type first
         cluster_type = kwargs.get("cluster_type", "local").lower()
         
@@ -1203,16 +1177,48 @@ class ToolRegistry:
 
         return cluster_spec
 
-    async def _stop_ray_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for stop_ray tool."""
-        return await self.ray_manager.stop_cluster()
+    async def _stop_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified stop_ray_cluster tool supporting both local and KubeRay clusters."""
+        cluster_name = kwargs.get("cluster_name")
+        cluster_type = await self._detect_cluster_type_from_name(cluster_name, kwargs.get("cluster_type", "auto"))
+        namespace = kwargs.get("namespace", "default")
+        
+        if cluster_type == "local":
+            return await self.ray_manager.stop_cluster()
+        elif cluster_type in ["kubernetes", "k8s"]:
+            if not cluster_name:
+                return ResponseFormatter.format_validation_error(
+                    "cluster_name is required for KubeRay cluster deletion"
+                )
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.delete_kuberay_cluster(cluster_name, namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
-    async def _inspect_ray_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for inspect_ray tool."""
-        return await self.ray_manager.inspect_ray()
+    async def _inspect_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified inspect_ray_cluster tool supporting both local and KubeRay clusters."""
+        cluster_name = kwargs.get("cluster_name")
+        cluster_type = await self._detect_cluster_type_from_name(cluster_name, kwargs.get("cluster_type", "auto"))
+        namespace = kwargs.get("namespace", "default")
+        
+        if cluster_type == "local":
+            return await self.ray_manager.inspect_ray_cluster()
+        elif cluster_type in ["kubernetes", "k8s"]:
+            if not cluster_name:
+                return ResponseFormatter.format_validation_error(
+                    "cluster_name is required for KubeRay cluster inspection"
+                )
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.get_kuberay_cluster(cluster_name, namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
-    async def _submit_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for submit_job tool with support for both local and Kubernetes jobs."""
+    async def _submit_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for submit_ray_job tool with support for both local and Kubernetes jobs."""
         # Determine job type
         job_type = kwargs.get("job_type", "auto").lower()
 
@@ -1220,7 +1226,7 @@ class ToolRegistry:
             # Auto-detect based on cluster state
             job_type = await self._detect_job_type()
 
-        # For local jobs, use existing submit_job method
+                    # For local jobs, use existing submit_ray_job method
         if job_type == "local":
             # Remove job_type and kubernetes_config from kwargs for local jobs
             local_kwargs = {
@@ -1239,10 +1245,10 @@ class ToolRegistry:
                 ]
             }
             # Filter to only include valid parameters for local job submission
-            sig = inspect.signature(self.ray_manager.submit_job)
+            sig = inspect.signature(self.ray_manager.submit_ray_job)
             valid_params = {k for k in sig.parameters.keys() if k != "self"}
             filtered = {k: v for k, v in local_kwargs.items() if k in valid_params}
-            return await self.ray_manager.submit_job(**filtered)
+            return await self.ray_manager.submit_ray_job(**filtered)
 
         # For Kubernetes jobs, create KubeRay job
         elif job_type in ["kubernetes", "k8s"]:
@@ -1285,6 +1291,48 @@ class ToolRegistry:
         except Exception:
             # Fall back to local on any error
             return "local"
+
+    async def _detect_job_type_from_id(self, job_id: str, explicit_job_type: str = "auto") -> str:
+        """Detect job type based on job ID patterns and explicit type."""
+        import re
+        
+        # If explicit type is provided and not auto, use it
+        if explicit_job_type and explicit_job_type.lower() != "auto":
+            return explicit_job_type.lower()
+        
+        # UUID-like format suggests local Ray job (e.g., raysubmit_abcd1234...)
+        if re.match(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$', job_id):
+            return "local"
+        
+        # Ray job submission format (raysubmit_...)
+        if job_id.startswith("raysubmit_"):
+            return "local"
+        
+        # Kubernetes resource name format suggests KubeRay job (lowercase alphanumeric with dashes)
+        if re.match(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', job_id) and len(job_id) <= 63:
+            return "kubernetes"
+        
+        # Fallback to cluster state detection
+        return await self._detect_job_type()
+
+    async def _detect_cluster_type_from_name(self, cluster_name: str = None, explicit_cluster_type: str = "auto") -> str:
+        """Detect cluster type based on cluster name and explicit type."""
+        import re
+        
+        # If explicit type is provided and not auto, use it
+        if explicit_cluster_type and explicit_cluster_type.lower() != "auto":
+            return explicit_cluster_type.lower()
+        
+        # If no cluster name provided, this is likely local Ray
+        if not cluster_name:
+            return "local"
+        
+        # Kubernetes resource name format suggests KubeRay cluster
+        if re.match(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', cluster_name) and len(cluster_name) <= 63:
+            return "kubernetes"
+        
+        # Fallback to cluster state detection
+        return await self._detect_job_type()
 
     async def _create_kuberay_job(self, **kwargs) -> Dict[str, Any]:
         """Create a KubeRay job from submit_job parameters."""
@@ -1343,7 +1391,7 @@ class ToolRegistry:
                 # CRITICAL FIX: Actively discover existing clusters from Kubernetes
                 namespace = job_spec["namespace"]
                 try:
-                    cluster_list_result = await self.ray_manager.list_kuberay_clusters(namespace=namespace)
+                    cluster_list_result = await self.ray_manager.list_ray_clusters(namespace=namespace)
                     
                     if cluster_list_result.get("status") == "success":
                         existing_clusters = cluster_list_result.get("clusters", [])
@@ -1408,7 +1456,7 @@ class ToolRegistry:
                             "No clusters in target namespace - checking 'default' namespace"
                         )
                         
-                        default_cluster_result = await self.ray_manager.list_kuberay_clusters(namespace="default")
+                        default_cluster_result = await self.ray_manager.list_ray_clusters(namespace="default")
                         
                         if default_cluster_result.get("status") == "success":
                             default_clusters = default_cluster_result.get("clusters", [])
@@ -1496,8 +1544,8 @@ class ToolRegistry:
                 f"Failed to ensure GKE coordination: {e}"
             )
 
-    async def _list_jobs_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for list_jobs tool."""
+    async def _list_ray_jobs_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for list_ray_jobs tool."""
         job_type = kwargs.get("job_type", "auto").lower()
 
         if job_type == "auto":
@@ -1507,7 +1555,7 @@ class ToolRegistry:
         namespace = kwargs.get("namespace", "default")
 
         if job_type == "local":
-            return await self.ray_manager.list_jobs()
+            return await self.ray_manager.list_ray_jobs()
         elif job_type in ["kubernetes", "k8s"]:
             # Ensure GKE coordination is in place if we have a GKE connection
             await self._ensure_gke_coordination()
@@ -1517,86 +1565,179 @@ class ToolRegistry:
                 f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
             )
 
-    async def _inspect_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for inspect_job tool."""
-        return await self.ray_manager.inspect_job(
-            kwargs["job_id"], kwargs.get("mode", "status")
-        )
+    async def _inspect_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified inspect_ray_job tool supporting both local and KubeRay jobs."""
+        job_id = kwargs["job_id"]
+        job_type = await self._detect_job_type_from_id(job_id, kwargs.get("job_type", "auto"))
+        namespace = kwargs.get("namespace", "default")
+        mode = kwargs.get("mode", "status")
+        
+        if job_type == "local":
+            return await self.ray_manager.inspect_ray_job(job_id, mode)
+        elif job_type in ["kubernetes", "k8s"]:
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.get_kuberay_job(job_id, namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
-    async def _cancel_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for cancel_job tool."""
-        return await self.ray_manager.cancel_job(kwargs["job_id"])
+    async def _cancel_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified cancel_ray_job tool supporting both local and KubeRay jobs."""
+        job_id = kwargs["job_id"]
+        job_type = await self._detect_job_type_from_id(job_id, kwargs.get("job_type", "auto"))
+        namespace = kwargs.get("namespace", "default")
+        
+        if job_type == "local":
+            return await self.ray_manager.cancel_ray_job(job_id)
+        elif job_type in ["kubernetes", "k8s"]:
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.delete_kuberay_job(job_id, namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for retrieve_logs tool."""
-        return await self.ray_manager.retrieve_logs(**kwargs)
-
-    # KubeRay-specific handlers
-
-    async def _list_kuberay_clusters_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for list_kuberay_clusters tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
+        """Handler for unified retrieve_logs tool supporting both local and KubeRay jobs."""
+        identifier = kwargs["identifier"]
+        log_type = kwargs.get("log_type", "job")
+        
+        # Validate log_type first before attempting job type detection
+        if log_type not in ["job"]:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid log_type: {log_type}. Must be 'job'"
+            )
+        
+        job_type = await self._detect_job_type_from_id(identifier, kwargs.get("job_type", "auto"))
         namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.list_kuberay_clusters(namespace=namespace)
+        
+        if job_type == "local":
+            return await self.ray_manager.retrieve_logs(**kwargs)
+        elif job_type in ["kubernetes", "k8s"]:
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.get_kuberay_job_logs(identifier, namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
-    async def _inspect_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for inspect_kuberay_cluster tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        cluster_name = kwargs["cluster_name"]
+    # Ray cluster management handlers
+
+    async def _list_ray_clusters_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified list_ray_clusters tool supporting both local and KubeRay clusters."""
+        cluster_type = await self._detect_cluster_type_from_name(None, kwargs.get("cluster_type", "auto"))
         namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.get_kuberay_cluster(cluster_name, namespace)
+        
+        if cluster_type == "local":
+            return await self._list_local_ray_clusters()
+        elif cluster_type in ["kubernetes", "k8s"]:
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.list_ray_clusters(namespace=namespace)
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
-    async def _scale_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for scale_kuberay_cluster tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        cluster_name = kwargs["cluster_name"]
+    async def _list_local_ray_clusters(self) -> Dict[str, Any]:
+        """List local Ray clusters (returns current cluster info if Ray is running)."""
+        try:
+            # Check if Ray is initialized
+            if hasattr(self.ray_manager, 'is_initialized') and self.ray_manager.is_initialized:
+                # Get basic cluster information
+                cluster_info = await self.ray_manager.inspect_ray_cluster()
+                if cluster_info.get("status") == "success":
+                    # Format as a cluster list
+                    cluster_data = {
+                        "name": "local-ray-cluster",
+                        "type": "local",
+                        "status": cluster_info.get("cluster_status", "unknown"),
+                        "address": self.ray_manager.cluster_address,
+                        "dashboard_url": self.ray_manager.dashboard_url,
+                        "ray_version": cluster_info.get("ray_version"),
+                        "nodes": cluster_info.get("nodes", []),
+                        "resources": cluster_info.get("cluster_resources", {}),
+                    }
+                    
+                    return ResponseFormatter.format_success_response(
+                        clusters=[cluster_data],
+                        total_clusters=1,
+                        cluster_type="local"
+                    )
+                else:
+                    # Ray inspection failed, return empty list
+                    return ResponseFormatter.format_success_response(
+                        clusters=[],
+                        total_clusters=0,
+                        cluster_type="local",
+                        message="No local Ray cluster is currently running"
+                    )
+            else:
+                # Ray not initialized, return empty list
+                return ResponseFormatter.format_success_response(
+                    clusters=[],
+                    total_clusters=0,
+                    cluster_type="local",
+                    message="No local Ray cluster is currently running"
+                )
+        except Exception as e:
+            return ResponseFormatter.format_error_response("list local ray clusters", e)
+
+
+
+    async def _scale_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified scale_ray_cluster tool supporting both local and KubeRay clusters."""
+        cluster_name = kwargs.get("cluster_name")
         worker_replicas = kwargs["worker_replicas"]
+        cluster_type = await self._detect_cluster_type_from_name(cluster_name, kwargs.get("cluster_type", "auto"))
         namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.scale_kuberay_cluster(
-            cluster_name, worker_replicas, namespace
-        )
+        
+        if cluster_type == "local":
+            # Local Ray clusters don't support dynamic scaling
+            from ray_mcp.logging_utils import LoggingUtility
+            LoggingUtility.log_info(
+                "scale_ray_cluster", 
+                f"Local Ray cluster scaling requested but not supported - would scale to {worker_replicas} workers"
+            )
+            
+            return ResponseFormatter.format_success_response(
+                status="info",
+                message="Local Ray clusters do not support dynamic scaling",
+                details={
+                    "requested_worker_replicas": worker_replicas,
+                    "cluster_type": "local",
+                    "scaling_supported": False,
+                    "explanation": "Local Ray clusters have a fixed number of worker nodes determined at cluster startup. To change the number of workers, you need to stop and restart the cluster with different configuration.",
+                    "alternatives": [
+                        "Stop the current cluster with 'stop_ray'",
+                        "Restart with desired worker count using 'init_ray' with appropriate parameters"
+                    ]
+                }
+            )
+        elif cluster_type in ["kubernetes", "k8s"]:
+            if not cluster_name:
+                return ResponseFormatter.format_validation_error(
+                    "cluster_name is required for KubeRay cluster scaling"
+                )
+            
+            await self._ensure_gke_coordination()
+            return await self.ray_manager.scale_ray_cluster(
+                cluster_name, worker_replicas, namespace
+            )
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
 
-    async def _delete_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for delete_kuberay_cluster tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        cluster_name = kwargs["cluster_name"]
-        namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.delete_kuberay_cluster(cluster_name, namespace)
 
-    async def _list_kuberay_jobs_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for list_kuberay_jobs tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
 
-    async def _inspect_kuberay_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for inspect_kuberay_job tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        job_name = kwargs["job_name"]
-        namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.get_kuberay_job(job_name, namespace)
 
-    async def _delete_kuberay_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for delete_kuberay_job tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        job_name = kwargs["job_name"]
-        namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.delete_kuberay_job(job_name, namespace)
 
-    async def _get_kuberay_job_logs_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for get_kuberay_job_logs tool."""
-        # Ensure GKE coordination is in place if we have a GKE connection
-        await self._ensure_gke_coordination()
-        job_name = kwargs["job_name"]
-        namespace = kwargs.get("namespace", "default")
-        return await self.ray_manager.get_kuberay_job_logs(job_name, namespace)
+
+
+
+
+
 
     # Cloud Provider Tool Handlers
 
