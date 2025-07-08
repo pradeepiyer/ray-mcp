@@ -223,6 +223,14 @@ class TestToolExtensions:
             return_value=False
         )
         type(mock_ray_manager).is_initialized = PropertyMock(return_value=True)
+        
+        # Mock state_manager.get_state() to return a state indicating local cluster
+        mock_state_manager = MagicMock()
+        mock_state_manager.get_state.return_value = {
+            "cloud_provider_connections": {},
+            "kubernetes_connected": False
+        }
+        mock_ray_manager.state_manager = mock_state_manager
 
         # Mock inspect.signature to return a signature with the expected parameters
         with patch("ray_mcp.tool_registry.inspect.signature") as mock_signature:
@@ -260,6 +268,14 @@ class TestToolExtensions:
             return_value={"default/test-cluster": {}}
         )
         type(mock_ray_manager).is_kubernetes_connected = PropertyMock(return_value=True)
+        
+        # Mock state_manager.get_state() to return a state indicating kubernetes cluster
+        mock_state_manager = MagicMock()
+        mock_state_manager.get_state.return_value = {
+            "cloud_provider_connections": {},
+            "kubernetes_connected": True
+        }
+        mock_ray_manager.state_manager = mock_state_manager
 
         result = await tool_registry.execute_tool(
             "submit_job", {"entrypoint": "python script.py", "job_type": "auto"}
