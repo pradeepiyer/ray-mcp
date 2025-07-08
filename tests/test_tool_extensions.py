@@ -22,10 +22,12 @@ class TestToolExtensions:
         type(manager).kuberay_clusters = PropertyMock(return_value={})
         type(manager).kuberay_jobs = PropertyMock(return_value={})
 
-                # Set up async methods
+        # Set up async methods
         manager.init_cluster = AsyncMock(return_value={"status": "success"})
         manager.list_ray_jobs = AsyncMock(return_value={"status": "success"})
-        manager.list_kuberay_jobs = AsyncMock(return_value={"status": "success"})  # Still needed for internal calls
+        manager.list_kuberay_jobs = AsyncMock(
+            return_value={"status": "success"}
+        )  # Still needed for internal calls
         manager.create_kuberay_cluster = AsyncMock(return_value={"status": "success"})
         manager.create_kuberay_job = AsyncMock(return_value={"status": "success"})
 
@@ -51,14 +53,22 @@ class TestToolExtensions:
         # Check that KubeRay tools are present (some are now unified)
         assert "list_ray_clusters" in tool_names  # Unified tool for listing clusters
         assert "scale_ray_cluster" in tool_names  # Unified scaling tool
-        assert "list_ray_jobs" in tool_names  # Unified tool for listing jobs (supports both local and KubeRay)
-        
+        assert (
+            "list_ray_jobs" in tool_names
+        )  # Unified tool for listing jobs (supports both local and KubeRay)
+
         # Check that unified tools are present
-        assert "inspect_ray_job" in tool_names  # Now handles both local and KubeRay jobs
-        assert "cancel_ray_job" in tool_names   # Now handles both local and KubeRay jobs
+        assert (
+            "inspect_ray_job" in tool_names
+        )  # Now handles both local and KubeRay jobs
+        assert "cancel_ray_job" in tool_names  # Now handles both local and KubeRay jobs
         assert "retrieve_logs" in tool_names  # Now handles both local and KubeRay jobs
-        assert "inspect_ray_cluster" in tool_names  # Now handles both local and KubeRay clusters
-        assert "stop_ray_cluster" in tool_names     # Now handles both local and KubeRay clusters
+        assert (
+            "inspect_ray_cluster" in tool_names
+        )  # Now handles both local and KubeRay clusters
+        assert (
+            "stop_ray_cluster" in tool_names
+        )  # Now handles both local and KubeRay clusters
 
     def test_init_ray_tool_schema_extensions(self, tool_registry):
         """Test that init_ray_cluster tool has new parameters."""
@@ -191,7 +201,8 @@ class TestToolExtensions:
             mock_signature.return_value = mock_sig
 
             result = await tool_registry.execute_tool(
-                "submit_ray_job", {"entrypoint": "python script.py", "job_type": "local"}
+                "submit_ray_job",
+                {"entrypoint": "python script.py", "job_type": "local"},
             )
 
             # Should call submit_ray_job on manager
@@ -225,12 +236,12 @@ class TestToolExtensions:
             return_value=False
         )
         type(mock_ray_manager).is_initialized = PropertyMock(return_value=True)
-        
+
         # Mock state_manager.get_state() to return a state indicating local cluster
         mock_state_manager = MagicMock()
         mock_state_manager.get_state.return_value = {
             "cloud_provider_connections": {},
-            "kubernetes_connected": False
+            "kubernetes_connected": False,
         }
         mock_ray_manager.state_manager = mock_state_manager
 
@@ -270,12 +281,12 @@ class TestToolExtensions:
             return_value={"default/test-cluster": {}}
         )
         type(mock_ray_manager).is_kubernetes_connected = PropertyMock(return_value=True)
-        
+
         # Mock state_manager.get_state() to return a state indicating kubernetes cluster
         mock_state_manager = MagicMock()
         mock_state_manager.get_state.return_value = {
             "cloud_provider_connections": {},
-            "kubernetes_connected": True
+            "kubernetes_connected": True,
         }
         mock_ray_manager.state_manager = mock_state_manager
 
@@ -290,7 +301,9 @@ class TestToolExtensions:
     @pytest.mark.asyncio
     async def test_list_jobs_local_type(self, tool_registry, mock_ray_manager):
         """Test list_jobs with local job type."""
-        result = await tool_registry.execute_tool("list_ray_jobs", {"job_type": "local"})
+        result = await tool_registry.execute_tool(
+            "list_ray_jobs", {"job_type": "local"}
+        )
 
         # Should call list_ray_jobs on manager
         mock_ray_manager.list_ray_jobs.assert_called_once()
@@ -312,7 +325,8 @@ class TestToolExtensions:
         """Test KubeRay cluster management tools."""
         # Test list_ray_clusters
         result = await tool_registry.execute_tool(
-            "list_ray_clusters", {"cluster_type": "kubernetes", "namespace": "ray-system"}
+            "list_ray_clusters",
+            {"cluster_type": "kubernetes", "namespace": "ray-system"},
         )
         mock_ray_manager.list_ray_clusters.assert_called_once_with(
             namespace="ray-system"
@@ -324,7 +338,11 @@ class TestToolExtensions:
         )
         result = await tool_registry.execute_tool(
             "inspect_ray_cluster",
-            {"cluster_name": "test-cluster", "cluster_type": "kubernetes", "namespace": "ray-system"},
+            {
+                "cluster_name": "test-cluster",
+                "cluster_type": "kubernetes",
+                "namespace": "ray-system",
+            },
         )
         mock_ray_manager.get_kuberay_cluster.assert_called_once_with(
             "test-cluster", "ray-system"
@@ -342,7 +360,8 @@ class TestToolExtensions:
         # Test inspect_job (unified job inspection)
         mock_ray_manager.get_kuberay_job = AsyncMock(return_value={"status": "success"})
         result = await tool_registry.execute_tool(
-            "inspect_ray_job", {"job_id": "test-job", "job_type": "kubernetes", "namespace": "ray-system"}
+            "inspect_ray_job",
+            {"job_id": "test-job", "job_type": "kubernetes", "namespace": "ray-system"},
         )
         mock_ray_manager.get_kuberay_job.assert_called_once_with(
             "test-job", "ray-system"

@@ -99,7 +99,9 @@ class RayUnifiedManager:
         """Cancel a running job."""
         return await self._job_manager.cancel_job(job_id)
 
-    async def inspect_ray_job(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
+    async def inspect_ray_job(
+        self, job_id: str, mode: str = "status"
+    ) -> Dict[str, Any]:
         """Inspect job details."""
         return await self._job_manager.inspect_job(job_id, mode)
 
@@ -365,11 +367,11 @@ class RayUnifiedManager:
             result = await self._cloud_provider_manager.connect_cloud_cluster(
                 provider_enum, cluster_name, **kwargs
             )
-            
+
             # If GKE connection was successful, coordinate with KubeRay managers
             if result.get("status") == "success" and provider_enum == CloudProvider.GKE:
                 await self._coordinate_gke_kubernetes_config()
-                
+
             return result
         else:
             # If no provider specified, detect and use the current environment
@@ -380,11 +382,14 @@ class RayUnifiedManager:
                 result = await self._cloud_provider_manager.connect_cloud_cluster(
                     provider_enum, cluster_name, **kwargs
                 )
-                
+
                 # If GKE connection was successful, coordinate with KubeRay managers
-                if result.get("status") == "success" and provider_enum == CloudProvider.GKE:
+                if (
+                    result.get("status") == "success"
+                    and provider_enum == CloudProvider.GKE
+                ):
                     await self._coordinate_gke_kubernetes_config()
-                    
+
                 return result
             else:
                 return {
@@ -396,51 +401,52 @@ class RayUnifiedManager:
         """Coordinate GKE Kubernetes configuration with KubeRay managers."""
         try:
             from ..logging_utils import LoggingUtility
+
             LoggingUtility.log_info(
-                "coordinate_gke_config", 
-                "Starting GKE Kubernetes configuration coordination"
+                "coordinate_gke_config",
+                "Starting GKE Kubernetes configuration coordination",
             )
-            
+
             # Get the GKE manager and its Kubernetes configuration
             gke_manager = self._cloud_provider_manager.get_gke_manager()
             k8s_config = gke_manager.get_kubernetes_client()
-            
+
             LoggingUtility.log_info(
-                "coordinate_gke_config", 
-                f"GKE manager k8s config: {k8s_config is not None}, host: {getattr(k8s_config, 'host', 'N/A') if k8s_config else 'N/A'}"
+                "coordinate_gke_config",
+                f"GKE manager k8s config: {k8s_config is not None}, host: {getattr(k8s_config, 'host', 'N/A') if k8s_config else 'N/A'}",
             )
-            
+
             if k8s_config:
                 # Update KubeRay managers with the GKE Kubernetes configuration
                 LoggingUtility.log_info(
-                    "coordinate_gke_config", 
-                    "Setting Kubernetes configuration on KubeRay managers"
+                    "coordinate_gke_config",
+                    "Setting Kubernetes configuration on KubeRay managers",
                 )
                 self._kuberay_cluster_manager.set_kubernetes_config(k8s_config)
                 self._kuberay_job_manager.set_kubernetes_config(k8s_config)
-                
+
                 # Update state to reflect the coordination
                 self._state_manager.update_state(
-                    kuberay_gke_coordinated=True,
-                    kuberay_kubernetes_config_type="gke"
+                    kuberay_gke_coordinated=True, kuberay_kubernetes_config_type="gke"
                 )
-                
+
                 LoggingUtility.log_info(
-                    "coordinate_gke_config", 
-                    "Successfully coordinated GKE Kubernetes configuration with KubeRay managers"
+                    "coordinate_gke_config",
+                    "Successfully coordinated GKE Kubernetes configuration with KubeRay managers",
                 )
             else:
                 # Log warning if no configuration is available
                 LoggingUtility.log_warning(
-                    "coordinate_gke_config", 
-                    "No Kubernetes configuration available from GKE manager"
+                    "coordinate_gke_config",
+                    "No Kubernetes configuration available from GKE manager",
                 )
         except Exception as e:
             # Log the specific error for debugging
             from ..logging_utils import LoggingUtility
+
             LoggingUtility.log_error(
-                "coordinate_gke_config", 
-                f"Failed to coordinate GKE configuration: {str(e)}"
+                "coordinate_gke_config",
+                Exception(f"Failed to coordinate GKE configuration: {str(e)}"),
             )
             # The KubeRay operations will still work, just without the optimized configuration
 
@@ -448,44 +454,46 @@ class RayUnifiedManager:
         """Ensure KubeRay managers are coordinated with GKE if connection exists."""
         try:
             from ..logging_utils import LoggingUtility
+
             state = self._state_manager.get_state()
-            
+
             # Check if we're already coordinated
             already_coordinated = state.get("kuberay_gke_coordinated", False)
             LoggingUtility.log_info(
                 "ensure_kuberay_gke_coordination",
-                f"Checking coordination status - already coordinated: {already_coordinated}"
+                f"Checking coordination status - already coordinated: {already_coordinated}",
             )
-            
+
             if already_coordinated:
                 return
-            
+
             # Check if there's an active GKE connection
             gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
             gke_connected = gke_connection.get("connected", False)
             LoggingUtility.log_info(
                 "ensure_kuberay_gke_coordination",
-                f"GKE connection status: {gke_connected}, connection details: {gke_connection}"
+                f"GKE connection status: {gke_connected}, connection details: {gke_connection}",
             )
-            
+
             if gke_connected:
                 # Coordinate with the existing GKE connection
                 LoggingUtility.log_info(
                     "ensure_kuberay_gke_coordination",
-                    "Found active GKE connection, initiating coordination"
+                    "Found active GKE connection, initiating coordination",
                 )
                 await self._coordinate_gke_kubernetes_config()
             else:
                 LoggingUtility.log_info(
                     "ensure_kuberay_gke_coordination",
-                    "No active GKE connection found, skipping coordination"
+                    "No active GKE connection found, skipping coordination",
                 )
         except Exception as e:
             # Don't fail KubeRay operations if coordination fails
             from ..logging_utils import LoggingUtility
+
             LoggingUtility.log_warning(
                 "ensure_kuberay_gke_coordination",
-                f"Failed to ensure KubeRay-GKE coordination: {str(e)}"
+                f"Failed to ensure KubeRay-GKE coordination: {str(e)}",
             )
 
     async def create_cloud_cluster(

@@ -35,21 +35,23 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         """Set the Kubernetes configuration for API operations."""
         try:
             from ..logging_utils import LoggingUtility
+
             LoggingUtility.log_info(
                 "kuberay_job_set_k8s_config",
-                f"Setting Kubernetes config - config provided: {kubernetes_config is not None}, host: {getattr(kubernetes_config, 'host', 'N/A') if kubernetes_config else 'N/A'}"
+                f"Setting Kubernetes config - config provided: {kubernetes_config is not None}, host: {getattr(kubernetes_config, 'host', 'N/A') if kubernetes_config else 'N/A'}",
             )
             self._crd_operations.set_kubernetes_config(kubernetes_config)
             LoggingUtility.log_info(
                 "kuberay_job_set_k8s_config",
-                "Successfully set Kubernetes configuration on CRD operations client"
+                "Successfully set Kubernetes configuration on CRD operations client",
             )
         except Exception as e:
             # Log the error instead of silently ignoring it
             from ..logging_utils import LoggingUtility
+
             LoggingUtility.log_error(
                 "kuberay_job_set_k8s_config",
-                f"Failed to set Kubernetes configuration: {str(e)}"
+                Exception(f"Failed to set Kubernetes configuration: {str(e)}"),
             )
 
     @ResponseFormatter.handle_exceptions("create ray job")
@@ -68,7 +70,9 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         ttl_seconds_after_finished = job_spec.get("ttl_seconds_after_finished", 86400)
         active_deadline_seconds = job_spec.get("active_deadline_seconds")
         backoff_limit = job_spec.get("backoff_limit", 0)
-        shutdown_after_job_finishes = job_spec.get("shutdown_after_job_finishes")  # Let intelligent defaults work
+        shutdown_after_job_finishes = job_spec.get(
+            "shutdown_after_job_finishes"
+        )  # Let intelligent defaults work
 
         # Validate required fields
         if not entrypoint:

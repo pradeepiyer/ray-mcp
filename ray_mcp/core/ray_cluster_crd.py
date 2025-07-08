@@ -189,7 +189,7 @@ class RayClusterCRDManager(RayClusterCRD):
         """Build head group specification."""
         # Determine service type - default to LoadBalancer for external access
         service_type = head_spec.get("service_type", "LoadBalancer")
-        
+
         group_spec = {
             "serviceType": service_type,
             "replicas": 1,  # Head node is always single replica
@@ -221,13 +221,13 @@ class RayClusterCRDManager(RayClusterCRD):
 
         # Add service annotations for cloud providers if specified
         service_annotations = head_spec.get("service_annotations", {})
-        
+
         # Add default cloud provider annotations for LoadBalancer
         if service_type == "LoadBalancer":
             # Google Cloud Platform annotations
             if not service_annotations.get("cloud.google.com/load-balancer-type"):
                 service_annotations["cloud.google.com/load-balancer-type"] = "External"
-                
+
         if service_annotations:
             group_spec["serviceAnnotations"] = service_annotations
 

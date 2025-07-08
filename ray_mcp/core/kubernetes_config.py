@@ -103,12 +103,14 @@ class KubernetesConfigManager(KubernetesConfig):
             # Try to create a client and make a simple API call
             v1 = client.CoreV1Api()
             version_api = client.VersionApi()
-            
+
             # Test connection by getting server version
             version_info = version_api.get_code()
 
             return self._response_formatter.format_success_response(
-                valid=True, context=self._current_context, server_version=version_info.git_version
+                valid=True,
+                context=self._current_context,
+                server_version=version_info.git_version,
             )
         except Exception as e:
             return self._response_formatter.format_error_response(

@@ -38,12 +38,16 @@ class RayJobCRDManager(RayJobCRD):
         runtime_env: Optional[Dict[str, Any]] = None,
         job_name: Optional[str] = None,
         namespace: str = "default",
-        cluster_selector: Optional[str] = None,  # Fixed: Accept string (cluster name) or dict (label selector)
+        cluster_selector: Optional[
+            str
+        ] = None,  # Fixed: Accept string (cluster name) or dict (label selector)
         suspend: bool = False,
         ttl_seconds_after_finished: Optional[int] = 86400,  # 24 hours
         active_deadline_seconds: Optional[int] = None,
         backoff_limit: int = 0,
-        shutdown_after_job_finishes: Optional[bool] = None,  # Changed to Optional for intelligent defaults
+        shutdown_after_job_finishes: Optional[
+            bool
+        ] = None,  # Changed to Optional for intelligent defaults
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Create RayJob specification with validation."""
@@ -75,27 +79,27 @@ class RayJobCRDManager(RayJobCRD):
                 shutdown_after_job_finishes = False
                 LoggingUtility.log_info(
                     "rayjob_cluster_preservation",
-                    f"Using existing cluster '{cluster_selector}' - setting shutdownAfterJobFinishes=false to preserve cluster"
+                    f"Using existing cluster '{cluster_selector}' - setting shutdownAfterJobFinishes=false to preserve cluster",
                 )
             else:
                 # Creating new ephemeral cluster - shutdown after job finishes to save resources
                 shutdown_after_job_finishes = True
                 LoggingUtility.log_info(
                     "rayjob_ephemeral_cluster",
-                    f"Creating ephemeral cluster - setting shutdownAfterJobFinishes=true for cleanup"
+                    f"Creating ephemeral cluster - setting shutdownAfterJobFinishes=true for cleanup",
                 )
 
         # CRITICAL SAFETY CHECK: Ensure existing clusters are not accidentally torn down
         if cluster_selector and shutdown_after_job_finishes:
             LoggingUtility.log_warning(
                 "rayjob_cluster_safety",
-                f"WARNING: Job configured to use existing cluster '{cluster_selector}' but shutdownAfterJobFinishes=true. This could destroy the existing cluster!"
+                f"WARNING: Job configured to use existing cluster '{cluster_selector}' but shutdownAfterJobFinishes=true. This could destroy the existing cluster!",
             )
             # Override for safety
             shutdown_after_job_finishes = False
             LoggingUtility.log_info(
                 "rayjob_cluster_safety",
-                "Safety override: Setting shutdownAfterJobFinishes=false to protect existing cluster"
+                "Safety override: Setting shutdownAfterJobFinishes=false to protect existing cluster",
             )
 
         # Handle TTL compatibility with shutdown setting
@@ -104,7 +108,7 @@ class RayJobCRDManager(RayJobCRD):
             ttl_seconds_after_finished = None
             LoggingUtility.log_info(
                 "rayjob_ttl_disable",
-                "TTL disabled because shutdownAfterJobFinishes=false (cluster preservation mode)"
+                "TTL disabled because shutdownAfterJobFinishes=false (cluster preservation mode)",
             )
 
         # Build the RayJob specification
@@ -137,14 +141,13 @@ class RayJobCRDManager(RayJobCRD):
             ray_job_spec["spec"]["clusterSelector"] = cluster_selector
             LoggingUtility.log_info(
                 "rayjob_existing_cluster",
-                f"Job configured to use existing cluster: {cluster_selector}"
+                f"Job configured to use existing cluster: {cluster_selector}",
             )
         else:
             # Creating new cluster - add ray cluster spec
             ray_job_spec["spec"]["rayClusterSpec"] = self._build_default_cluster_spec()
             LoggingUtility.log_info(
-                "rayjob_new_cluster",
-                "Job configured to create new ephemeral cluster"
+                "rayjob_new_cluster", "Job configured to create new ephemeral cluster"
             )
 
         # Add TTL only if cluster shuts down after job finishes
@@ -152,7 +155,7 @@ class RayJobCRDManager(RayJobCRD):
             ray_job_spec["spec"]["ttlSecondsAfterFinished"] = ttl_seconds_after_finished
             LoggingUtility.log_info(
                 "rayjob_ttl_enabled",
-                f"TTL set to {ttl_seconds_after_finished} seconds for ephemeral cluster cleanup"
+                f"TTL set to {ttl_seconds_after_finished} seconds for ephemeral cluster cleanup",
             )
 
         # Add active deadline if provided
@@ -210,13 +213,13 @@ class RayJobCRDManager(RayJobCRD):
         # Validate TTL if present
         ttl = ray_spec.get("ttlSecondsAfterFinished")
         shutdown_after_job_finishes = ray_spec.get("shutdownAfterJobFinishes", True)
-        
+
         if ttl is not None:
             if not isinstance(ttl, int) or ttl < 0:
                 errors.append(
                     "spec.ttlSecondsAfterFinished must be a non-negative integer"
                 )
-            
+
             # Validate TTL compatibility with shutdown setting
             if not shutdown_after_job_finishes:
                 errors.append(
@@ -244,7 +247,9 @@ class RayJobCRDManager(RayJobCRD):
         selector = ray_spec.get("clusterSelector")
         if selector is not None:
             if not isinstance(selector, (str, dict)):
-                errors.append("spec.clusterSelector must be a string (cluster name) or dictionary (label selector)")
+                errors.append(
+                    "spec.clusterSelector must be a string (cluster name) or dictionary (label selector)"
+                )
             elif isinstance(selector, str) and not selector.strip():
                 errors.append("spec.clusterSelector string must not be empty")
             elif isinstance(selector, dict) and not selector:

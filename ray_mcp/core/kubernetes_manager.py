@@ -75,6 +75,46 @@ class KubernetesClusterManager(KubernetesComponent, KubernetesManager):
                 "connect to kubernetes cluster", e
             )
 
+    @ResponseFormatter.handle_exceptions("connect kubernetes cluster")
+    async def connect_cluster(
+        self, config_file: Optional[str] = None, context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Connect to Kubernetes cluster (interface method)."""
+        try:
+            # Load configuration with config_file support
+            config_result = self._config_manager.load_config(
+                config_file=config_file, context=context
+            )
+
+            if not config_result.get("success", False):
+                return config_result
+
+            # Test connection
+            connection_result = await self._client.test_connection()
+
+            if not connection_result.get("success", False):
+                return connection_result
+
+            # Update state to connected
+            self.state_manager.update_state(
+                kubernetes_connected=True,
+                kubernetes_context=self._config_manager.get_current_context(),
+                kubernetes_config_type=config_result.get("config_type", "unknown"),
+                kubernetes_server_version=connection_result.get("server_version"),
+            )
+
+            return self._response_formatter.format_success_response(
+                connected=True,
+                context=self._config_manager.get_current_context(),
+                config_type=config_result.get("config_type"),
+                server_version=connection_result.get("server_version"),
+            )
+
+        except Exception as e:
+            return self._response_formatter.format_error_response(
+                "connect kubernetes cluster", e
+            )
+
     @ResponseFormatter.handle_exceptions("disconnect from kubernetes cluster")
     async def disconnect_cluster(self) -> Dict[str, Any]:
         """Disconnect from Kubernetes cluster."""

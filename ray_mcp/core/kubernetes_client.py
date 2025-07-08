@@ -313,17 +313,12 @@ class KubernetesApiClient(KubernetesClient):
                 "list kubernetes pods", e
             )
 
-    def _ensure_clients(self) -> None:
-        """Ensure API clients are initialized."""
-        if not KUBERNETES_AVAILABLE:
-            raise RuntimeError("Kubernetes client library is not available")
-
-        if self._core_v1_api is None:
-            self._core_v1_api = client.CoreV1Api()
-        if self._apps_v1_api is None:
-            self._apps_v1_api = client.AppsV1Api()
-        if self._version_api is None:
-            self._version_api = client.VersionApi()
+    @ResponseFormatter.handle_exceptions("get kubernetes pods")
+    async def get_pods(self, namespace: str = "default") -> Dict[str, Any]:
+        """Get pods in a namespace (interface method)."""
+        # This method is required by the KubernetesClient interface
+        # Delegate to the existing list_pods method
+        return await self.list_pods(namespace=namespace)
 
     def _extract_node_roles_from_labels(self, labels: dict) -> str:
         """Extract node roles from labels."""

@@ -535,7 +535,10 @@ class ToolRegistry:
             schema={
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string", "description": "Job ID (for local Ray) or job name (for KubeRay) to inspect"},
+                    "job_id": {
+                        "type": "string",
+                        "description": "Job ID (for local Ray) or job name (for KubeRay) to inspect",
+                    },
                     "job_type": {
                         "type": "string",
                         "enum": ["local", "kubernetes", "k8s", "auto"],
@@ -565,7 +568,10 @@ class ToolRegistry:
             schema={
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string", "description": "Job ID (for local Ray) or job name (for KubeRay) to cancel/delete"},
+                    "job_id": {
+                        "type": "string",
+                        "description": "Job ID (for local Ray) or job name (for KubeRay) to cancel/delete",
+                    },
                     "job_type": {
                         "type": "string",
                         "enum": ["local", "kubernetes", "k8s", "auto"],
@@ -670,8 +676,6 @@ class ToolRegistry:
             handler=self._list_ray_clusters_handler,
         )
 
-
-
         self._register_tool(
             name="scale_ray_cluster",
             description="Scale a Ray cluster by adjusting worker replicas. For KubeRay clusters, adjusts worker replicas. For local Ray clusters, returns information about scaling limitations.",
@@ -703,16 +707,6 @@ class ToolRegistry:
             },
             handler=self._scale_ray_cluster_handler,
         )
-
-
-
-
-
-
-
-
-
-
 
         # Cloud Provider Management Tools
         self._register_tool(
@@ -1001,7 +995,7 @@ class ToolRegistry:
         """Handler for init_ray_cluster tool with support for both local and Kubernetes clusters."""
         # Determine cluster type first
         cluster_type = kwargs.get("cluster_type", "local").lower()
-        
+
         # If address is provided, handle based on cluster type
         if kwargs.get("address"):
             if cluster_type in ["kubernetes", "k8s"]:
@@ -1012,11 +1006,12 @@ class ToolRegistry:
                 except Exception as coord_error:
                     # Log coordination error but don't fail the connection
                     from ray_mcp.logging_utils import LoggingUtility
+
                     LoggingUtility.log_warning(
                         "init_ray_gke_coordination",
-                        f"Failed to coordinate GKE for Ray connection: {coord_error}"
+                        f"Failed to coordinate GKE for Ray connection: {coord_error}",
                     )
-                
+
                 try:
                     # Connect to existing Ray cluster running on Kubernetes
                     return await self.ray_manager.init_cluster(**kwargs)
@@ -1057,7 +1052,7 @@ class ToolRegistry:
         try:
             # Ensure GKE coordination is in place if we have a GKE connection
             await self._ensure_gke_coordination()
-            
+
             # Extract Kubernetes configuration
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
@@ -1094,12 +1089,16 @@ class ToolRegistry:
         head_node_config = {
             "image": default_image,
             "num_cpus": 2,  # Default CPU count for head node
-            "service_type": kubernetes_config.get("service_type", "LoadBalancer"),  # Default to LoadBalancer for external access
+            "service_type": kubernetes_config.get(
+                "service_type", "LoadBalancer"
+            ),  # Default to LoadBalancer for external access
         }
-        
+
         # Add service annotations if provided
         if kubernetes_config.get("service_annotations"):
-            head_node_config["service_annotations"] = kubernetes_config["service_annotations"]
+            head_node_config["service_annotations"] = kubernetes_config[
+                "service_annotations"
+            ]
 
         # Add CPU/GPU/memory from direct parameters
         if kwargs.get("num_cpus"):
@@ -1118,7 +1117,7 @@ class ToolRegistry:
             head_node_config["node_selector"] = kubernetes_config["node_selector"]
         if kubernetes_config.get("tolerations"):
             head_node_config["tolerations"] = kubernetes_config["tolerations"]
-        
+
         # Add service account
         if kubernetes_config.get("service_account"):
             head_node_config["service_account"] = kubernetes_config["service_account"]
@@ -1149,7 +1148,9 @@ class ToolRegistry:
                     if worker_config.get("num_gpus"):
                         worker_spec["num_gpus"] = worker_config["num_gpus"]
                     if worker_config.get("object_store_memory"):
-                        worker_spec["object_store_memory"] = worker_config["object_store_memory"]
+                        worker_spec["object_store_memory"] = worker_config[
+                            "object_store_memory"
+                        ]
 
                     # Add Kubernetes-specific parameters
                     if worker_config.get("node_selector"):
@@ -1180,9 +1181,11 @@ class ToolRegistry:
     async def _stop_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified stop_ray_cluster tool supporting both local and KubeRay clusters."""
         cluster_name = kwargs.get("cluster_name")
-        cluster_type = await self._detect_cluster_type_from_name(cluster_name, kwargs.get("cluster_type", "auto"))
+        cluster_type = await self._detect_cluster_type_from_name(
+            cluster_name, kwargs.get("cluster_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
-        
+
         if cluster_type == "local":
             return await self.ray_manager.stop_cluster()
         elif cluster_type in ["kubernetes", "k8s"]:
@@ -1191,7 +1194,9 @@ class ToolRegistry:
                     "cluster_name is required for KubeRay cluster deletion"
                 )
             await self._ensure_gke_coordination()
-            return await self.ray_manager.delete_kuberay_cluster(cluster_name, namespace)
+            return await self.ray_manager.delete_kuberay_cluster(
+                cluster_name, namespace
+            )
         else:
             return ResponseFormatter.format_validation_error(
                 f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
@@ -1200,9 +1205,11 @@ class ToolRegistry:
     async def _inspect_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified inspect_ray_cluster tool supporting both local and KubeRay clusters."""
         cluster_name = kwargs.get("cluster_name")
-        cluster_type = await self._detect_cluster_type_from_name(cluster_name, kwargs.get("cluster_type", "auto"))
+        cluster_type = await self._detect_cluster_type_from_name(
+            cluster_name, kwargs.get("cluster_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
-        
+
         if cluster_type == "local":
             return await self.ray_manager.inspect_ray_cluster()
         elif cluster_type in ["kubernetes", "k8s"]:
@@ -1226,7 +1233,7 @@ class ToolRegistry:
             # Auto-detect based on cluster state
             job_type = await self._detect_job_type()
 
-                    # For local jobs, use existing submit_ray_job method
+            # For local jobs, use existing submit_ray_job method
         if job_type == "local":
             # Remove job_type and kubernetes_config from kwargs for local jobs
             local_kwargs = {
@@ -1275,15 +1282,24 @@ class ToolRegistry:
                 return "kubernetes"
 
             # Check if we have KubeRay clusters
-            if hasattr(self.ray_manager, 'kuberay_clusters') and self.ray_manager.kuberay_clusters:
+            if (
+                hasattr(self.ray_manager, "kuberay_clusters")
+                and self.ray_manager.kuberay_clusters
+            ):
                 return "kubernetes"
 
             # Check legacy property for backwards compatibility
-            if hasattr(self.ray_manager, 'is_kubernetes_connected') and self.ray_manager.is_kubernetes_connected:
+            if (
+                hasattr(self.ray_manager, "is_kubernetes_connected")
+                and self.ray_manager.is_kubernetes_connected
+            ):
                 return "kubernetes"
 
             # Check if we have local Ray cluster
-            if hasattr(self.ray_manager, 'is_initialized') and self.ray_manager.is_initialized:
+            if (
+                hasattr(self.ray_manager, "is_initialized")
+                and self.ray_manager.is_initialized
+            ):
                 return "local"
 
             # Default to local if no cluster is detected
@@ -1292,45 +1308,54 @@ class ToolRegistry:
             # Fall back to local on any error
             return "local"
 
-    async def _detect_job_type_from_id(self, job_id: str, explicit_job_type: str = "auto") -> str:
+    async def _detect_job_type_from_id(
+        self, job_id: str, explicit_job_type: str = "auto"
+    ) -> str:
         """Detect job type based on job ID patterns and explicit type."""
         import re
-        
+
         # If explicit type is provided and not auto, use it
         if explicit_job_type and explicit_job_type.lower() != "auto":
             return explicit_job_type.lower()
-        
+
         # UUID-like format suggests local Ray job (e.g., raysubmit_abcd1234...)
-        if re.match(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$', job_id):
+        if re.match(
+            r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", job_id
+        ):
             return "local"
-        
+
         # Ray job submission format (raysubmit_...)
         if job_id.startswith("raysubmit_"):
             return "local"
-        
+
         # Kubernetes resource name format suggests KubeRay job (lowercase alphanumeric with dashes)
-        if re.match(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', job_id) and len(job_id) <= 63:
+        if re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", job_id) and len(job_id) <= 63:
             return "kubernetes"
-        
+
         # Fallback to cluster state detection
         return await self._detect_job_type()
 
-    async def _detect_cluster_type_from_name(self, cluster_name: str = None, explicit_cluster_type: str = "auto") -> str:
+    async def _detect_cluster_type_from_name(
+        self, cluster_name: Optional[str] = None, explicit_cluster_type: str = "auto"
+    ) -> str:
         """Detect cluster type based on cluster name and explicit type."""
         import re
-        
+
         # If explicit type is provided and not auto, use it
         if explicit_cluster_type and explicit_cluster_type.lower() != "auto":
             return explicit_cluster_type.lower()
-        
+
         # If no cluster name provided, this is likely local Ray
         if not cluster_name:
             return "local"
-        
+
         # Kubernetes resource name format suggests KubeRay cluster
-        if re.match(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', cluster_name) and len(cluster_name) <= 63:
+        if (
+            re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", cluster_name)
+            and len(cluster_name) <= 63
+        ):
             return "kubernetes"
-        
+
         # Fallback to cluster state detection
         return await self._detect_job_type()
 
@@ -1339,7 +1364,7 @@ class ToolRegistry:
         try:
             # Ensure GKE coordination is in place if we have a GKE connection
             await self._ensure_gke_coordination()
-            
+
             # Extract Kubernetes configuration
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
@@ -1378,112 +1403,134 @@ class ToolRegistry:
             ),  # No default - let intelligent behavior work
         }
 
-        # AUTO-DETECT EXISTING CLUSTERS: If no cluster_selector is provided, 
+        # AUTO-DETECT EXISTING CLUSTERS: If no cluster_selector is provided,
         # discover existing KubeRay clusters and use them
         if not job_spec.get("cluster_selector"):
             try:
                 from ray_mcp.logging_utils import LoggingUtility
+
                 LoggingUtility.log_info(
                     "auto_cluster_discovery",
-                    "No cluster_selector provided - discovering existing KubeRay clusters"
+                    "No cluster_selector provided - discovering existing KubeRay clusters",
                 )
-                
+
                 # CRITICAL FIX: Actively discover existing clusters from Kubernetes
                 namespace = job_spec["namespace"]
                 try:
-                    cluster_list_result = await self.ray_manager.list_ray_clusters(namespace=namespace)
-                    
+                    cluster_list_result = await self.ray_manager.list_ray_clusters(
+                        namespace=namespace
+                    )
+
                     if cluster_list_result.get("status") == "success":
                         existing_clusters = cluster_list_result.get("clusters", [])
                         LoggingUtility.log_info(
                             "auto_cluster_discovery",
-                            f"Found {len(existing_clusters)} existing clusters in namespace '{namespace}'"
+                            f"Found {len(existing_clusters)} existing clusters in namespace '{namespace}'",
                         )
-                        
+
                         if existing_clusters:
                             # Use the first ready cluster
                             target_cluster = None
                             for cluster in existing_clusters:
                                 cluster_name = cluster.get("name")
                                 cluster_phase = cluster.get("phase", "Unknown")
-                                
+
                                 LoggingUtility.log_info(
                                     "auto_cluster_discovery",
-                                    f"Evaluating cluster '{cluster_name}' - phase: {cluster_phase}"
+                                    f"Evaluating cluster '{cluster_name}' - phase: {cluster_phase}",
                                 )
-                                
+
                                 # Prefer ready clusters, but accept any running cluster
-                                if cluster_phase in ["ready", "running", "Running", "Ready"]:
+                                if cluster_phase in [
+                                    "ready",
+                                    "running",
+                                    "Running",
+                                    "Ready",
+                                ]:
                                     target_cluster = cluster_name
                                     break
-                                elif not target_cluster and cluster_phase not in ["failed", "error", "Failed", "Error"]:
+                                elif not target_cluster and cluster_phase not in [
+                                    "failed",
+                                    "error",
+                                    "Failed",
+                                    "Error",
+                                ]:
                                     # Fallback to any non-failed cluster
                                     target_cluster = cluster_name
-                            
+
                             if target_cluster:
                                 job_spec["cluster_selector"] = target_cluster
                                 LoggingUtility.log_info(
-                                    "auto_cluster_discovery", 
-                                    f"Auto-detected existing KubeRay cluster '{target_cluster}' in namespace '{namespace}'"
+                                    "auto_cluster_discovery",
+                                    f"Auto-detected existing KubeRay cluster '{target_cluster}' in namespace '{namespace}'",
                                 )
                             else:
                                 LoggingUtility.log_warning(
                                     "auto_cluster_discovery",
-                                    f"Found {len(existing_clusters)} clusters but none are in a usable state"
+                                    f"Found {len(existing_clusters)} clusters but none are in a usable state",
                                 )
                         else:
                             LoggingUtility.log_info(
                                 "auto_cluster_discovery",
-                                f"No existing clusters found in namespace '{namespace}' - will create new cluster"
+                                f"No existing clusters found in namespace '{namespace}' - will create new cluster",
                             )
                     else:
                         LoggingUtility.log_warning(
                             "auto_cluster_discovery",
-                            f"Failed to list clusters: {cluster_list_result.get('message', 'Unknown error')}"
+                            f"Failed to list clusters: {cluster_list_result.get('message', 'Unknown error')}",
                         )
-                        
+
                 except Exception as discovery_error:
                     LoggingUtility.log_warning(
                         "auto_cluster_discovery",
-                        f"Cluster discovery failed: {discovery_error} - will create new cluster"
+                        f"Cluster discovery failed: {discovery_error} - will create new cluster",
                     )
-                
+
                 # If no cluster found in target namespace, try 'default' namespace
                 if not job_spec.get("cluster_selector") and namespace != "default":
                     try:
                         LoggingUtility.log_info(
                             "auto_cluster_discovery",
-                            "No clusters in target namespace - checking 'default' namespace"
+                            "No clusters in target namespace - checking 'default' namespace",
                         )
-                        
-                        default_cluster_result = await self.ray_manager.list_ray_clusters(namespace="default")
-                        
+
+                        default_cluster_result = (
+                            await self.ray_manager.list_ray_clusters(
+                                namespace="default"
+                            )
+                        )
+
                         if default_cluster_result.get("status") == "success":
-                            default_clusters = default_cluster_result.get("clusters", [])
-                            
+                            default_clusters = default_cluster_result.get(
+                                "clusters", []
+                            )
+
                             if default_clusters:
                                 # Use the first cluster from default namespace
                                 target_cluster = default_clusters[0].get("name")
                                 if target_cluster:
                                     job_spec["cluster_selector"] = target_cluster
-                                    job_spec["namespace"] = "default"  # Update namespace to match cluster
-                                    LoggingUtility.log_info(
-                                        "auto_cluster_discovery", 
-                                        f"Auto-detected existing cluster '{target_cluster}' in 'default' namespace - updated job namespace"
+                                    job_spec["namespace"] = (
+                                        "default"  # Update namespace to match cluster
                                     )
-                                    
+                                    LoggingUtility.log_info(
+                                        "auto_cluster_discovery",
+                                        f"Auto-detected existing cluster '{target_cluster}' in 'default' namespace - updated job namespace",
+                                    )
+
                     except Exception as default_discovery_error:
                         LoggingUtility.log_warning(
                             "auto_cluster_discovery",
-                            f"Default namespace discovery failed: {default_discovery_error}"
+                            f"Default namespace discovery failed: {default_discovery_error}",
                         )
-                        
+
             except Exception as e:
                 # If auto-detection fails completely, continue without cluster_selector (will create new cluster)
                 from ray_mcp.logging_utils import LoggingUtility
+
                 LoggingUtility.log_warning(
                     "auto_cluster_discovery",
-                    f"Auto-detection failed: {e} - will create new cluster"
+                    f"Auto-detection failed: {e} - will create new cluster",
                 )
 
         # Add container image
@@ -1524,7 +1571,7 @@ class ToolRegistry:
             # Check if we have an active GKE connection
             state = self.ray_manager.state_manager.get_state()
             gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
-            
+
             if gke_connection.get("connected", False):
                 # If we're connected to GKE but not coordinated, ensure coordination
                 if not state.get("kuberay_gke_coordinated", False):
@@ -1532,16 +1579,17 @@ class ToolRegistry:
         except AttributeError as attr_e:
             # Handle case where state manager access fails
             from ray_mcp.logging_utils import LoggingUtility
+
             LoggingUtility.log_error(
                 "ensure_gke_coordination",
-                f"Failed to access state manager: {attr_e}"
+                Exception(f"Failed to access state manager: {attr_e}"),
             )
         except Exception as e:
             # Don't fail operations if coordination fails, just log it
             from ray_mcp.logging_utils import LoggingUtility
+
             LoggingUtility.log_warning(
-                "ensure_gke_coordination",
-                f"Failed to ensure GKE coordination: {e}"
+                "ensure_gke_coordination", f"Failed to ensure GKE coordination: {e}"
             )
 
     async def _list_ray_jobs_handler(self, **kwargs) -> Dict[str, Any]:
@@ -1568,10 +1616,12 @@ class ToolRegistry:
     async def _inspect_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified inspect_ray_job tool supporting both local and KubeRay jobs."""
         job_id = kwargs["job_id"]
-        job_type = await self._detect_job_type_from_id(job_id, kwargs.get("job_type", "auto"))
+        job_type = await self._detect_job_type_from_id(
+            job_id, kwargs.get("job_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
         mode = kwargs.get("mode", "status")
-        
+
         if job_type == "local":
             return await self.ray_manager.inspect_ray_job(job_id, mode)
         elif job_type in ["kubernetes", "k8s"]:
@@ -1585,9 +1635,11 @@ class ToolRegistry:
     async def _cancel_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified cancel_ray_job tool supporting both local and KubeRay jobs."""
         job_id = kwargs["job_id"]
-        job_type = await self._detect_job_type_from_id(job_id, kwargs.get("job_type", "auto"))
+        job_type = await self._detect_job_type_from_id(
+            job_id, kwargs.get("job_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
-        
+
         if job_type == "local":
             return await self.ray_manager.cancel_ray_job(job_id)
         elif job_type in ["kubernetes", "k8s"]:
@@ -1602,16 +1654,18 @@ class ToolRegistry:
         """Handler for unified retrieve_logs tool supporting both local and KubeRay jobs."""
         identifier = kwargs["identifier"]
         log_type = kwargs.get("log_type", "job")
-        
+
         # Validate log_type first before attempting job type detection
         if log_type not in ["job"]:
             return ResponseFormatter.format_validation_error(
                 f"Invalid log_type: {log_type}. Must be 'job'"
             )
-        
-        job_type = await self._detect_job_type_from_id(identifier, kwargs.get("job_type", "auto"))
+
+        job_type = await self._detect_job_type_from_id(
+            identifier, kwargs.get("job_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
-        
+
         if job_type == "local":
             return await self.ray_manager.retrieve_logs(**kwargs)
         elif job_type in ["kubernetes", "k8s"]:
@@ -1626,9 +1680,11 @@ class ToolRegistry:
 
     async def _list_ray_clusters_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified list_ray_clusters tool supporting both local and KubeRay clusters."""
-        cluster_type = await self._detect_cluster_type_from_name(None, kwargs.get("cluster_type", "auto"))
+        cluster_type = await self._detect_cluster_type_from_name(
+            None, kwargs.get("cluster_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
-        
+
         if cluster_type == "local":
             return await self._list_local_ray_clusters()
         elif cluster_type in ["kubernetes", "k8s"]:
@@ -1643,7 +1699,10 @@ class ToolRegistry:
         """List local Ray clusters (returns current cluster info if Ray is running)."""
         try:
             # Check if Ray is initialized
-            if hasattr(self.ray_manager, 'is_initialized') and self.ray_manager.is_initialized:
+            if (
+                hasattr(self.ray_manager, "is_initialized")
+                and self.ray_manager.is_initialized
+            ):
                 # Get basic cluster information
                 cluster_info = await self.ray_manager.inspect_ray_cluster()
                 if cluster_info.get("status") == "success":
@@ -1658,11 +1717,9 @@ class ToolRegistry:
                         "nodes": cluster_info.get("nodes", []),
                         "resources": cluster_info.get("cluster_resources", {}),
                     }
-                    
+
                     return ResponseFormatter.format_success_response(
-                        clusters=[cluster_data],
-                        total_clusters=1,
-                        cluster_type="local"
+                        clusters=[cluster_data], total_clusters=1, cluster_type="local"
                     )
                 else:
                     # Ray inspection failed, return empty list
@@ -1670,7 +1727,7 @@ class ToolRegistry:
                         clusters=[],
                         total_clusters=0,
                         cluster_type="local",
-                        message="No local Ray cluster is currently running"
+                        message="No local Ray cluster is currently running",
                     )
             else:
                 # Ray not initialized, return empty list
@@ -1678,28 +1735,29 @@ class ToolRegistry:
                     clusters=[],
                     total_clusters=0,
                     cluster_type="local",
-                    message="No local Ray cluster is currently running"
+                    message="No local Ray cluster is currently running",
                 )
         except Exception as e:
             return ResponseFormatter.format_error_response("list local ray clusters", e)
-
-
 
     async def _scale_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified scale_ray_cluster tool supporting both local and KubeRay clusters."""
         cluster_name = kwargs.get("cluster_name")
         worker_replicas = kwargs["worker_replicas"]
-        cluster_type = await self._detect_cluster_type_from_name(cluster_name, kwargs.get("cluster_type", "auto"))
+        cluster_type = await self._detect_cluster_type_from_name(
+            cluster_name, kwargs.get("cluster_type", "auto")
+        )
         namespace = kwargs.get("namespace", "default")
-        
+
         if cluster_type == "local":
             # Local Ray clusters don't support dynamic scaling
             from ray_mcp.logging_utils import LoggingUtility
+
             LoggingUtility.log_info(
-                "scale_ray_cluster", 
-                f"Local Ray cluster scaling requested but not supported - would scale to {worker_replicas} workers"
+                "scale_ray_cluster",
+                f"Local Ray cluster scaling requested but not supported - would scale to {worker_replicas} workers",
             )
-            
+
             return ResponseFormatter.format_success_response(
                 status="info",
                 message="Local Ray clusters do not support dynamic scaling",
@@ -1710,16 +1768,16 @@ class ToolRegistry:
                     "explanation": "Local Ray clusters have a fixed number of worker nodes determined at cluster startup. To change the number of workers, you need to stop and restart the cluster with different configuration.",
                     "alternatives": [
                         "Stop the current cluster with 'stop_ray'",
-                        "Restart with desired worker count using 'init_ray' with appropriate parameters"
-                    ]
-                }
+                        "Restart with desired worker count using 'init_ray' with appropriate parameters",
+                    ],
+                },
             )
         elif cluster_type in ["kubernetes", "k8s"]:
             if not cluster_name:
                 return ResponseFormatter.format_validation_error(
                     "cluster_name is required for KubeRay cluster scaling"
                 )
-            
+
             await self._ensure_gke_coordination()
             return await self.ray_manager.scale_ray_cluster(
                 cluster_name, worker_replicas, namespace
@@ -1728,16 +1786,6 @@ class ToolRegistry:
             return ResponseFormatter.format_validation_error(
                 f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
             )
-
-
-
-
-
-
-
-
-
-
 
     # Cloud Provider Tool Handlers
 

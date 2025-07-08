@@ -47,10 +47,12 @@ except ImportError:
 
 # Import additional modules for proper GKE integration
 try:
-    import google.auth.transport.requests
     import base64
-    import tempfile
     import os
+    import tempfile
+
+    import google.auth.transport.requests
+
     GOOGLE_AUTH_AVAILABLE = True
 except ImportError:
     GOOGLE_AUTH_AVAILABLE = False
@@ -402,7 +404,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         try:
             # Clean up any existing certificate file
             self._cleanup_ca_cert_file()
-            
+
             project_id = project_id or self._project_id
             if not project_id:
                 return self._response_formatter.format_error_response(
@@ -442,7 +444,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                         "endpoint": cluster.endpoint,
                         "context": context_name,
                     }
-                }
+                },
             )
 
             return self._response_formatter.format_success_response(
@@ -479,24 +481,32 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
             # Get fresh access token from Google Cloud credentials
             request = google.auth.transport.requests.Request()
             self._credentials.refresh(request)
-            
+
             # Set up bearer token authentication
-            configuration.api_key_prefix['authorization'] = 'Bearer'
-            configuration.api_key['authorization'] = self._credentials.token
+            configuration.api_key_prefix["authorization"] = "Bearer"
+            configuration.api_key["authorization"] = self._credentials.token
 
             # Handle cluster CA certificate
-            if hasattr(cluster, 'master_auth') and cluster.master_auth and cluster.master_auth.cluster_ca_certificate:
+            if (
+                hasattr(cluster, "master_auth")
+                and cluster.master_auth
+                and cluster.master_auth.cluster_ca_certificate
+            ):
                 # Decode the base64-encoded CA certificate
-                ca_cert_data = base64.b64decode(cluster.master_auth.cluster_ca_certificate)
-                
+                ca_cert_data = base64.b64decode(
+                    cluster.master_auth.cluster_ca_certificate
+                )
+
                 # Create a temporary file for the CA certificate
-                ca_cert_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False, suffix='.crt')
+                ca_cert_file = tempfile.NamedTemporaryFile(
+                    mode="w+b", delete=False, suffix=".crt"
+                )
                 ca_cert_file.write(ca_cert_data)
                 ca_cert_file.close()
-                
+
                 # Store the file path for later cleanup
                 self._ca_cert_file = ca_cert_file.name
-                
+
                 configuration.ssl_ca_cert = ca_cert_file.name
                 configuration.verify_ssl = True
             else:
@@ -507,10 +517,10 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
             with client.ApiClient(configuration) as api_client:
                 v1 = client.CoreV1Api(api_client)
                 version_api = client.VersionApi(api_client)
-                
+
                 # Test connection by getting server version
                 version_info = await asyncio.to_thread(version_api.get_code)
-                
+
                 # Also test basic functionality by listing namespaces
                 namespaces = await asyncio.to_thread(v1.list_namespace)
 
@@ -518,7 +528,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
             self._k8s_client = configuration
 
             # Don't delete the certificate file yet - it's needed for future operations
-            
+
             return self._response_formatter.format_success_response(
                 connected=True,
                 server_version=version_info.git_version,
@@ -527,13 +537,13 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
 
         except Exception as e:
             # Clean up temporary file on error
-            if hasattr(self, '_ca_cert_file') and self._ca_cert_file:
+            if hasattr(self, "_ca_cert_file") and self._ca_cert_file:
                 try:
                     os.unlink(self._ca_cert_file)
                     self._ca_cert_file = None
                 except OSError:
                     pass
-            
+
             return self._response_formatter.format_error_response(
                 "establish kubernetes connection", e
             )
@@ -555,14 +565,14 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         try:
             # Clean up certificate file
             self._cleanup_ca_cert_file()
-            
+
             # Reset connection state
             self._k8s_client = None
             self._is_authenticated = False
             self._project_id = None
             self._credentials = None
             self._gke_client = None
-            
+
             # Update state
             self.state_manager.update_state(
                 kubernetes_connected=False,
@@ -570,18 +580,15 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                 kubernetes_config_type=None,
                 kubernetes_server_version=None,
                 cloud_provider_connections={},
-                cloud_provider_auth={}
+                cloud_provider_auth={},
             )
-            
+
             return self._response_formatter.format_success_response(
-                disconnected=True,
-                provider="gke"
+                disconnected=True, provider="gke"
             )
-            
+
         except Exception as e:
-            return self._response_formatter.format_error_response(
-                "gke disconnect", e
-            )
+            return self._response_formatter.format_error_response("gke disconnect", e)
 
     def create_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
