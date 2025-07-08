@@ -440,7 +440,8 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                     name=service_name, namespace=namespace
                 )
             except ApiException as e:
-                if e.status == 404:
+                status = getattr(e, "status", "unknown")
+                if status == 404:
                     LoggingUtility.log_debug(
                         "get_external_dashboard_url",
                         f"Service {service_name} not found in namespace {namespace}",
@@ -449,7 +450,8 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                 else:
                     raise
 
-            service_type = service.spec.type
+            # Safe access to service.spec.type
+            service_type = getattr(getattr(service, "spec", None), "type", "Unknown")
             dashboard_port = 8265
 
             if service_type == "LoadBalancer":
@@ -472,26 +474,34 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
     def _get_loadbalancer_url(self, service, dashboard_port: int) -> Optional[str]:
         """Get LoadBalancer service external URL."""
         try:
-            # Check if LoadBalancer has an external IP assigned
-            if (
-                service.status.load_balancer
-                and service.status.load_balancer.ingress
-                and len(service.status.load_balancer.ingress) > 0
-            ):
+            # Safe access to service.status.load_balancer
+            service_status = getattr(service, "status", None)
+            if not service_status:
+                return None
 
-                ingress = service.status.load_balancer.ingress[0]
+            load_balancer = getattr(service_status, "load_balancer", None)
+            if not load_balancer:
+                return None
 
-                # Try IP first, then hostname
-                external_host = ingress.ip or ingress.hostname
-                if external_host:
-                    # Find the external port for dashboard
-                    external_port = self._find_external_port(service, dashboard_port)
-                    if external_port:
-                        url = f"http://{external_host}:{external_port}"
-                        LoggingUtility.log_info(
-                            "loadbalancer_url", f"LoadBalancer external URL: {url}"
-                        )
-                        return url
+            ingress_list = getattr(load_balancer, "ingress", None)
+            if not ingress_list or len(ingress_list) == 0:
+                return None
+
+            ingress = ingress_list[0]
+
+            # Try IP first, then hostname
+            external_host = getattr(ingress, "ip", None) or getattr(
+                ingress, "hostname", None
+            )
+            if external_host:
+                # Find the external port for dashboard
+                external_port = self._find_external_port(service, dashboard_port)
+                if external_port:
+                    url = f"http://{external_host}:{external_port}"
+                    LoggingUtility.log_info(
+                        "loadbalancer_url", f"LoadBalancer external URL: {url}"
+                    )
+                    return url
 
             LoggingUtility.log_debug(
                 "loadbalancer_url",
@@ -510,11 +520,22 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
     ) -> Optional[str]:
         """Get NodePort service external URL."""
         try:
+            # Safe access to service.spec.ports
+            service_spec = getattr(service, "spec", None)
+            if not service_spec:
+                return None
+
+            ports = getattr(service_spec, "ports", [])
+            if not ports:
+                return None
+
             # Find the NodePort for the dashboard
             node_port = None
-            for port in service.spec.ports:
-                if port.port == dashboard_port and port.node_port:
-                    node_port = port.node_port
+            for port in ports:
+                port_num = getattr(port, "port", None)
+                node_port_num = getattr(port, "node_port", None)
+                if port_num == dashboard_port and node_port_num:
+                    node_port = node_port_num
                     break
 
             if not node_port:
@@ -543,9 +564,18 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
     def _find_external_port(self, service, target_port: int) -> Optional[int]:
         """Find the external port for a target port in a service."""
         try:
-            for port in service.spec.ports:
-                if port.port == target_port:
-                    return port.port
+            service_spec = getattr(service, "spec", None)
+            if not service_spec:
+                return None
+
+            ports = getattr(service_spec, "ports", [])
+            if not ports:
+                return None
+
+            for port in ports:
+                port_num = getattr(port, "port", None)
+                if port_num == target_port:
+                    return port_num
             return None
         except Exception:
             return None
@@ -604,7 +634,8 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                             name=service_name, namespace=namespace
                         )
                     except ApiException as e:
-                        if e.status == 404:
+                        status = getattr(e, "status", "unknown")
+                        if status == 404:
                             LoggingUtility.log_debug(
                                 "service_ready_check",
                                 f"Attempt {attempt + 1}: Service {service_name} not found yet",
@@ -614,26 +645,37 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                         else:
                             raise
 
-                    # Check service type and readiness
-                    service_type = service.spec.type
+                    # Check service type and readiness with safe access
+                    service_spec = getattr(service, "spec", None)
+                    service_type = (
+                        getattr(service_spec, "type", "Unknown")
+                        if service_spec
+                        else "Unknown"
+                    )
 
                     if service_type == "LoadBalancer":
                         # For LoadBalancer, check if external IP is assigned
-                        if (
-                            service.status.load_balancer
-                            and service.status.load_balancer.ingress
-                            and len(service.status.load_balancer.ingress) > 0
-                        ):
-
-                            ingress = service.status.load_balancer.ingress[0]
-                            if ingress.ip or ingress.hostname:
-                                external_url = self._get_loadbalancer_url(service, 8265)
-                                if external_url:
-                                    LoggingUtility.log_info(
-                                        "service_ready",
-                                        f"LoadBalancer service {service_name} ready with external URL: {external_url}",
-                                    )
-                                    return external_url
+                        service_status = getattr(service, "status", None)
+                        if service_status:
+                            load_balancer = getattr(
+                                service_status, "load_balancer", None
+                            )
+                            if load_balancer:
+                                ingress_list = getattr(load_balancer, "ingress", None)
+                                if ingress_list and len(ingress_list) > 0:
+                                    ingress = ingress_list[0]
+                                    if getattr(ingress, "ip", None) or getattr(
+                                        ingress, "hostname", None
+                                    ):
+                                        external_url = self._get_loadbalancer_url(
+                                            service, 8265
+                                        )
+                                        if external_url:
+                                            LoggingUtility.log_info(
+                                                "service_ready",
+                                                f"LoadBalancer service {service_name} ready with external URL: {external_url}",
+                                            )
+                                            return external_url
 
                         LoggingUtility.log_debug(
                             "service_ready_check",

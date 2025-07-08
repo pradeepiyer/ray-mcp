@@ -182,14 +182,17 @@ class CRDOperationsClient(CRDOperations):
 
             except ApiException as e:
                 if attempt == self._retry_attempts - 1:  # Last attempt
+                    status = getattr(e, "status", "unknown")
+                    reason = getattr(e, "reason", "unknown")
                     return self._response_formatter.format_error_response(
                         "create custom resource",
-                        Exception(f"API Error: {e.status} - {e.reason}"),
+                        Exception(f"API Error: {status} - {reason}"),
                     )
                 else:
+                    reason = getattr(e, "reason", "unknown")
                     LoggingUtility.log_warning(
                         "create custom resource",
-                        f"Attempt {attempt + 1} failed: {e.reason}, retrying...",
+                        f"Attempt {attempt + 1} failed: {reason}, retrying...",
                     )
                     await asyncio.sleep(self._retry_delay * (attempt + 1))
 
@@ -197,6 +200,12 @@ class CRDOperationsClient(CRDOperations):
                 return self._response_formatter.format_error_response(
                     "create custom resource", e
                 )
+
+        # Fallback return in case all retries are exhausted without explicit return
+        return self._response_formatter.format_error_response(
+            "create custom resource",
+            Exception("All retry attempts exhausted without successful completion"),
+        )
 
     @ResponseFormatter.handle_exceptions("get custom resource")
     async def get_resource(
@@ -223,17 +232,27 @@ class CRDOperationsClient(CRDOperations):
                 name=name,
             )
 
+            # Safe dictionary access with type checking
+            status = result.get("status", {}) if isinstance(result, dict) else {}
+            phase = (
+                status.get("phase", "Unknown")
+                if isinstance(status, dict)
+                else "Unknown"
+            )
+
             return self._response_formatter.format_success_response(
                 resource=result,
                 name=name,
                 namespace=namespace,
                 resource_type=resource_type,
-                status=result.get("status", {}),
-                phase=result.get("status", {}).get("phase", "Unknown"),
+                status=status,
+                phase=phase,
             )
 
         except ApiException as e:
-            if e.status == 404:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
+            if status == 404:
                 return self._response_formatter.format_error_response(
                     "get custom resource",
                     Exception(
@@ -243,7 +262,7 @@ class CRDOperationsClient(CRDOperations):
             else:
                 return self._response_formatter.format_error_response(
                     "get custom resource",
-                    Exception(f"API Error: {e.status} - {e.reason}"),
+                    Exception(f"API Error: {status} - {reason}"),
                 )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -278,18 +297,39 @@ class CRDOperationsClient(CRDOperations):
                 plural=resource_info["plural"],
             )
 
-            # Extract and format resource information
+            # Extract and format resource information with safe dictionary access
             resources = []
-            for item in result.get("items", []):
+            items = result.get("items", []) if isinstance(result, dict) else []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+
+                metadata = item.get("metadata", {}) if isinstance(item, dict) else {}
+                status = item.get("status", {}) if isinstance(item, dict) else {}
+
                 resource_summary = {
-                    "name": item.get("metadata", {}).get("name"),
-                    "namespace": item.get("metadata", {}).get("namespace"),
-                    "creation_timestamp": item.get("metadata", {}).get(
-                        "creationTimestamp"
+                    "name": (
+                        metadata.get("name") if isinstance(metadata, dict) else None
                     ),
-                    "status": item.get("status", {}),
-                    "phase": item.get("status", {}).get("phase", "Unknown"),
-                    "labels": item.get("metadata", {}).get("labels", {}),
+                    "namespace": (
+                        metadata.get("namespace")
+                        if isinstance(metadata, dict)
+                        else None
+                    ),
+                    "creation_timestamp": (
+                        metadata.get("creationTimestamp")
+                        if isinstance(metadata, dict)
+                        else None
+                    ),
+                    "status": status,
+                    "phase": (
+                        status.get("phase", "Unknown")
+                        if isinstance(status, dict)
+                        else "Unknown"
+                    ),
+                    "labels": (
+                        metadata.get("labels", {}) if isinstance(metadata, dict) else {}
+                    ),
                 }
                 resources.append(resource_summary)
 
@@ -301,9 +341,11 @@ class CRDOperationsClient(CRDOperations):
             )
 
         except ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
                 "list custom resources",
-                Exception(f"API Error: {e.status} - {e.reason}"),
+                Exception(f"API Error: {status} - {reason}"),
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -342,9 +384,23 @@ class CRDOperationsClient(CRDOperations):
                     name=name,
                 )
 
-                # Update the resource spec while preserving metadata
-                updated_spec = current.copy()
-                updated_spec["spec"] = resource_spec.get("spec", resource_spec)
+                # Update the resource spec while preserving metadata with safe copy
+                if isinstance(current, dict):
+                    updated_spec = current.copy()
+                    updated_spec["spec"] = (
+                        resource_spec.get("spec", resource_spec)
+                        if isinstance(resource_spec, dict)
+                        else resource_spec
+                    )
+                else:
+                    # Fallback if current is not a dict
+                    updated_spec = {
+                        "spec": (
+                            resource_spec.get("spec", resource_spec)
+                            if isinstance(resource_spec, dict)
+                            else resource_spec
+                        )
+                    }
 
                 # Perform the update
                 result = await asyncio.to_thread(
@@ -365,7 +421,9 @@ class CRDOperationsClient(CRDOperations):
                 )
 
             except ApiException as e:
-                if e.status == 404:
+                status = getattr(e, "status", "unknown")
+                reason = getattr(e, "reason", "unknown")
+                if status == 404:
                     return self._response_formatter.format_error_response(
                         "update custom resource",
                         Exception(
@@ -373,7 +431,7 @@ class CRDOperationsClient(CRDOperations):
                         ),
                     )
                 elif (
-                    e.status == 409 and attempt < self._retry_attempts - 1
+                    status == 409 and attempt < self._retry_attempts - 1
                 ):  # Conflict, retry
                     LoggingUtility.log_warning(
                         "update custom resource",
@@ -384,12 +442,18 @@ class CRDOperationsClient(CRDOperations):
                 else:
                     return self._response_formatter.format_error_response(
                         "update custom resource",
-                        Exception(f"API Error: {e.status} - {e.reason}"),
+                        Exception(f"API Error: {status} - {reason}"),
                     )
             except Exception as e:
                 return self._response_formatter.format_error_response(
                     "update custom resource", e
                 )
+
+        # Fallback return in case all retries are exhausted without explicit return
+        return self._response_formatter.format_error_response(
+            "update custom resource",
+            Exception("All retry attempts exhausted without successful completion"),
+        )
 
     @ResponseFormatter.handle_exceptions("delete custom resource")
     async def delete_resource(
@@ -426,7 +490,9 @@ class CRDOperationsClient(CRDOperations):
             )
 
         except ApiException as e:
-            if e.status == 404:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
+            if status == 404:
                 return self._response_formatter.format_error_response(
                     "delete custom resource",
                     Exception(
@@ -436,7 +502,7 @@ class CRDOperationsClient(CRDOperations):
             else:
                 return self._response_formatter.format_error_response(
                     "delete custom resource",
-                    Exception(f"API Error: {e.status} - {e.reason}"),
+                    Exception(f"API Error: {status} - {reason}"),
                 )
         except Exception as e:
             return self._response_formatter.format_error_response(

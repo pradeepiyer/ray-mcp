@@ -107,10 +107,12 @@ class KubernetesConfigManager(KubernetesConfig):
             # Test connection by getting server version
             version_info = version_api.get_code()
 
+            # Safe access to git_version attribute
+            git_version = getattr(version_info, "git_version", "unknown")
             return self._response_formatter.format_success_response(
                 valid=True,
                 context=self._current_context,
-                server_version=version_info.git_version,
+                server_version=git_version,
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -133,22 +135,36 @@ class KubernetesConfigManager(KubernetesConfig):
             context_list = []
 
             for ctx in contexts:
+                # Safe dictionary access with type checking
+                if not isinstance(ctx, dict):
+                    continue
+
+                context_dict = ctx.get("context", {})
+                if not isinstance(context_dict, dict):
+                    continue
+
                 context_info = {
-                    "name": ctx["name"],
-                    "cluster": ctx["context"]["cluster"],
-                    "user": ctx["context"]["user"],
-                    "namespace": ctx["context"].get("namespace", "default"),
+                    "name": ctx.get("name", "unknown"),
+                    "cluster": context_dict.get("cluster", "unknown"),
+                    "user": context_dict.get("user", "unknown"),
+                    "namespace": context_dict.get("namespace", "default"),
                     "is_active": (
-                        ctx["name"] == active_context["name"]
-                        if active_context
+                        ctx.get("name") == active_context.get("name")
+                        if active_context and isinstance(active_context, dict)
                         else False
                     ),
                 }
                 context_list.append(context_info)
 
+            active_context_name = (
+                active_context.get("name")
+                if active_context and isinstance(active_context, dict)
+                else None
+            )
+
             return self._response_formatter.format_success_response(
                 contexts=context_list,
-                active_context=active_context["name"] if active_context else None,
+                active_context=active_context_name,
             )
         except Exception as e:
             return self._response_formatter.format_error_response(

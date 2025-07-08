@@ -147,7 +147,3 @@ pythonVersion = "3.10"
 typeCheckingMode = "basic"
 # Ignore specific error types while fixing
 reportOptionalMemberAccess = false
-reportReturnType = false
-reportAttributeAccessIssue = false
-reportCallIssue = false
-reportArgumentType = false

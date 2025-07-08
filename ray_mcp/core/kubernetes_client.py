@@ -66,15 +66,19 @@ class KubernetesApiClient(KubernetesClient):
             self._ensure_clients()
             version_info = await asyncio.to_thread(self._version_api.get_code)
 
+            # Safe access to git_version attribute
+            git_version = getattr(version_info, "git_version", "unknown")
             return self._response_formatter.format_success_response(
                 connected=True,
-                server_version=version_info.git_version,
+                server_version=git_version,
                 context=self._config_manager.get_current_context(),
             )
         except ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
                 "test kubernetes connection",
-                Exception(f"API Error: {e.status} - {e.reason}"),
+                Exception(f"API Error: {status} - {reason}"),
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -128,8 +132,10 @@ class KubernetesApiClient(KubernetesClient):
                         ready_nodes += 1
                         break
 
+            # Safe access to git_version attribute
+            git_version = getattr(version_info, "git_version", "unknown")
             return self._response_formatter.format_success_response(
-                server_version=version_info.git_version,
+                server_version=git_version,
                 context=self._config_manager.get_current_context(),
                 total_nodes=len(nodes.items),
                 ready_nodes=ready_nodes,
@@ -138,9 +144,11 @@ class KubernetesApiClient(KubernetesClient):
                 total_memory_gb=round(total_memory, 2),
             )
         except ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
                 "get kubernetes cluster info",
-                Exception(f"API Error: {e.status} - {e.reason}"),
+                Exception(f"API Error: {status} - {reason}"),
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -180,9 +188,11 @@ class KubernetesApiClient(KubernetesClient):
                 namespaces=namespace_list, total_count=len(namespace_list)
             )
         except ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
                 "list kubernetes namespaces",
-                Exception(f"API Error: {e.status} - {e.reason}"),
+                Exception(f"API Error: {status} - {reason}"),
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -246,8 +256,10 @@ class KubernetesApiClient(KubernetesClient):
                 nodes=node_list, total_count=len(node_list)
             )
         except ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
-                "get kubernetes nodes", Exception(f"API Error: {e.status} - {e.reason}")
+                "get kubernetes nodes", Exception(f"API Error: {status} - {reason}")
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
@@ -305,8 +317,10 @@ class KubernetesApiClient(KubernetesClient):
                 pods=pod_list, total_count=len(pod_list), namespace=namespace
             )
         except ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
-                "list kubernetes pods", Exception(f"API Error: {e.status} - {e.reason}")
+                "list kubernetes pods", Exception(f"API Error: {status} - {reason}")
             )
         except Exception as e:
             return self._response_formatter.format_error_response(
