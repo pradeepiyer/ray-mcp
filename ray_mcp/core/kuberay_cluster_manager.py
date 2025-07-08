@@ -1,5 +1,6 @@
 """KubeRay cluster management for Ray clusters on Kubernetes."""
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 try:
@@ -16,6 +17,16 @@ from .crd_operations import CRDOperationsClient
 from .interfaces import KubeRayClusterManager, KubeRayComponent, StateManager
 from .ray_cluster_crd import RayClusterCRDManager
 
+# Import kubernetes modules with error handling
+try:
+    from kubernetes import client
+    from kubernetes.client.rest import ApiException
+    KUBERNETES_AVAILABLE = True
+except ImportError:
+    KUBERNETES_AVAILABLE = False
+    client = None
+    ApiException = Exception
+
 
 class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
     """Manages Ray cluster lifecycle using KubeRay Custom Resources."""
@@ -30,6 +41,19 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         self._crd_operations = crd_operations or CRDOperationsClient()
         self._cluster_crd = cluster_crd or RayClusterCRDManager()
         self._response_formatter = ResponseFormatter()
+        self._core_v1_api = None
+
+    def _ensure_kubernetes_client(self) -> None:
+        """Ensure Kubernetes core API client is initialized."""
+        if not KUBERNETES_AVAILABLE:
+            raise RuntimeError("Kubernetes client library is not available")
+        
+        if self._core_v1_api is None:
+            # Use the same configuration as CRD operations for consistency
+            if hasattr(self._crd_operations, '_api_client') and self._crd_operations._api_client:
+                self._core_v1_api = client.CoreV1Api(self._crd_operations._api_client)
+            else:
+                self._core_v1_api = client.CoreV1Api()
 
     def set_kubernetes_config(self, kubernetes_config) -> None:
         """Set the Kubernetes configuration for API operations."""
@@ -40,6 +64,8 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                 f"Setting Kubernetes config - config provided: {kubernetes_config is not None}, host: {getattr(kubernetes_config, 'host', 'N/A') if kubernetes_config else 'N/A'}"
             )
             self._crd_operations.set_kubernetes_config(kubernetes_config)
+            # Reset core API client to use new configuration
+            self._core_v1_api = None
             LoggingUtility.log_info(
                 "kuberay_cluster_set_k8s_config",
                 "Successfully set Kubernetes configuration on CRD operations client"
@@ -378,6 +404,281 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
 
     def _get_dashboard_url(self, cluster_name: str, namespace: str) -> str:
         """Get the dashboard URL for a Ray cluster."""
-        # This would typically be constructed based on ingress or port-forwarding setup
-        # For now, return a template URL
+        # Try to get actual service details and return appropriate URL
+        try:
+            # For cloud deployments, attempt to get LoadBalancer or NodePort URL
+            external_url = self._get_external_dashboard_url(cluster_name, namespace)
+            if external_url:
+                return external_url
+        except Exception as e:
+            LoggingUtility.log_debug(
+                "dashboard_url_external",
+                f"Could not get external URL for {cluster_name}: {e}"
+            )
+        
+        # Fall back to cluster-internal URL
         return f"http://{cluster_name}-head-svc.{namespace}.svc.cluster.local:8265"
+
+    def _get_external_dashboard_url(self, cluster_name: str, namespace: str) -> Optional[str]:
+        """Get external dashboard URL for LoadBalancer or NodePort services."""
+        if not KUBERNETES_AVAILABLE:
+            return None
+            
+        try:
+            self._ensure_kubernetes_client()
+            service_name = f"{cluster_name}-head-svc"
+            
+            # Get the service from Kubernetes API
+            try:
+                service = self._core_v1_api.read_namespaced_service(
+                    name=service_name,
+                    namespace=namespace
+                )
+            except ApiException as e:
+                if e.status == 404:
+                    LoggingUtility.log_debug(
+                        "get_external_dashboard_url",
+                        f"Service {service_name} not found in namespace {namespace}"
+                    )
+                    return None
+                else:
+                    raise
+            
+            service_type = service.spec.type
+            dashboard_port = 8265
+            
+            if service_type == "LoadBalancer":
+                return self._get_loadbalancer_url(service, dashboard_port)
+            elif service_type == "NodePort":
+                return self._get_nodeport_url(service, dashboard_port, namespace)
+            else:
+                LoggingUtility.log_debug(
+                    "get_external_dashboard_url",
+                    f"Service {service_name} is type {service_type}, no external access"
+                )
+                return None
+                
+        except Exception as e:
+            LoggingUtility.log_debug(
+                "get_external_dashboard_url",
+                f"Error getting external URL: {e}"
+            )
+            return None
+
+    def _get_loadbalancer_url(self, service, dashboard_port: int) -> Optional[str]:
+        """Get LoadBalancer service external URL."""
+        try:
+            # Check if LoadBalancer has an external IP assigned
+            if (service.status.load_balancer and 
+                service.status.load_balancer.ingress and 
+                len(service.status.load_balancer.ingress) > 0):
+                
+                ingress = service.status.load_balancer.ingress[0]
+                
+                # Try IP first, then hostname
+                external_host = ingress.ip or ingress.hostname
+                if external_host:
+                    # Find the external port for dashboard
+                    external_port = self._find_external_port(service, dashboard_port)
+                    if external_port:
+                        url = f"http://{external_host}:{external_port}"
+                        LoggingUtility.log_info(
+                            "loadbalancer_url",
+                            f"LoadBalancer external URL: {url}"
+                        )
+                        return url
+            
+            LoggingUtility.log_debug(
+                "loadbalancer_url",
+                "LoadBalancer service has no external IP assigned yet"
+            )
+            return None
+            
+        except Exception as e:
+            LoggingUtility.log_debug(
+                "loadbalancer_url",
+                f"Error getting LoadBalancer URL: {e}"
+            )
+            return None
+
+    def _get_nodeport_url(self, service, dashboard_port: int, namespace: str) -> Optional[str]:
+        """Get NodePort service external URL."""
+        try:
+            # Find the NodePort for the dashboard
+            node_port = None
+            for port in service.spec.ports:
+                if port.port == dashboard_port and port.node_port:
+                    node_port = port.node_port
+                    break
+            
+            if not node_port:
+                LoggingUtility.log_debug(
+                    "nodeport_url",
+                    f"No NodePort found for dashboard port {dashboard_port}"
+                )
+                return None
+            
+            # Get a node IP to construct the URL
+            node_ip = self._get_node_external_ip()
+            if node_ip:
+                url = f"http://{node_ip}:{node_port}"
+                LoggingUtility.log_info(
+                    "nodeport_url",
+                    f"NodePort external URL: {url}"
+                )
+                return url
+            else:
+                LoggingUtility.log_debug(
+                    "nodeport_url",
+                    "No external node IP available for NodePort access"
+                )
+                return None
+                
+        except Exception as e:
+            LoggingUtility.log_debug(
+                "nodeport_url",
+                f"Error getting NodePort URL: {e}"
+            )
+            return None
+
+    def _find_external_port(self, service, target_port: int) -> Optional[int]:
+        """Find the external port for a target port in a service."""
+        try:
+            for port in service.spec.ports:
+                if port.port == target_port:
+                    return port.port
+            return None
+        except Exception:
+            return None
+
+    def _get_node_external_ip(self) -> Optional[str]:
+        """Get external IP of any cluster node."""
+        try:
+            self._ensure_kubernetes_client()
+            
+            # List all nodes
+            nodes = self._core_v1_api.list_node()
+            
+            # Look for a node with external IP
+            for node in nodes.items:
+                if node.status.addresses:
+                    for address in node.status.addresses:
+                        if address.type == "ExternalIP":
+                            return address.address
+            
+            # If no external IP, try internal IP as fallback
+            for node in nodes.items:
+                if node.status.addresses:
+                    for address in node.status.addresses:
+                        if address.type == "InternalIP":
+                            LoggingUtility.log_debug(
+                                "node_external_ip",
+                                f"Using internal IP {address.address} as fallback"
+                            )
+                            return address.address
+            
+            return None
+            
+        except Exception as e:
+            LoggingUtility.log_debug(
+                "node_external_ip",
+                f"Error getting node external IP: {e}"
+            )
+            return None
+
+    async def _wait_for_service_ready(self, cluster_name: str, namespace: str, timeout: int = 120) -> Optional[str]:
+        """Wait for service to be ready and return external URL if available."""
+        if not KUBERNETES_AVAILABLE:
+            return None
+            
+        try:
+            service_name = f"{cluster_name}-head-svc"
+            
+            for attempt in range(timeout // 10):  # Check every 10 seconds
+                try:
+                    self._ensure_kubernetes_client()
+                    
+                    # Check if service exists
+                    try:
+                        service = self._core_v1_api.read_namespaced_service(
+                            name=service_name,
+                            namespace=namespace
+                        )
+                    except ApiException as e:
+                        if e.status == 404:
+                            LoggingUtility.log_debug(
+                                "service_ready_check",
+                                f"Attempt {attempt + 1}: Service {service_name} not found yet"
+                            )
+                            await asyncio.sleep(10)
+                            continue
+                        else:
+                            raise
+                    
+                    # Check service type and readiness
+                    service_type = service.spec.type
+                    
+                    if service_type == "LoadBalancer":
+                        # For LoadBalancer, check if external IP is assigned
+                        if (service.status.load_balancer and 
+                            service.status.load_balancer.ingress and 
+                            len(service.status.load_balancer.ingress) > 0):
+                            
+                            ingress = service.status.load_balancer.ingress[0]
+                            if ingress.ip or ingress.hostname:
+                                external_url = self._get_loadbalancer_url(service, 8265)
+                                if external_url:
+                                    LoggingUtility.log_info(
+                                        "service_ready",
+                                        f"LoadBalancer service {service_name} ready with external URL: {external_url}"
+                                    )
+                                    return external_url
+                        
+                        LoggingUtility.log_debug(
+                            "service_ready_check",
+                            f"Attempt {attempt + 1}: LoadBalancer {service_name} external IP not assigned yet"
+                        )
+                        
+                    elif service_type == "NodePort":
+                        # For NodePort, service is ready once it exists
+                        external_url = self._get_nodeport_url(service, 8265, namespace)
+                        if external_url:
+                            LoggingUtility.log_info(
+                                "service_ready",
+                                f"NodePort service {service_name} ready with external URL: {external_url}"
+                            )
+                            return external_url
+                        
+                        LoggingUtility.log_debug(
+                            "service_ready_check",
+                            f"Attempt {attempt + 1}: NodePort {service_name} has no accessible external IP"
+                        )
+                        
+                    else:
+                        # For ClusterIP, service is ready but no external access
+                        LoggingUtility.log_debug(
+                            "service_ready_check",
+                            f"Service {service_name} is type {service_type}, no external access available"
+                        )
+                        return None
+                        
+                except Exception as e:
+                    LoggingUtility.log_debug(
+                        "service_ready_check",
+                        f"Attempt {attempt + 1}: {e}"
+                    )
+                
+                await asyncio.sleep(10)
+            
+            LoggingUtility.log_warning(
+                "service_ready_timeout",
+                f"Service {service_name} external access not ready after {timeout}s, using cluster-internal URL"
+            )
+            return None
+            
+        except Exception as e:
+            LoggingUtility.log_error(
+                "wait_for_service_ready",
+                f"Error waiting for service: {e}"
+            )
+            return None

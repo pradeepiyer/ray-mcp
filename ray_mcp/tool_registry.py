@@ -86,6 +86,17 @@ class ToolRegistry:
                                     },
                                 },
                             },
+                            "service_type": {
+                                "type": "string",
+                                "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+                                "default": "LoadBalancer",
+                                "description": "Kubernetes service type for Ray head service. 'LoadBalancer' exposes dashboard externally (recommended for cloud), 'NodePort' exposes on node ports, 'ClusterIP' is cluster-internal only",
+                            },
+                            "service_annotations": {
+                                "type": "object",
+                                "description": "Custom service annotations for cloud provider configuration (e.g., load balancer settings)",
+                                "additionalProperties": {"type": "string"},
+                            },
                             "enable_ingress": {
                                 "type": "boolean",
                                 "default": False,
@@ -370,6 +381,10 @@ class ToolRegistry:
                                 "minimum": 0,
                                 "default": 0,
                                 "description": "Number of retry attempts for failed jobs",
+                            },
+                            "shutdown_after_job_finishes": {
+                                "type": "boolean",
+                                "description": "Whether to shutdown the Ray cluster after the job finishes. If not specified, automatically determined: true for new clusters (ephemeral), false for existing clusters (persistent).",
                             },
                         },
                     },
@@ -1105,8 +1120,12 @@ class ToolRegistry:
         head_node_config = {
             "image": default_image,
             "num_cpus": 2,  # Default CPU count for head node
-            "service_type": "ClusterIP",  # Default service type
+            "service_type": kubernetes_config.get("service_type", "LoadBalancer"),  # Default to LoadBalancer for external access
         }
+        
+        # Add service annotations if provided
+        if kubernetes_config.get("service_annotations"):
+            head_node_config["service_annotations"] = kubernetes_config["service_annotations"]
 
         # Add CPU/GPU/memory from direct parameters
         if kwargs.get("num_cpus"):
@@ -1306,7 +1325,118 @@ class ToolRegistry:
             ),
             "active_deadline_seconds": kubernetes_config.get("active_deadline_seconds"),
             "backoff_limit": kubernetes_config.get("backoff_limit", 0),
+            "shutdown_after_job_finishes": kubernetes_config.get(
+                "shutdown_after_job_finishes"
+            ),  # No default - let intelligent behavior work
         }
+
+        # AUTO-DETECT EXISTING CLUSTERS: If no cluster_selector is provided, 
+        # discover existing KubeRay clusters and use them
+        if not job_spec.get("cluster_selector"):
+            try:
+                from ray_mcp.logging_utils import LoggingUtility
+                LoggingUtility.log_info(
+                    "auto_cluster_discovery",
+                    "No cluster_selector provided - discovering existing KubeRay clusters"
+                )
+                
+                # CRITICAL FIX: Actively discover existing clusters from Kubernetes
+                namespace = job_spec["namespace"]
+                try:
+                    cluster_list_result = await self.ray_manager.list_kuberay_clusters(namespace=namespace)
+                    
+                    if cluster_list_result.get("status") == "success":
+                        existing_clusters = cluster_list_result.get("clusters", [])
+                        LoggingUtility.log_info(
+                            "auto_cluster_discovery",
+                            f"Found {len(existing_clusters)} existing clusters in namespace '{namespace}'"
+                        )
+                        
+                        if existing_clusters:
+                            # Use the first ready cluster
+                            target_cluster = None
+                            for cluster in existing_clusters:
+                                cluster_name = cluster.get("name")
+                                cluster_phase = cluster.get("phase", "Unknown")
+                                
+                                LoggingUtility.log_info(
+                                    "auto_cluster_discovery",
+                                    f"Evaluating cluster '{cluster_name}' - phase: {cluster_phase}"
+                                )
+                                
+                                # Prefer ready clusters, but accept any running cluster
+                                if cluster_phase in ["ready", "running", "Running", "Ready"]:
+                                    target_cluster = cluster_name
+                                    break
+                                elif not target_cluster and cluster_phase not in ["failed", "error", "Failed", "Error"]:
+                                    # Fallback to any non-failed cluster
+                                    target_cluster = cluster_name
+                            
+                            if target_cluster:
+                                job_spec["cluster_selector"] = target_cluster
+                                LoggingUtility.log_info(
+                                    "auto_cluster_discovery", 
+                                    f"Auto-detected existing KubeRay cluster '{target_cluster}' in namespace '{namespace}'"
+                                )
+                            else:
+                                LoggingUtility.log_warning(
+                                    "auto_cluster_discovery",
+                                    f"Found {len(existing_clusters)} clusters but none are in a usable state"
+                                )
+                        else:
+                            LoggingUtility.log_info(
+                                "auto_cluster_discovery",
+                                f"No existing clusters found in namespace '{namespace}' - will create new cluster"
+                            )
+                    else:
+                        LoggingUtility.log_warning(
+                            "auto_cluster_discovery",
+                            f"Failed to list clusters: {cluster_list_result.get('message', 'Unknown error')}"
+                        )
+                        
+                except Exception as discovery_error:
+                    LoggingUtility.log_warning(
+                        "auto_cluster_discovery",
+                        f"Cluster discovery failed: {discovery_error} - will create new cluster"
+                    )
+                
+                # If no cluster found in target namespace, try 'default' namespace
+                if not job_spec.get("cluster_selector") and namespace != "default":
+                    try:
+                        LoggingUtility.log_info(
+                            "auto_cluster_discovery",
+                            "No clusters in target namespace - checking 'default' namespace"
+                        )
+                        
+                        default_cluster_result = await self.ray_manager.list_kuberay_clusters(namespace="default")
+                        
+                        if default_cluster_result.get("status") == "success":
+                            default_clusters = default_cluster_result.get("clusters", [])
+                            
+                            if default_clusters:
+                                # Use the first cluster from default namespace
+                                target_cluster = default_clusters[0].get("name")
+                                if target_cluster:
+                                    job_spec["cluster_selector"] = target_cluster
+                                    job_spec["namespace"] = "default"  # Update namespace to match cluster
+                                    LoggingUtility.log_info(
+                                        "auto_cluster_discovery", 
+                                        f"Auto-detected existing cluster '{target_cluster}' in 'default' namespace - updated job namespace"
+                                    )
+                                    
+                    except Exception as default_discovery_error:
+                        LoggingUtility.log_warning(
+                            "auto_cluster_discovery",
+                            f"Default namespace discovery failed: {default_discovery_error}"
+                        )
+                        
+            except Exception as e:
+                # If auto-detection fails completely, continue without cluster_selector (will create new cluster)
+                from ray_mcp.logging_utils import LoggingUtility
+                LoggingUtility.log_warning(
+                    "auto_cluster_discovery",
+                    f"Auto-detection failed: {e} - will create new cluster"
+                )
 
         # Add container image
         if kwargs.get("image"):

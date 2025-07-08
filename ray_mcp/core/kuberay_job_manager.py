@@ -68,6 +68,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         ttl_seconds_after_finished = job_spec.get("ttl_seconds_after_finished", 86400)
         active_deadline_seconds = job_spec.get("active_deadline_seconds")
         backoff_limit = job_spec.get("backoff_limit", 0)
+        shutdown_after_job_finishes = job_spec.get("shutdown_after_job_finishes")  # Let intelligent defaults work
 
         # Validate required fields
         if not entrypoint:
@@ -86,6 +87,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
             ttl_seconds_after_finished=ttl_seconds_after_finished,
             active_deadline_seconds=active_deadline_seconds,
             backoff_limit=backoff_limit,
+            shutdown_after_job_finishes=shutdown_after_job_finishes,
             **{
                 k: v
                 for k, v in job_spec.items()
@@ -100,6 +102,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
                     "ttl_seconds_after_finished",
                     "active_deadline_seconds",
                     "backoff_limit",
+                    "shutdown_after_job_finishes",
                 ]
             },
         )
