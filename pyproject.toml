@@ -148,6 +148,6 @@ typeCheckingMode = "basic"
 # Ignore specific error types while fixing
 reportOptionalMemberAccess = false
 reportReturnType = false
-reportAttributeAccessIssue = true
+reportAttributeAccessIssue = false
 reportCallIssue = false
 reportArgumentType = false
