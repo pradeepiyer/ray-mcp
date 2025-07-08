@@ -45,6 +45,16 @@ except ImportError:
     config = None
     ApiException = Exception
 
+# Import additional modules for proper GKE integration
+try:
+    import google.auth.transport.requests
+    import base64
+    import tempfile
+    import os
+    GOOGLE_AUTH_AVAILABLE = True
+except ImportError:
+    GOOGLE_AUTH_AVAILABLE = False
+
 
 class GKEClusterManager(CloudProviderComponent, GKEManager):
     """Manages GKE clusters with authentication and discovery capabilities."""
@@ -64,10 +74,21 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         self._kubernetes_config = kubernetes_config or KubernetesConfigManager()
         self._response_formatter = ResponseFormatter()
         self._gke_client = None
+        self._k8s_client = None  # Add Kubernetes client
         # Initialize missing instance variables
         self._is_authenticated = False
         self._project_id = None
         self._credentials = None
+        self._ca_cert_file = None  # Track the CA certificate file for cleanup
+
+    def _cleanup_ca_cert_file(self):
+        """Clean up the CA certificate file."""
+        if self._ca_cert_file and os.path.exists(self._ca_cert_file):
+            try:
+                os.unlink(self._ca_cert_file)
+                self._ca_cert_file = None
+            except OSError:
+                pass  # File might already be cleaned up
 
     async def authenticate_gke(
         self,
@@ -170,7 +191,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         self, cluster_name: str, zone: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Connect to a specific GKE cluster."""
-        return self.connect_cluster(cluster_name, zone, project_id)
+        return await self.connect_cluster(cluster_name, zone, project_id)
 
     async def create_gke_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
@@ -352,15 +373,23 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         except Exception:
             return str(timestamp)
 
-    def connect_cluster(
+    async def connect_cluster(
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Connect to a GKE cluster."""
+        """Connect to a GKE cluster and establish Kubernetes connection."""
         if not GOOGLE_CLOUD_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "gke cluster connection",
                 Exception(
-                    "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
+                    "Google Cloud SDK is not available. Please install google-cloud-container: pip install google-cloud-container"
+                ),
+            )
+
+        if not KUBERNETES_AVAILABLE:
+            return self._response_formatter.format_error_response(
+                "gke cluster connection",
+                Exception(
+                    "Kubernetes client library is not available. Please install kubernetes package: pip install kubernetes"
                 ),
             )
 
@@ -371,6 +400,9 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
             )
 
         try:
+            # Clean up any existing certificate file
+            self._cleanup_ca_cert_file()
+            
             project_id = project_id or self._project_id
             if not project_id:
                 return self._response_formatter.format_error_response(
@@ -378,14 +410,40 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                     ValueError("Project ID is required for cluster connection"),
                 )
 
-            # Get cluster details
+            # Get cluster details from GKE API
             cluster_path = (
                 f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
             )
             cluster = self._gke_client.get_cluster(name=cluster_path)
 
-            # Generate kubeconfig
-            kubeconfig = self._generate_kubeconfig(cluster, project_id)
+            # Establish actual Kubernetes connection using API
+            k8s_connection_result = await self._establish_kubernetes_connection(
+                cluster, project_id, location
+            )
+
+            if k8s_connection_result.get("status") != "success":
+                return k8s_connection_result
+
+            # Create context name following GKE convention
+            context_name = f"gke_{project_id}_{location}_{cluster_name}"
+
+            # Update state to reflect both GKE and Kubernetes connection
+            self.state_manager.update_state(
+                kubernetes_connected=True,
+                kubernetes_context=context_name,
+                kubernetes_config_type="gke",
+                kubernetes_server_version=k8s_connection_result.get("server_version"),
+                cloud_provider_connections={
+                    "gke": {
+                        "connected": True,
+                        "cluster_name": cluster_name,
+                        "location": location,
+                        "project_id": project_id,
+                        "endpoint": cluster.endpoint,
+                        "context": context_name,
+                    }
+                }
+            )
 
             return self._response_formatter.format_success_response(
                 connected=True,
@@ -393,7 +451,9 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                 location=location,
                 project_id=project_id,
                 endpoint=cluster.endpoint,
-                kubeconfig=kubeconfig,
+                kubernetes_connected=True,
+                context=context_name,
+                server_version=k8s_connection_result.get("server_version"),
             )
 
         except Exception as e:
@@ -401,30 +461,86 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                 "gke cluster connection", e
             )
 
-    def _generate_kubeconfig(self, cluster, project_id: str) -> Dict[str, Any]:
-        """Generate kubeconfig for the cluster."""
-        # This is a simplified version - real implementation would need
-        # proper certificate handling and token generation
-        return {
-            "apiVersion": "v1",
-            "kind": "Config",
-            "clusters": [
-                {
-                    "name": cluster.name,
-                    "cluster": {"server": f"https://{cluster.endpoint}"},
-                }
-            ],
-            "contexts": [
-                {
-                    "name": cluster.name,
-                    "context": {
-                        "cluster": cluster.name,
-                        "user": f"gke_{project_id}_{cluster.location}_{cluster.name}",
-                    },
-                }
-            ],
-            "current-context": cluster.name,
-        }
+    async def _establish_kubernetes_connection(
+        self, cluster, project_id: str, location: str
+    ) -> Dict[str, Any]:
+        """Establish Kubernetes connection using GKE cluster details and Google Cloud credentials."""
+        try:
+            if not GOOGLE_AUTH_AVAILABLE:
+                return self._response_formatter.format_error_response(
+                    "kubernetes connection",
+                    Exception("Google auth transport not available"),
+                )
+
+            # Create Kubernetes client configuration
+            configuration = client.Configuration()
+            configuration.host = f"https://{cluster.endpoint}"
+
+            # Get fresh access token from Google Cloud credentials
+            request = google.auth.transport.requests.Request()
+            self._credentials.refresh(request)
+            
+            # Set up bearer token authentication
+            configuration.api_key_prefix['authorization'] = 'Bearer'
+            configuration.api_key['authorization'] = self._credentials.token
+
+            # Handle cluster CA certificate
+            if hasattr(cluster, 'master_auth') and cluster.master_auth and cluster.master_auth.cluster_ca_certificate:
+                # Decode the base64-encoded CA certificate
+                ca_cert_data = base64.b64decode(cluster.master_auth.cluster_ca_certificate)
+                
+                # Create a temporary file for the CA certificate
+                ca_cert_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False, suffix='.crt')
+                ca_cert_file.write(ca_cert_data)
+                ca_cert_file.close()
+                
+                # Store the file path for later cleanup
+                self._ca_cert_file = ca_cert_file.name
+                
+                configuration.ssl_ca_cert = ca_cert_file.name
+                configuration.verify_ssl = True
+            else:
+                # For Autopilot clusters or clusters without explicit CA certs
+                configuration.verify_ssl = True
+
+            # Test the connection by creating a client and making an API call
+            with client.ApiClient(configuration) as api_client:
+                v1 = client.CoreV1Api(api_client)
+                version_api = client.VersionApi(api_client)
+                
+                # Test connection by getting server version
+                version_info = await asyncio.to_thread(version_api.get_code)
+                
+                # Also test basic functionality by listing namespaces
+                namespaces = await asyncio.to_thread(v1.list_namespace)
+
+            # Store the configuration for future use
+            self._k8s_client = configuration
+
+            # Don't delete the certificate file yet - it's needed for future operations
+            
+            return self._response_formatter.format_success_response(
+                connected=True,
+                server_version=version_info.git_version,
+                namespaces_count=len(namespaces.items) if namespaces else 0,
+            )
+
+        except Exception as e:
+            # Clean up temporary file on error
+            if hasattr(self, '_ca_cert_file') and self._ca_cert_file:
+                try:
+                    os.unlink(self._ca_cert_file)
+                    self._ca_cert_file = None
+                except OSError:
+                    pass
+            
+            return self._response_formatter.format_error_response(
+                "establish kubernetes connection", e
+            )
+
+    def get_kubernetes_client(self) -> Optional[Any]:
+        """Get the current Kubernetes client configuration."""
+        return self._k8s_client
 
     def get_connection_status(self) -> Dict[str, Any]:
         """Get GKE connection status."""
@@ -433,6 +549,39 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
             project_id=self._project_id,
             provider="gke",
         )
+
+    def disconnect(self) -> Dict[str, Any]:
+        """Disconnect from GKE and clean up resources."""
+        try:
+            # Clean up certificate file
+            self._cleanup_ca_cert_file()
+            
+            # Reset connection state
+            self._k8s_client = None
+            self._is_authenticated = False
+            self._project_id = None
+            self._credentials = None
+            self._gke_client = None
+            
+            # Update state
+            self.state_manager.update_state(
+                kubernetes_connected=False,
+                kubernetes_context=None,
+                kubernetes_config_type=None,
+                kubernetes_server_version=None,
+                cloud_provider_connections={},
+                cloud_provider_auth={}
+            )
+            
+            return self._response_formatter.format_success_response(
+                disconnected=True,
+                provider="gke"
+            )
+            
+        except Exception as e:
+            return self._response_formatter.format_error_response(
+                "gke disconnect", e
+            )
 
     def create_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
@@ -619,3 +768,10 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         from datetime import datetime
 
         return datetime.now().isoformat()
+
+    def __del__(self):
+        """Cleanup resources when object is destroyed."""
+        try:
+            self._cleanup_ca_cert_file()
+        except Exception:
+            pass  # Ignore errors during cleanup

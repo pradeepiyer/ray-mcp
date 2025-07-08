@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from .cloud_provider_manager import UnifiedCloudProviderManager
 from .cluster_manager import RayClusterManager
+from .interfaces import CloudProvider
 from .job_manager import RayJobManager
 from .kuberay_cluster_manager import KubeRayClusterManagerImpl
 from .kuberay_job_manager import KubeRayJobManagerImpl
@@ -38,6 +39,11 @@ class RayUnifiedManager:
         self._cloud_provider_manager = UnifiedCloudProviderManager(self._state_manager)
 
     # Delegate properties to state manager
+    @property
+    def state_manager(self) -> RayStateManager:
+        """Get the state manager."""
+        return self._state_manager
+
     @property
     def is_initialized(self) -> bool:
         """Check if Ray is initialized."""
@@ -227,6 +233,8 @@ class RayUnifiedManager:
         self, cluster_spec: Dict[str, Any], namespace: str = "default"
     ) -> Dict[str, Any]:
         """Create a Ray cluster using KubeRay."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_kuberay_gke_coordination()
         return await self._kuberay_cluster_manager.create_ray_cluster(
             cluster_spec, namespace
         )
@@ -235,10 +243,14 @@ class RayUnifiedManager:
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
         """Get Ray cluster status."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_kuberay_gke_coordination()
         return await self._kuberay_cluster_manager.get_ray_cluster(name, namespace)
 
     async def list_kuberay_clusters(self, namespace: str = "default") -> Dict[str, Any]:
         """List Ray clusters."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_kuberay_gke_coordination()
         return await self._kuberay_cluster_manager.list_ray_clusters(namespace)
 
     async def update_kuberay_cluster(
@@ -312,8 +324,6 @@ class RayUnifiedManager:
         self, provider: str, auth_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Authenticate with a cloud provider."""
-        from .interfaces import CloudProvider
-
         provider_enum = CloudProvider(provider)
         return await self._cloud_provider_manager.authenticate_cloud_provider(
             provider_enum, auth_config
@@ -323,8 +333,6 @@ class RayUnifiedManager:
         self, provider: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         """List clusters for a cloud provider."""
-        from .interfaces import CloudProvider
-
         if provider:
             provider_enum = CloudProvider(provider)
             return await self._cloud_provider_manager.list_cloud_clusters(
@@ -349,34 +357,138 @@ class RayUnifiedManager:
         self, cluster_name: str, provider: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         """Connect to a cloud cluster."""
-        from .interfaces import CloudProvider
-
         if provider:
             provider_enum = CloudProvider(provider)
-            return await self._cloud_provider_manager.connect_cloud_cluster(
+            result = await self._cloud_provider_manager.connect_cloud_cluster(
                 provider_enum, cluster_name, **kwargs
             )
+            
+            # If GKE connection was successful, coordinate with KubeRay managers
+            if result.get("status") == "success" and provider_enum == CloudProvider.GKE:
+                await self._coordinate_gke_kubernetes_config()
+                
+            return result
         else:
             # If no provider specified, detect and use the current environment
             detection_result = await self.detect_cloud_provider()
             detected_provider = detection_result.get("detected_provider")
             if detected_provider:
                 provider_enum = CloudProvider(detected_provider)
-                return await self._cloud_provider_manager.connect_cloud_cluster(
+                result = await self._cloud_provider_manager.connect_cloud_cluster(
                     provider_enum, cluster_name, **kwargs
                 )
+                
+                # If GKE connection was successful, coordinate with KubeRay managers
+                if result.get("status") == "success" and provider_enum == CloudProvider.GKE:
+                    await self._coordinate_gke_kubernetes_config()
+                    
+                return result
             else:
                 return {
                     "status": "error",
                     "message": "No cloud provider detected and none specified",
                 }
 
+    async def _coordinate_gke_kubernetes_config(self) -> None:
+        """Coordinate GKE Kubernetes configuration with KubeRay managers."""
+        try:
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_info(
+                "coordinate_gke_config", 
+                "Starting GKE Kubernetes configuration coordination"
+            )
+            
+            # Get the GKE manager and its Kubernetes configuration
+            gke_manager = self._cloud_provider_manager.get_gke_manager()
+            k8s_config = gke_manager.get_kubernetes_client()
+            
+            LoggingUtility.log_info(
+                "coordinate_gke_config", 
+                f"GKE manager k8s config: {k8s_config is not None}, host: {getattr(k8s_config, 'host', 'N/A') if k8s_config else 'N/A'}"
+            )
+            
+            if k8s_config:
+                # Update KubeRay managers with the GKE Kubernetes configuration
+                LoggingUtility.log_info(
+                    "coordinate_gke_config", 
+                    "Setting Kubernetes configuration on KubeRay managers"
+                )
+                self._kuberay_cluster_manager.set_kubernetes_config(k8s_config)
+                self._kuberay_job_manager.set_kubernetes_config(k8s_config)
+                
+                # Update state to reflect the coordination
+                self._state_manager.update_state(
+                    kuberay_gke_coordinated=True,
+                    kuberay_kubernetes_config_type="gke"
+                )
+                
+                LoggingUtility.log_info(
+                    "coordinate_gke_config", 
+                    "Successfully coordinated GKE Kubernetes configuration with KubeRay managers"
+                )
+            else:
+                # Log warning if no configuration is available
+                LoggingUtility.log_warning(
+                    "coordinate_gke_config", 
+                    "No Kubernetes configuration available from GKE manager"
+                )
+        except Exception as e:
+            # Log the specific error for debugging
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_error(
+                "coordinate_gke_config", 
+                f"Failed to coordinate GKE configuration: {str(e)}"
+            )
+            # The KubeRay operations will still work, just without the optimized configuration
+
+    async def _ensure_kuberay_gke_coordination(self) -> None:
+        """Ensure KubeRay managers are coordinated with GKE if connection exists."""
+        try:
+            from ..logging_utils import LoggingUtility
+            state = self._state_manager.get_state()
+            
+            # Check if we're already coordinated
+            already_coordinated = state.get("kuberay_gke_coordinated", False)
+            LoggingUtility.log_info(
+                "ensure_kuberay_gke_coordination",
+                f"Checking coordination status - already coordinated: {already_coordinated}"
+            )
+            
+            if already_coordinated:
+                return
+            
+            # Check if there's an active GKE connection
+            gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
+            gke_connected = gke_connection.get("connected", False)
+            LoggingUtility.log_info(
+                "ensure_kuberay_gke_coordination",
+                f"GKE connection status: {gke_connected}, connection details: {gke_connection}"
+            )
+            
+            if gke_connected:
+                # Coordinate with the existing GKE connection
+                LoggingUtility.log_info(
+                    "ensure_kuberay_gke_coordination",
+                    "Found active GKE connection, initiating coordination"
+                )
+                await self._coordinate_gke_kubernetes_config()
+            else:
+                LoggingUtility.log_info(
+                    "ensure_kuberay_gke_coordination",
+                    "No active GKE connection found, skipping coordination"
+                )
+        except Exception as e:
+            # Don't fail KubeRay operations if coordination fails
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_warning(
+                "ensure_kuberay_gke_coordination",
+                f"Failed to ensure KubeRay-GKE coordination: {str(e)}"
+            )
+
     async def create_cloud_cluster(
         self, cluster_spec: Dict[str, Any], provider: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         """Create a cloud cluster."""
-        from .interfaces import CloudProvider
-
         if provider:
             provider_enum = CloudProvider(provider)
             return await self._cloud_provider_manager.create_cloud_cluster(
@@ -401,8 +513,6 @@ class RayUnifiedManager:
         self, cluster_name: str, provider: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         """Get cloud cluster information."""
-        from .interfaces import CloudProvider
-
         if provider:
             provider_enum = CloudProvider(provider)
             return await self._cloud_provider_manager.get_cloud_cluster_info(
@@ -425,15 +535,11 @@ class RayUnifiedManager:
 
     async def get_cloud_provider_status(self, provider: str) -> Dict[str, Any]:
         """Get cloud provider status."""
-        from .interfaces import CloudProvider
-
         provider_enum = CloudProvider(provider)
         return await self._cloud_provider_manager.get_provider_status(provider_enum)
 
     async def disconnect_cloud_provider(self, provider: str) -> Dict[str, Any]:
         """Disconnect from a cloud provider."""
-        from .interfaces import CloudProvider
-
         provider_enum = CloudProvider(provider)
         return await self._cloud_provider_manager.disconnect_cloud_provider(
             provider_enum
@@ -443,8 +549,6 @@ class RayUnifiedManager:
         self, provider: str, template_type: str = "basic"
     ) -> Dict[str, Any]:
         """Get cloud configuration template."""
-        from .interfaces import CloudProvider
-
         provider_enum = CloudProvider(provider)
         return self._cloud_provider_manager.get_config_manager().get_cluster_template(
             provider_enum, template_type

@@ -39,13 +39,13 @@ class ToolRegistry:
                 "properties": {
                     "address": {
                         "type": "string",
-                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster via dashboard API; if not provided, creates new cluster based on cluster_type. Connection uses dashboard API (port 8265) for all cluster operations.",
+                        "description": "Ray cluster address to connect to (e.g., '127.0.0.1:10001'). If provided, connects to existing cluster via dashboard API; if not provided, creates new cluster based on cluster_type. IMPORTANT: When connecting to a Ray cluster running on GKE/Kubernetes, you MUST specify cluster_type='kubernetes' to ensure proper coordination with the GKE connection. Connection uses dashboard API (port 8265) for all cluster operations.",
                     },
                     "cluster_type": {
                         "type": "string",
                         "enum": ["local", "kubernetes", "k8s"],
                         "default": "local",
-                        "description": "Type of cluster to create. 'local' creates a local Ray cluster, 'kubernetes' or 'k8s' creates a cluster using KubeRay operator on Kubernetes.",
+                        "description": "Type of cluster to create or connect to. 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay clusters on Kubernetes. REQUIRED when connecting to existing Ray clusters on GKE/Kubernetes via address parameter.",
                     },
                     "kubernetes_config": {
                         "type": "object",
@@ -318,7 +318,7 @@ class ToolRegistry:
                         "type": "string",
                         "enum": ["local", "kubernetes", "k8s", "auto"],
                         "default": "auto",
-                        "description": "Type of job to submit. 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection based on cluster state",
+                        "description": "Type of job to submit. 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection based on cluster state (will use kubernetes if GKE is connected)",
                     },
                     "runtime_env": {
                         "type": "object",
@@ -464,7 +464,7 @@ class ToolRegistry:
                         "type": "string",
                         "enum": ["local", "kubernetes", "k8s", "auto", "all"],
                         "default": "auto",
-                        "description": "Type of jobs to list. 'local' for local Ray jobs, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection, 'all' for both types",
+                        "description": "Type of jobs to list. 'local' for local Ray jobs, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection (will use kubernetes if GKE is connected), 'all' for both types",
                     },
                     "namespace": {
                         "type": "string",
@@ -1010,12 +1010,39 @@ class ToolRegistry:
 
     async def _init_ray_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for init_ray tool with support for both local and Kubernetes clusters."""
-        # If address is provided, connect to existing cluster regardless of cluster_type
-        if kwargs.get("address"):
-            return await self.ray_manager.init_cluster(**kwargs)
-
-        # Determine cluster type
+        # Determine cluster type first
         cluster_type = kwargs.get("cluster_type", "local").lower()
+        
+        # If address is provided, handle based on cluster type
+        if kwargs.get("address"):
+            if cluster_type in ["kubernetes", "k8s"]:
+                # For Kubernetes address-based connections, ensure proper coordination
+                try:
+                    # Ensure GKE coordination is in place if we have a GKE connection
+                    await self.ray_manager._ensure_kuberay_gke_coordination()
+                except Exception as coord_error:
+                    # Log coordination error but don't fail the connection
+                    from ray_mcp.logging_utils import LoggingUtility
+                    LoggingUtility.log_warning(
+                        "init_ray_gke_coordination",
+                        f"Failed to coordinate GKE for Ray connection: {coord_error}"
+                    )
+                
+                try:
+                    # Connect to existing Ray cluster running on Kubernetes
+                    return await self.ray_manager.init_cluster(**kwargs)
+                except Exception as e:
+                    return ResponseFormatter.format_error_response(
+                        "connect to kubernetes ray cluster", e
+                    )
+            else:
+                # Local address-based connection
+                local_kwargs = {
+                    k: v
+                    for k, v in kwargs.items()
+                    if k not in ["cluster_type", "kubernetes_config"]
+                }
+                return await self.ray_manager.init_cluster(**local_kwargs)
 
         # For local clusters, use existing init_cluster method
         if cluster_type == "local":
@@ -1039,6 +1066,9 @@ class ToolRegistry:
     async def _create_kuberay_cluster(self, **kwargs) -> Dict[str, Any]:
         """Create a KubeRay cluster from init_ray parameters."""
         try:
+            # Ensure GKE coordination is in place if we have a GKE connection
+            await self._ensure_gke_coordination()
+            
             # Extract Kubernetes configuration
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
@@ -1066,24 +1096,25 @@ class ToolRegistry:
         cluster_spec = {
             "cluster_name": kubernetes_config.get("cluster_name"),
             "namespace": kubernetes_config.get("namespace", "default"),
-            "image": kubernetes_config.get("image", "ray:2.47.0"),
-            "service_account": kubernetes_config.get("service_account"),
+            "ray_version": kubernetes_config.get("ray_version", "2.47.0"),
             "enable_ingress": kubernetes_config.get("enable_ingress", False),
-            "auto_scale": kubernetes_config.get("auto_scale", False),
         }
 
         # Head node configuration
-        head_node_config = {"ray_start_params": {}}
+        default_image = kubernetes_config.get("image", "rayproject/ray:2.47.0")
+        head_node_config = {
+            "image": default_image,
+            "num_cpus": 2,  # Default CPU count for head node
+            "service_type": "ClusterIP",  # Default service type
+        }
 
         # Add CPU/GPU/memory from direct parameters
         if kwargs.get("num_cpus"):
-            head_node_config["ray_start_params"]["num_cpus"] = kwargs["num_cpus"]
+            head_node_config["num_cpus"] = kwargs["num_cpus"]
         if kwargs.get("num_gpus"):
-            head_node_config["ray_start_params"]["num_gpus"] = kwargs["num_gpus"]
+            head_node_config["num_gpus"] = kwargs["num_gpus"]
         if kwargs.get("object_store_memory"):
-            head_node_config["ray_start_params"]["object_store_memory"] = kwargs[
-                "object_store_memory"
-            ]
+            head_node_config["object_store_memory"] = kwargs["object_store_memory"]
 
         # Add Kubernetes resources for head node
         if resources.get("head_node"):
@@ -1094,11 +1125,15 @@ class ToolRegistry:
             head_node_config["node_selector"] = kubernetes_config["node_selector"]
         if kubernetes_config.get("tolerations"):
             head_node_config["tolerations"] = kubernetes_config["tolerations"]
+        
+        # Add service account
+        if kubernetes_config.get("service_account"):
+            head_node_config["service_account"] = kubernetes_config["service_account"]
 
-        cluster_spec["head_node"] = head_node_config
+        cluster_spec["head_node_spec"] = head_node_config
 
         # Worker nodes configuration
-        worker_groups = []
+        worker_node_specs = []
 
         # Handle worker_nodes parameter
         if worker_nodes is not None:
@@ -1108,60 +1143,44 @@ class ToolRegistry:
             else:
                 # Custom worker configuration
                 for i, worker_config in enumerate(worker_nodes):
-                    worker_group = {
+                    worker_spec = {
                         "group_name": worker_config.get(
                             "node_name", f"worker-group-{i}"
                         ),
                         "replicas": 1,
-                        "ray_start_params": {},
+                        "image": worker_config.get("image", default_image),
+                        "num_cpus": worker_config.get("num_cpus", 2),
                     }
 
                     # Add Ray parameters
-                    if worker_config.get("num_cpus"):
-                        worker_group["ray_start_params"]["num_cpus"] = worker_config[
-                            "num_cpus"
-                        ]
                     if worker_config.get("num_gpus"):
-                        worker_group["ray_start_params"]["num_gpus"] = worker_config[
-                            "num_gpus"
-                        ]
+                        worker_spec["num_gpus"] = worker_config["num_gpus"]
                     if worker_config.get("object_store_memory"):
-                        worker_group["ray_start_params"]["object_store_memory"] = (
-                            worker_config["object_store_memory"]
-                        )
+                        worker_spec["object_store_memory"] = worker_config["object_store_memory"]
 
                     # Add Kubernetes-specific parameters
-                    if worker_config.get("image"):
-                        worker_group["image"] = worker_config["image"]
                     if worker_config.get("node_selector"):
-                        worker_group["node_selector"] = worker_config["node_selector"]
+                        worker_spec["node_selector"] = worker_config["node_selector"]
                     if worker_config.get("tolerations"):
-                        worker_group["tolerations"] = worker_config["tolerations"]
+                        worker_spec["tolerations"] = worker_config["tolerations"]
 
-                    worker_groups.append(worker_group)
+                    worker_node_specs.append(worker_spec)
         else:
             # Default: create 2 worker groups
-            default_worker_config = {
+            default_worker_spec = {
                 "group_name": "worker-group",
                 "replicas": 2,
-                "ray_start_params": {"num_cpus": 1},
+                "image": default_image,
+                "num_cpus": 2,
             }
 
             # Add default worker resources
             if resources.get("worker_nodes"):
-                default_worker_config["resources"] = resources["worker_nodes"]
+                default_worker_spec["resources"] = resources["worker_nodes"]
 
-            worker_groups.append(default_worker_config)
+            worker_node_specs.append(default_worker_spec)
 
-        cluster_spec["worker_groups"] = worker_groups
-
-        # Auto-scaling configuration
-        if kubernetes_config.get("auto_scale"):
-            cluster_spec["auto_scale"] = {
-                "enabled": True,
-                "min_replicas": kubernetes_config.get("min_replicas", 1),
-                "max_replicas": kubernetes_config.get("max_replicas", 10),
-            }
+        cluster_spec["worker_node_specs"] = worker_node_specs
 
         return cluster_spec
 
@@ -1208,6 +1227,8 @@ class ToolRegistry:
 
         # For Kubernetes jobs, create KubeRay job
         elif job_type in ["kubernetes", "k8s"]:
+            # Ensure GKE coordination is in place if we have a GKE connection
+            await self._ensure_gke_coordination()
             return await self._create_kuberay_job(**kwargs)
 
         else:
@@ -1218,16 +1239,26 @@ class ToolRegistry:
     async def _detect_job_type(self) -> str:
         """Detect job type based on cluster state."""
         try:
-            # Check if we have KubeRay clusters
-            if self.ray_manager.kuberay_clusters:
+            # Check if we have an active GKE connection
+            state = self.ray_manager.state_manager.get_state()
+            gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
+            if gke_connection.get("connected", False):
                 return "kubernetes"
 
-            # Check if we have Kubernetes connection
-            if self.ray_manager.is_kubernetes_connected:
+            # Check if we have general Kubernetes connection
+            if state.get("kubernetes_connected", False):
+                return "kubernetes"
+
+            # Check if we have KubeRay clusters
+            if hasattr(self.ray_manager, 'kuberay_clusters') and self.ray_manager.kuberay_clusters:
+                return "kubernetes"
+
+            # Check legacy property for backwards compatibility
+            if hasattr(self.ray_manager, 'is_kubernetes_connected') and self.ray_manager.is_kubernetes_connected:
                 return "kubernetes"
 
             # Check if we have local Ray cluster
-            if self.ray_manager.is_initialized:
+            if hasattr(self.ray_manager, 'is_initialized') and self.ray_manager.is_initialized:
                 return "local"
 
             # Default to local if no cluster is detected
@@ -1239,6 +1270,9 @@ class ToolRegistry:
     async def _create_kuberay_job(self, **kwargs) -> Dict[str, Any]:
         """Create a KubeRay job from submit_job parameters."""
         try:
+            # Ensure GKE coordination is in place if we have a GKE connection
+            await self._ensure_gke_coordination()
+            
             # Extract Kubernetes configuration
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
@@ -1306,6 +1340,32 @@ class ToolRegistry:
 
         return job_spec
 
+    async def _ensure_gke_coordination(self) -> None:
+        """Ensure GKE coordination is in place if we have a GKE connection."""
+        try:
+            # Check if we have an active GKE connection
+            state = self.ray_manager.state_manager.get_state()
+            gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
+            
+            if gke_connection.get("connected", False):
+                # If we're connected to GKE but not coordinated, ensure coordination
+                if not state.get("kuberay_gke_coordinated", False):
+                    await self.ray_manager._ensure_kuberay_gke_coordination()
+        except AttributeError as attr_e:
+            # Handle case where state manager access fails
+            from ray_mcp.logging_utils import LoggingUtility
+            LoggingUtility.log_error(
+                "ensure_gke_coordination",
+                f"Failed to access state manager: {attr_e}"
+            )
+        except Exception as e:
+            # Don't fail operations if coordination fails, just log it
+            from ray_mcp.logging_utils import LoggingUtility
+            LoggingUtility.log_warning(
+                "ensure_gke_coordination",
+                f"Failed to ensure GKE coordination: {e}"
+            )
+
     async def _list_jobs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_jobs tool."""
         job_type = kwargs.get("job_type", "auto").lower()
@@ -1319,6 +1379,8 @@ class ToolRegistry:
         if job_type == "local":
             return await self.ray_manager.list_jobs()
         elif job_type in ["kubernetes", "k8s"]:
+            # Ensure GKE coordination is in place if we have a GKE connection
+            await self._ensure_gke_coordination()
             return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
         else:
             return ResponseFormatter.format_validation_error(
@@ -1343,17 +1405,23 @@ class ToolRegistry:
 
     async def _list_kuberay_clusters_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_kuberay_clusters tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.list_kuberay_clusters(namespace=namespace)
 
     async def _inspect_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for inspect_kuberay_cluster tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         cluster_name = kwargs["cluster_name"]
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.get_kuberay_cluster(cluster_name, namespace)
 
     async def _scale_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for scale_kuberay_cluster tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         cluster_name = kwargs["cluster_name"]
         worker_replicas = kwargs["worker_replicas"]
         namespace = kwargs.get("namespace", "default")
@@ -1363,29 +1431,39 @@ class ToolRegistry:
 
     async def _delete_kuberay_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for delete_kuberay_cluster tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         cluster_name = kwargs["cluster_name"]
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.delete_kuberay_cluster(cluster_name, namespace)
 
     async def _list_kuberay_jobs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_kuberay_jobs tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
 
     async def _inspect_kuberay_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for inspect_kuberay_job tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         job_name = kwargs["job_name"]
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.get_kuberay_job(job_name, namespace)
 
     async def _delete_kuberay_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for delete_kuberay_job tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         job_name = kwargs["job_name"]
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.delete_kuberay_job(job_name, namespace)
 
     async def _get_kuberay_job_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_kuberay_job_logs tool."""
+        # Ensure GKE coordination is in place if we have a GKE connection
+        await self._ensure_gke_coordination()
         job_name = kwargs["job_name"]
         namespace = kwargs.get("namespace", "default")
         return await self.ray_manager.get_kuberay_job_logs(job_name, namespace)

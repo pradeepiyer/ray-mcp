@@ -31,6 +31,29 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
         self._cluster_crd = cluster_crd or RayClusterCRDManager()
         self._response_formatter = ResponseFormatter()
 
+    def set_kubernetes_config(self, kubernetes_config) -> None:
+        """Set the Kubernetes configuration for API operations."""
+        try:
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_info(
+                "kuberay_cluster_set_k8s_config",
+                f"Setting Kubernetes config - config provided: {kubernetes_config is not None}, host: {getattr(kubernetes_config, 'host', 'N/A') if kubernetes_config else 'N/A'}"
+            )
+            self._crd_operations.set_kubernetes_config(kubernetes_config)
+            LoggingUtility.log_info(
+                "kuberay_cluster_set_k8s_config",
+                "Successfully set Kubernetes configuration on CRD operations client"
+            )
+        except Exception as e:
+            # Log the error instead of silently ignoring it
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_error(
+                "kuberay_cluster_set_k8s_config",
+                f"Failed to set Kubernetes configuration: {str(e)}"
+            )
+
+
+
     @ResponseFormatter.handle_exceptions("create ray cluster")
     async def create_ray_cluster(
         self, cluster_spec: Dict[str, Any], namespace: str = "default"
@@ -69,6 +92,7 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                     "cluster_name",
                     "head_node_spec",
                     "worker_node_specs",
+                    "namespace",
                     "ray_version",
                     "enable_ingress",
                     "suspend",
@@ -214,6 +238,7 @@ class KubeRayClusterManagerImpl(KubeRayComponent, KubeRayClusterManager):
                 not in [
                     "head_node_spec",
                     "worker_node_specs",
+                    "namespace",
                     "ray_version",
                     "enable_ingress",
                     "suspend",

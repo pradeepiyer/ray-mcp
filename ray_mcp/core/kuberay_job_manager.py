@@ -31,6 +31,27 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         self._job_crd = job_crd or RayJobCRDManager()
         self._response_formatter = ResponseFormatter()
 
+    def set_kubernetes_config(self, kubernetes_config) -> None:
+        """Set the Kubernetes configuration for API operations."""
+        try:
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_info(
+                "kuberay_job_set_k8s_config",
+                f"Setting Kubernetes config - config provided: {kubernetes_config is not None}, host: {getattr(kubernetes_config, 'host', 'N/A') if kubernetes_config else 'N/A'}"
+            )
+            self._crd_operations.set_kubernetes_config(kubernetes_config)
+            LoggingUtility.log_info(
+                "kuberay_job_set_k8s_config",
+                "Successfully set Kubernetes configuration on CRD operations client"
+            )
+        except Exception as e:
+            # Log the error instead of silently ignoring it
+            from ..logging_utils import LoggingUtility
+            LoggingUtility.log_error(
+                "kuberay_job_set_k8s_config",
+                f"Failed to set Kubernetes configuration: {str(e)}"
+            )
+
     @ResponseFormatter.handle_exceptions("create ray job")
     async def create_ray_job(
         self, job_spec: Dict[str, Any], namespace: str = "default"
@@ -73,6 +94,7 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
                     "entrypoint",
                     "runtime_env",
                     "job_name",
+                    "namespace",
                     "cluster_selector",
                     "suspend",
                     "ttl_seconds_after_finished",

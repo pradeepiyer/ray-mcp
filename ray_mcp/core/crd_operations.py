@@ -47,20 +47,87 @@ class CRDOperationsClient(CRDOperations):
         },
     }
 
-    def __init__(self, config_manager: Optional[KubernetesConfigManager] = None):
+    def __init__(
+        self, 
+        config_manager: Optional[KubernetesConfigManager] = None,
+        kubernetes_config: Optional[Any] = None
+    ):
         self._config_manager = config_manager or KubernetesConfigManager()
+        self._kubernetes_config = kubernetes_config  # Pre-configured Kubernetes client
         self._response_formatter = ResponseFormatter()
         self._custom_objects_api = None
+        self._api_client = None  # Persistent API client
         self._retry_attempts = 3
         self._retry_delay = 1.0
+
+    def set_kubernetes_config(self, kubernetes_config: Any) -> None:
+        """Set the Kubernetes configuration to use for API calls."""
+        LoggingUtility.log_info(
+            "crd_operations_set_k8s_config",
+            f"Setting Kubernetes configuration - config provided: {kubernetes_config is not None}, host: {getattr(kubernetes_config, 'host', 'N/A') if kubernetes_config else 'N/A'}"
+        )
+        
+        # Clean up existing API client if it exists
+        if self._api_client:
+            try:
+                self._api_client.close()
+            except Exception:
+                pass  # Ignore cleanup errors
+        
+        self._kubernetes_config = kubernetes_config
+        # Reset the clients so they get recreated with the new config
+        self._custom_objects_api = None
+        self._api_client = None
+        
+        LoggingUtility.log_info(
+            "crd_operations_set_k8s_config",
+            "Successfully reset CRD operations client configuration"
+        )
 
     def _ensure_client(self) -> None:
         """Ensure custom objects API client is initialized."""
         if not KUBERNETES_AVAILABLE:
             raise RuntimeError("Kubernetes client library is not available")
 
-        if self._custom_objects_api is None:
-            self._custom_objects_api = client.CustomObjectsApi()
+        # Always recreate if we have a pre-configured client to ensure fresh configuration
+        if self._custom_objects_api is None or (self._kubernetes_config and self._api_client is None):
+            if self._kubernetes_config:
+                # Use the pre-configured Kubernetes client (e.g., from GKE)
+                LoggingUtility.log_info(
+                    "crd_operations_ensure_client",
+                    f"Using pre-configured Kubernetes client (host: {getattr(self._kubernetes_config, 'host', 'unknown')})"
+                )
+                # Create a persistent API client that won't be closed
+                self._api_client = client.ApiClient(self._kubernetes_config)
+                self._custom_objects_api = client.CustomObjectsApi(self._api_client)
+            else:
+                # Fall back to default Kubernetes configuration
+                LoggingUtility.log_warning(
+                    "crd_operations_ensure_client",
+                    "No pre-configured Kubernetes client found, falling back to default configuration"
+                )
+                # Try to load default configuration first
+                try:
+                    from kubernetes import config
+                    config.load_incluster_config()
+                    LoggingUtility.log_info(
+                        "crd_operations_ensure_client",
+                        "Loaded in-cluster configuration"
+                    )
+                except Exception:
+                    try:
+                        config.load_kube_config()
+                        LoggingUtility.log_info(
+                            "crd_operations_ensure_client",
+                            "Loaded kubeconfig configuration"
+                        )
+                    except Exception as e:
+                        LoggingUtility.log_warning(
+                            "crd_operations_ensure_client",
+                            f"Failed to load any Kubernetes configuration: {str(e)}"
+                        )
+                
+                self._custom_objects_api = client.CustomObjectsApi()
 
     def _get_resource_info(self, resource_type: str) -> Dict[str, str]:
         """Get resource information from type mapping."""
@@ -194,6 +261,10 @@ class CRDOperationsClient(CRDOperations):
         resource_info = self._get_resource_info(resource_type)
 
         try:
+            LoggingUtility.log_info(
+                "crd_operations_list_resources",
+                f"Listing {resource_type} resources in namespace {namespace} - k8s config available: {self._kubernetes_config is not None}"
+            )
             self._ensure_client()
 
             result = await asyncio.to_thread(
