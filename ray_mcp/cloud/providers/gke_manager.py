@@ -237,7 +237,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             "gke cluster discovery", self._discover_clusters_operation, project_id
         )
 
-    def _discover_clusters_operation(
+    async def _discover_clusters_operation(
         self, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute GKE cluster discovery operation."""
@@ -251,7 +251,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             raise ValueError("Project ID is required for cluster discovery")
 
         parent = f"projects/{project_id}/locations/-"
-        clusters_response = self._gke_client.list_clusters(parent=parent)
+        clusters_response = await asyncio.to_thread(self._gke_client.list_clusters, parent=parent)
 
         discovered_clusters = []
         for cluster in clusters_response.clusters:
