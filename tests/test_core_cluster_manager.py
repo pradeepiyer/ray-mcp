@@ -8,15 +8,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.unified_manager import RayUnifiedManager
+from ray_mcp.core.managers.unified_manager import RayUnifiedManager
 
 
 @pytest.mark.fast
 class TestRayClusterManagerGCSAddress:
     """Test GCS address retrieval functionality."""
 
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
     @pytest.mark.parametrize(
         "ray_initialized,runtime_context,gcs_address,expected_result",
         [
@@ -32,14 +30,18 @@ class TestRayClusterManagerGCSAddress:
         ],
     )
     async def test_get_actual_gcs_address_scenarios(
-        self, mock_ray, ray_initialized, runtime_context, gcs_address, expected_result
+        self, ray_initialized, runtime_context, gcs_address, expected_result
     ):
         """Test GCS address retrieval for various scenarios."""
-        mock_ray.is_initialized.return_value = ray_initialized
-        mock_ray.get_runtime_context.return_value = runtime_context
-
         manager = RayUnifiedManager()
         cluster_mgr = manager._cluster_manager
+
+        # Mock the Ray imports through the manager's instance
+        mock_ray = Mock()
+        mock_ray.is_initialized.return_value = ray_initialized
+        mock_ray.get_runtime_context.return_value = runtime_context
+        cluster_mgr._ray = mock_ray
+        cluster_mgr._RAY_AVAILABLE = True
 
         result = await cluster_mgr._get_actual_gcs_address()
 
@@ -48,9 +50,7 @@ class TestRayClusterManagerGCSAddress:
         if ray_initialized:
             mock_ray.get_runtime_context.assert_called_once()
 
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_connect_to_existing_cluster_uses_actual_gcs_address(self, mock_ray):
+    async def test_connect_to_existing_cluster_uses_actual_gcs_address(self):
         """Test that connect_to_existing_cluster uses actual GCS address instead of provided address."""
         # Mock the dashboard connection test
         mock_job_client = Mock()
@@ -59,16 +59,20 @@ class TestRayClusterManagerGCSAddress:
         mock_context = Mock()
         mock_context.gcs_address = "actual.gcs.address:10001"
 
-        # Setup mock to return False initially (not initialized), then True after init
+        manager = RayUnifiedManager()
+        cluster_mgr = manager._cluster_manager
+
+        # Mock the Ray imports through the manager's instance
+        mock_ray = Mock()
         mock_ray.is_initialized.side_effect = [
             False,
             True,
         ]  # First call returns False, second returns True
         mock_ray.init = Mock()
         mock_ray.get_runtime_context.return_value = mock_context
-
-        manager = RayUnifiedManager()
-        cluster_mgr = manager._cluster_manager
+        cluster_mgr._ray = mock_ray
+        cluster_mgr._RAY_AVAILABLE = True
+        cluster_mgr._JobSubmissionClient = Mock()
 
         # Mock the dashboard connection test
         with patch.object(
@@ -98,22 +102,22 @@ class TestRayClusterManagerConnectionType:
     @pytest.fixture
     def cluster_manager(self):
         """Create a RayClusterManager instance for testing."""
-        from ray_mcp.core.cluster_manager import RayClusterManager
-        from ray_mcp.core.port_manager import RayPortManager
-        from ray_mcp.core.state_manager import RayStateManager
+        from ray_mcp.core.managers.cluster_manager import RayClusterManager
+        from ray_mcp.core.managers.port_manager import RayPortManager
+        from ray_mcp.core.managers.state_manager import RayStateManager
 
         state_manager = RayStateManager()
         port_manager = RayPortManager()
         return RayClusterManager(state_manager, port_manager)
 
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_stop_cluster_connection_type_routing(
-        self, mock_ray, cluster_manager
-    ):
+    async def test_stop_cluster_connection_type_routing(self, cluster_manager):
         """Test stop_cluster routes to appropriate cleanup based on connection type."""
+        # Mock Ray through the instance
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = True
         mock_ray.shutdown = Mock()
+        cluster_manager._ray = mock_ray
+        cluster_manager._RAY_AVAILABLE = True
 
         # Test 1: Existing cluster - should disconnect only
         cluster_manager.state_manager.update_state(connection_type="existing")
@@ -147,20 +151,23 @@ class TestRayClusterManagerConnectionType:
         await cluster_manager.stop_cluster()
         mock_worker_manager.stop_all_workers.assert_called_once()
 
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
-    async def test_connection_type_tracking_during_init(
-        self, mock_ray, cluster_manager
-    ):
+    async def test_connection_type_tracking_during_init(self, cluster_manager):
         """Test that connection type is tracked correctly during cluster initialization."""
-        # Test 1: Starting new cluster sets connection_type to "new"
+        # Mock Ray through the instance
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = False
         mock_ray.init = Mock()
         mock_ray.get_runtime_context.return_value = Mock(gcs_address="127.0.0.1:10001")
+        cluster_manager._ray = mock_ray
+        cluster_manager._RAY_AVAILABLE = True
+        cluster_manager._JobSubmissionClient = Mock()
+
         cluster_manager._port_manager.find_free_port = AsyncMock(return_value=8265)
 
         # Mock subprocess for head node - configure the Mock properly
-        with patch("ray_mcp.core.cluster_manager.subprocess") as mock_subprocess:
+        with patch(
+            "ray_mcp.core.managers.cluster_manager.subprocess"
+        ) as mock_subprocess:
             mock_process = Mock()
             mock_process.communicate.return_value = (
                 "stdout output",
@@ -209,9 +216,9 @@ class TestRayClusterManagerAddressParsing:
     @pytest.fixture
     def cluster_manager(self):
         """Create a RayClusterManager instance for testing."""
-        from ray_mcp.core.cluster_manager import RayClusterManager
-        from ray_mcp.core.port_manager import RayPortManager
-        from ray_mcp.core.state_manager import RayStateManager
+        from ray_mcp.core.managers.cluster_manager import RayClusterManager
+        from ray_mcp.core.managers.port_manager import RayPortManager
+        from ray_mcp.core.managers.state_manager import RayStateManager
 
         state_manager = RayStateManager()
         port_manager = RayPortManager()
@@ -325,15 +332,18 @@ class TestRayClusterManagerAddressParsing:
         with pytest.raises(ValueError):
             cluster_manager._parse_cluster_address(address)
 
-    @patch("ray_mcp.core.cluster_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.cluster_manager.ray")
     async def test_connect_to_existing_cluster_ipv4_url_formatting(
-        self, mock_ray, cluster_manager
+        self, cluster_manager
     ):
         """Test that connect_to_existing_cluster correctly formats IPv4 URLs."""
+        # Mock Ray through the instance
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = False
         mock_ray.init = Mock()
         mock_ray.get_runtime_context.return_value = Mock(gcs_address="127.0.0.1:10001")
+        cluster_manager._ray = mock_ray
+        cluster_manager._RAY_AVAILABLE = True
+        cluster_manager._JobSubmissionClient = Mock()
 
         mock_job_client = Mock()
 

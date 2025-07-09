@@ -1,47 +1,30 @@
 """Centralized log management for Ray clusters."""
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
-# Use TYPE_CHECKING to avoid runtime issues with imports
-if TYPE_CHECKING:
-    from ray.job_submission import JobSubmissionClient
-else:
-    JobSubmissionClient = None
-
-try:
-    from ..logging_utils import LoggingUtility, LogProcessor, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, LogProcessor, ResponseFormatter
-
-from .interfaces import LogManager, RayComponent, StateManager
-
-# Import Ray modules with error handling
-try:
-    import ray
-    from ray.job_submission import JobSubmissionClient as _JobSubmissionClient
-
-    RAY_AVAILABLE = True
-    JobSubmissionClient = _JobSubmissionClient
-except ImportError:
-    RAY_AVAILABLE = False
-    ray = None
-    JobSubmissionClient = None
+from ..foundation.base_managers import (
+    AsyncOperationMixin,
+    RayBaseManager,
+    StateManagementMixin,
+    ValidationMixin,
+)
+from ..foundation.interfaces import LogManager
+from ..foundation.logging_utils import LogProcessor
 
 
-class RayLogManager(RayComponent, LogManager):
+class RayLogManager(
+    RayBaseManager,
+    ValidationMixin,
+    StateManagementMixin,
+    AsyncOperationMixin,
+    LogManager,
+):
     """Manages log retrieval operations with unified patterns and memory protection."""
 
-    def __init__(self, state_manager: StateManager):
+    def __init__(self, state_manager):
         super().__init__(state_manager)
         self._log_processor = LogProcessor()
-        self._response_formatter = ResponseFormatter()
 
-    @ResponseFormatter.handle_exceptions("retrieve logs")
     async def retrieve_logs(
         self,
         identifier: str,
@@ -54,6 +37,31 @@ class RayLogManager(RayComponent, LogManager):
         **kwargs,
     ) -> Dict[str, Any]:
         """Retrieve logs from Ray cluster with optional pagination and comprehensive error analysis."""
+        return await self._execute_operation(
+            "retrieve logs",
+            self._retrieve_logs_operation,
+            identifier,
+            log_type,
+            num_lines,
+            include_errors,
+            max_size_mb,
+            page,
+            page_size,
+            **kwargs,
+        )
+
+    async def _retrieve_logs_operation(
+        self,
+        identifier: str,
+        log_type: str = "job",
+        num_lines: int = 100,
+        include_errors: bool = False,
+        max_size_mb: int = 10,
+        page: Optional[int] = None,
+        page_size: Optional[int] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Execute log retrieval operation."""
         # Validate parameters
         validation_error = self._validate_log_retrieval_params(
             identifier, log_type, num_lines, max_size_mb, page, page_size
@@ -76,9 +84,7 @@ class RayLogManager(RayComponent, LogManager):
                     identifier, num_lines, include_errors, max_size_mb
                 )
         else:
-            return self._response_formatter.format_validation_error(
-                f"Invalid log_type: {log_type}. Only 'job' is supported"
-            )
+            raise ValueError(f"Invalid log_type: {log_type}. Only 'job' is supported")
 
     async def _retrieve_job_logs_unified(
         self,
@@ -126,7 +132,7 @@ class RayLogManager(RayComponent, LogManager):
             return result
 
         except Exception as e:
-            LoggingUtility.log_error("retrieve job logs", e)
+            self._log_error("retrieve job logs", e)
             return self._create_error_log_response(
                 "job", job_id, num_lines, max_size_mb, additional_info={"error": str(e)}
             )
@@ -184,7 +190,7 @@ class RayLogManager(RayComponent, LogManager):
             return paginated_result
 
         except Exception as e:
-            LoggingUtility.log_error("retrieve job logs paginated", e)
+            self._log_error("retrieve job logs paginated", e)
             return self._create_error_log_response(
                 "job",
                 job_id,
@@ -197,24 +203,25 @@ class RayLogManager(RayComponent, LogManager):
 
     async def _get_job_client(self) -> Optional[Any]:
         """Get the job submission client from state."""
-        if not RAY_AVAILABLE or not JobSubmissionClient:
+        self._ensure_ray_available()
+
+        if not self._JobSubmissionClient:
             return None
 
-        state = self.state_manager.get_state()
-        job_client = state.get("job_client")
+        job_client = self._get_state_value("job_client")
 
         if not job_client:
             # Try to create a basic client if we have dashboard URL
-            dashboard_url = state.get("dashboard_url")
+            dashboard_url = self._get_state_value("dashboard_url")
             if dashboard_url:
                 try:
-                    job_client = JobSubmissionClient(dashboard_url)
+                    job_client = self._JobSubmissionClient(dashboard_url)
                     # Test the connection
                     _ = job_client.list_jobs()
-                    self.state_manager.update_state(job_client=job_client)
+                    self._update_state(job_client=job_client)
                     return job_client
                 except Exception as e:
-                    LoggingUtility.log_warning("create job client", str(e))
+                    self._log_warning("create job client", str(e))
 
         return job_client
 
@@ -230,38 +237,34 @@ class RayLogManager(RayComponent, LogManager):
         """Validate log retrieval parameters."""
         # Validate identifier
         if not identifier or not isinstance(identifier, str) or not identifier.strip():
-            return self._response_formatter.format_validation_error(
+            return self._format_validation_error(
                 "Identifier must be a non-empty string"
             )
 
         # Validate log type - only job logs are supported
         if log_type != "job":
-            return self._response_formatter.format_validation_error(
+            return self._format_validation_error(
                 f"Invalid log_type: {log_type}. Only 'job' is supported"
             )
 
         # Validate size parameters
         if max_size_mb <= 0 or max_size_mb > 100:
-            return self._response_formatter.format_validation_error(
+            return self._format_validation_error(
                 "max_size_mb must be between 1 and 100"
             )
 
         # Validate line parameters (if specified and not default)
         if num_lines < 1 or num_lines > 10000:
-            return self._response_formatter.format_validation_error(
+            return self._format_validation_error(
                 "num_lines must be between 1 and 10000"
             )
 
         # Validate pagination parameters (if specified)
         if page is not None and page < 1:
-            return self._response_formatter.format_validation_error(
-                "page must be positive"
-            )
+            return self._format_validation_error("page must be positive")
 
         if page_size is not None and (page_size < 1 or page_size > 1000):
-            return self._response_formatter.format_validation_error(
-                "page_size must be between 1 and 1000"
-            )
+            return self._format_validation_error("page_size must be between 1 and 1000")
 
         return None
 

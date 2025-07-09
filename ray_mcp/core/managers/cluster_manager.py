@@ -1,50 +1,43 @@
-"""Ray cluster lifecycle management."""
+"""Centralized cluster management for Ray."""
 
 import asyncio
+import os
 import re
 import subprocess
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-# Use TYPE_CHECKING to avoid runtime issues with imports
-if TYPE_CHECKING:
-    from ray.job_submission import JobSubmissionClient
-else:
-    JobSubmissionClient = None
+from ..foundation.base_managers import (
+    AsyncOperationMixin,
+    RayBaseManager,
+    StateManagementMixin,
+    ValidationMixin,
+)
+from ..foundation.interfaces import ClusterManager, PortManager, StateManager
 
 try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-    from ..worker_manager import WorkerManager
+    from .worker_manager import WorkerManager
 except ImportError:
     # Fallback for direct execution
     import os
     import sys
 
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
     from worker_manager import WorkerManager
 
-from .interfaces import ClusterManager, PortManager, RayComponent, StateManager
 
-# Import Ray modules with error handling
-try:
-    import ray
-    from ray.job_submission import JobSubmissionClient as _JobSubmissionClient
-
-    RAY_AVAILABLE = True
-    JobSubmissionClient = _JobSubmissionClient
-except ImportError:
-    RAY_AVAILABLE = False
-    ray = None
-    JobSubmissionClient = None
-
-
-class RayClusterManager(RayComponent, ClusterManager):
+class RayClusterManager(
+    RayBaseManager,
+    ValidationMixin,
+    StateManagementMixin,
+    AsyncOperationMixin,
+    ClusterManager,
+):
     """Manages Ray cluster lifecycle operations with clean separation of concerns."""
 
     def __init__(
         self,
-        state_manager: StateManager,
+        state_manager,
         port_manager: PortManager,
         worker_manager: Optional[WorkerManager] = None,
     ):
@@ -52,9 +45,7 @@ class RayClusterManager(RayComponent, ClusterManager):
         self._port_manager = port_manager
         self._worker_manager = worker_manager or WorkerManager()
         self._head_node_process: Optional[subprocess.Popen] = None
-        self._response_formatter = ResponseFormatter()
 
-    @ResponseFormatter.handle_exceptions("init cluster")
     async def init_cluster(
         self,
         address: Optional[str] = None,
@@ -68,13 +59,34 @@ class RayClusterManager(RayComponent, ClusterManager):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Initialize Ray cluster - connect to existing or start new cluster."""
-        if not RAY_AVAILABLE:
-            return self._response_formatter.format_error_response(
-                "init cluster",
-                Exception(
-                    "Ray is not available. Please install Ray to use this feature."
-                ),
-            )
+        return await self._execute_operation(
+            "init cluster",
+            self._init_cluster_operation,
+            address,
+            num_cpus,
+            num_gpus,
+            object_store_memory,
+            worker_nodes,
+            head_node_port,
+            dashboard_port,
+            head_node_host,
+            **kwargs,
+        )
+
+    async def _init_cluster_operation(
+        self,
+        address: Optional[str] = None,
+        num_cpus: Optional[int] = None,
+        num_gpus: Optional[int] = None,
+        object_store_memory: Optional[int] = None,
+        worker_nodes: Optional[List[Dict[str, Any]]] = None,
+        head_node_port: Optional[int] = None,
+        dashboard_port: Optional[int] = None,
+        head_node_host: str = "127.0.0.1",
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Execute cluster initialization operation."""
+        self._ensure_ray_available()
 
         # If address provided, connect to existing cluster
         if address:
@@ -92,102 +104,97 @@ class RayClusterManager(RayComponent, ClusterManager):
             **kwargs,
         )
 
-    @ResponseFormatter.handle_exceptions("stop cluster")
     async def stop_cluster(self) -> Dict[str, Any]:
         """Stop the Ray cluster and clean up resources."""
         try:
-            # Get connection type from state to determine appropriate cleanup
-            connection_type = self.state_manager.get_state().get("connection_type")
-
-            if connection_type == "existing":
-                return await self._disconnect_from_existing_cluster()
-            else:
-                return await self._stop_local_cluster()
-        except Exception as e:
-            LoggingUtility.log_error("stop cluster", e)
-            return self._response_formatter.format_error_response("stop cluster", e)
+            return await self._execute_operation(
+                "stop cluster", self._stop_cluster_operation
+            )
         finally:
             # Always reset state, even if cleanup fails
-            self.state_manager.reset_state()
+            self._reset_state()
 
-    @ResponseFormatter.handle_exceptions("inspect cluster")
+    async def _stop_cluster_operation(self) -> Dict[str, Any]:
+        """Execute cluster stop operation."""
+        # Get connection type from state to determine appropriate cleanup
+        connection_type = self._get_state_value("connection_type")
+
+        if connection_type == "existing":
+            return await self._disconnect_from_existing_cluster()
+        else:
+            return await self._stop_local_cluster()
+
     async def inspect_cluster(self) -> Dict[str, Any]:
         """Get basic cluster information."""
+        return await self._execute_operation(
+            "inspect cluster", self._inspect_cluster_operation
+        )
+
+    async def _inspect_cluster_operation(self) -> Dict[str, Any]:
+        """Execute cluster inspection operation."""
         self._ensure_initialized()
 
         cluster_info = {}
 
         # Use cluster_status to avoid collision with response status
         cluster_info["cluster_status"] = (
-            "running" if ray and ray.is_initialized() else "not_running"
+            "running" if self._ray and self._ray.is_initialized() else "not_running"
         )
-        cluster_info["ray_version"] = ray.__version__ if ray else "unavailable"
+        cluster_info["ray_version"] = (
+            self._ray.__version__ if self._ray else "unavailable"
+        )
 
-        return self._response_formatter.format_success_response(**cluster_info)
+        return cluster_info
 
     async def _disconnect_from_existing_cluster(self) -> Dict[str, Any]:
         """Disconnect from existing Ray cluster without stopping remote cluster."""
-        try:
-            LoggingUtility.log_info(
-                "cluster_disconnect", "Disconnecting from existing Ray cluster..."
+        self._LoggingUtility.log_info(
+            "cluster_disconnect", "Disconnecting from existing Ray cluster..."
+        )
+
+        # Only shutdown local Ray instance - this doesn't affect the remote cluster
+        if self._ray and self._ray.is_initialized():
+            self._ray.shutdown()
+            self._LoggingUtility.log_info(
+                "cluster_disconnect", "Local Ray instance shutdown completed"
             )
 
-            # Only shutdown local Ray instance - this doesn't affect the remote cluster
-            if ray and ray.is_initialized():
-                ray.shutdown()
-                LoggingUtility.log_info(
-                    "cluster_disconnect", "Local Ray instance shutdown completed"
-                )
-
-            return self._response_formatter.format_success_response(
-                message="Successfully disconnected from existing Ray cluster",
-                connection_type="existing",
-                action="disconnected",
-            )
-
-        except Exception as e:
-            LoggingUtility.log_error("disconnect from cluster", e)
-            return self._response_formatter.format_error_response(
-                "disconnect from cluster", e
-            )
+        return {
+            "message": "Successfully disconnected from existing Ray cluster",
+            "connection_type": "existing",
+            "action": "disconnected",
+        }
 
     async def _stop_local_cluster(self) -> Dict[str, Any]:
         """Stop locally-started Ray cluster and clean up all resources."""
-        try:
-            cleanup_results = []
+        cleanup_results = []
 
-            # Stop worker nodes first
-            if self._worker_manager.worker_processes:
-                LoggingUtility.log_info("cluster_cleanup", "Stopping worker nodes...")
-                worker_results = await self._worker_manager.stop_all_workers()
-                cleanup_results.extend(worker_results)
+        # Stop worker nodes first
+        if self._worker_manager.worker_processes:
+            self._LoggingUtility.log_info("cluster_cleanup", "Stopping worker nodes...")
+            worker_results = await self._worker_manager.stop_all_workers()
+            cleanup_results.extend(worker_results)
 
-            # Clean up head node process reference
-            # Note: The 'ray start' command has already exited after starting Ray daemon processes.
-            # The actual Ray cluster cleanup is handled by ray.shutdown() below.
-            if self._head_node_process:
-                LoggingUtility.log_info(
-                    "cluster_cleanup", "Head node command already completed"
-                )
-                self._head_node_process = None
-
-            # Shutdown Ray if initialized
-            if ray and ray.is_initialized():
-                ray.shutdown()
-                LoggingUtility.log_info("cluster_cleanup", "Ray shutdown completed")
-
-            return self._response_formatter.format_success_response(
-                message="Ray cluster stopped successfully",
-                connection_type="new",
-                action="stopped",
-                cleanup_results=cleanup_results,
+        # Clean up head node process reference
+        # Note: The 'ray start' command has already exited after starting Ray daemon processes.
+        # The actual Ray cluster cleanup is handled by ray.shutdown() below.
+        if self._head_node_process:
+            self._LoggingUtility.log_info(
+                "cluster_cleanup", "Head node command already completed"
             )
+            self._head_node_process = None
 
-        except Exception as e:
-            LoggingUtility.log_error("stop local cluster", e)
-            return self._response_formatter.format_error_response(
-                "stop local cluster", e
-            )
+        # Shutdown Ray if initialized
+        if self._ray and self._ray.is_initialized():
+            self._ray.shutdown()
+            self._LoggingUtility.log_info("cluster_cleanup", "Ray shutdown completed")
+
+        return {
+            "message": "Ray cluster stopped successfully",
+            "connection_type": "new",
+            "action": "stopped",
+            "cleanup_results": cleanup_results,
+        }
 
     def _validate_cluster_address(self, address: str) -> bool:
         """Validate cluster address format supporting IPv4 and hostnames."""
@@ -287,7 +294,7 @@ class RayClusterManager(RayComponent, ClusterManager):
             dashboard_url = f"http://{host}:{dashboard_port}"
 
             # Test connection via dashboard API
-            if not JobSubmissionClient:
+            if not self._JobSubmissionClient:
                 return self._response_formatter.format_error_response(
                     "connect to cluster",
                     Exception(
@@ -305,8 +312,8 @@ class RayClusterManager(RayComponent, ClusterManager):
 
             # Initialize local Ray without connecting to remote cluster
             # This gives us access to Ray APIs for cluster inspection
-            if ray and not ray.is_initialized():
-                ray.init(ignore_reinit_error=True)
+            if self._ray and not self._ray.is_initialized():
+                self._ray.init(ignore_reinit_error=True)
 
             # Query the actual GCS address from the Ray cluster after connection
             actual_gcs_address = await self._get_actual_gcs_address()
@@ -329,7 +336,7 @@ class RayClusterManager(RayComponent, ClusterManager):
             )
 
         except Exception as e:
-            LoggingUtility.log_error("connect to cluster", e)
+            self._LoggingUtility.log_error("connect to cluster", e)
             return self._response_formatter.format_error_response(
                 "connect to cluster", e
             )
@@ -368,11 +375,11 @@ class RayClusterManager(RayComponent, ClusterManager):
             await self._wait_for_head_node_ready(dashboard_port, host)
 
             # Initialize Ray and let it detect the cluster
-            if ray:
-                ray.init(ignore_reinit_error=True)
+            if self._ray:
+                self._ray.init(ignore_reinit_error=True)
 
             # Get the actual cluster address from Ray
-            runtime_context = ray.get_runtime_context() if ray else None
+            runtime_context = self._ray.get_runtime_context() if self._ray else None
             gcs_address = runtime_context.gcs_address if runtime_context else None
             cluster_address = gcs_address or f"{host}:10001"  # fallback
 
@@ -415,7 +422,7 @@ class RayClusterManager(RayComponent, ClusterManager):
             # Note: The 'ray start' command has already exited, so we just need to clear the reference.
             # Ray daemon processes (if started) will be cleaned up by the OS or manual intervention.
             if self._head_node_process:
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "cluster_cleanup",
                     "Clearing head node process reference after failure",
                 )
@@ -455,7 +462,7 @@ class RayClusterManager(RayComponent, ClusterManager):
     ) -> Optional[subprocess.Popen]:
         """Start the head node process."""
         try:
-            LoggingUtility.log_info(
+            self._LoggingUtility.log_info(
                 "cluster_start", f"Starting head node: {' '.join(cmd)}"
             )
 
@@ -468,14 +475,14 @@ class RayClusterManager(RayComponent, ClusterManager):
 
             # Check if the command completed successfully
             if process.returncode == 0:
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "cluster_start", "Head node command completed successfully"
                 )
-                LoggingUtility.log_debug("cluster_start", f"STDOUT: {stdout}")
+                self._LoggingUtility.log_debug("cluster_start", f"STDOUT: {stdout}")
                 # Ray start command succeeded - Ray cluster is now running as daemon processes
                 return process
             else:
-                LoggingUtility.log_error(
+                self._LoggingUtility.log_error(
                     "cluster_start",
                     Exception(
                         f"Head node command failed with return code {process.returncode}. STDOUT: {stdout}, STDERR: {stderr}"
@@ -484,36 +491,36 @@ class RayClusterManager(RayComponent, ClusterManager):
                 return None
 
         except Exception as e:
-            LoggingUtility.log_error("start head node process", e)
+            self._LoggingUtility.log_error("start head node process", e)
             return None
 
     async def _test_dashboard_connection(
         self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
     ) -> Optional[Any]:
         """Test connection to Ray dashboard API."""
-        if not JobSubmissionClient:
+        if not self._JobSubmissionClient:
             return None
 
         for attempt in range(max_retries):
             try:
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "dashboard_connect",
                     f"Testing dashboard connection (attempt {attempt + 1}/{max_retries}): {dashboard_url}",
                 )
 
                 # Create client and test connection
-                job_client = JobSubmissionClient(dashboard_url)
+                job_client = self._JobSubmissionClient(dashboard_url)
 
                 # Test the connection by listing jobs
                 _ = job_client.list_jobs()
 
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "dashboard_connect", "Dashboard connection successful"
                 )
                 return job_client
 
             except Exception as e:
-                LoggingUtility.log_warning(
+                self._LoggingUtility.log_warning(
                     "dashboard_connect", f"Attempt {attempt + 1} failed: {e}"
                 )
 
@@ -521,7 +528,7 @@ class RayClusterManager(RayComponent, ClusterManager):
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
 
-        LoggingUtility.log_error(
+        self._LoggingUtility.log_error(
             "dashboard_connect",
             Exception(f"Failed to connect to dashboard after {max_retries} attempts"),
         )
@@ -543,22 +550,22 @@ class RayClusterManager(RayComponent, ClusterManager):
         for attempt in range(max_wait):
             try:
                 # Try to connect to the dashboard to see if Ray is ready
-                if JobSubmissionClient:
-                    job_client = JobSubmissionClient(dashboard_url)
+                if self._JobSubmissionClient:
+                    job_client = self._JobSubmissionClient(dashboard_url)
                     _ = job_client.list_jobs()  # This will fail if Ray isn't ready
-                    LoggingUtility.log_info(
+                    self._LoggingUtility.log_info(
                         "head_node_ready",
                         f"Head node ready after {attempt + 1} seconds",
                     )
                     return
             except Exception as e:
-                LoggingUtility.log_debug(
+                self._LoggingUtility.log_debug(
                     "head_node_ready", f"Attempt {attempt + 1}: {e}"
                 )
 
             await asyncio.sleep(1.0)
 
-        LoggingUtility.log_warning(
+        self._LoggingUtility.log_warning(
             "head_node_ready",
             f"Head node may not be fully ready after {max_wait} seconds, proceeding anyway",
         )
@@ -566,31 +573,31 @@ class RayClusterManager(RayComponent, ClusterManager):
     async def _get_actual_gcs_address(self) -> Optional[str]:
         """Get the actual GCS address from Ray runtime context."""
         try:
-            if not ray or not ray.is_initialized():
-                LoggingUtility.log_warning(
+            if not self._ray or not self._ray.is_initialized():
+                self._LoggingUtility.log_warning(
                     "get_gcs_address", "Ray is not initialized, cannot get GCS address"
                 )
                 return None
 
-            runtime_context = ray.get_runtime_context()
+            runtime_context = self._ray.get_runtime_context()
             if not runtime_context:
-                LoggingUtility.log_warning(
+                self._LoggingUtility.log_warning(
                     "get_gcs_address", "Ray runtime context is not available"
                 )
                 return None
 
             gcs_address = getattr(runtime_context, "gcs_address", None)
             if gcs_address:
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "get_gcs_address", f"Retrieved GCS address: {gcs_address}"
                 )
                 return gcs_address
             else:
-                LoggingUtility.log_warning(
+                self._LoggingUtility.log_warning(
                     "get_gcs_address", "GCS address not available in runtime context"
                 )
                 return None
 
         except Exception as e:
-            LoggingUtility.log_error("get_gcs_address", e)
+            self._LoggingUtility.log_error("get_gcs_address", e)
             return None

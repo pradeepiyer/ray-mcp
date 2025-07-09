@@ -1,4 +1,4 @@
-"""RayJob Custom Resource Definition management."""
+"""Ray Job Custom Resource Definition management."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -12,26 +12,20 @@ except ImportError:
     YAML_AVAILABLE = False
     yaml = None
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .interfaces import RayJobCRD
+from ...foundation.import_utils import get_logging_utils
+from ...foundation.interfaces import RayJobCRD
 
 
 class RayJobCRDManager(RayJobCRD):
-    """Manages RayJob Custom Resource Definition with schema validation and serialization."""
+    """Manager for RayJob Custom Resource Definitions."""
 
     def __init__(self):
-        self._response_formatter = ResponseFormatter()
+        """Initialize the RayJob CRD manager."""
+        # Get utilities from import system
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
+        self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
-    @ResponseFormatter.handle_exceptions("create ray job spec")
     def create_spec(
         self,
         entrypoint: str,
@@ -58,7 +52,7 @@ class RayJobCRDManager(RayJobCRD):
 
         # Validate entrypoint
         if not entrypoint or not isinstance(entrypoint, str):
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "create ray job spec",
                 Exception("entrypoint must be a non-empty string"),
             )
@@ -67,7 +61,7 @@ class RayJobCRDManager(RayJobCRD):
         if runtime_env is not None:
             runtime_validation = self._validate_runtime_env(runtime_env)
             if not runtime_validation["valid"]:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "create ray job spec",
                     Exception(f"Invalid runtime_env: {runtime_validation['errors']}"),
                 )
@@ -77,27 +71,27 @@ class RayJobCRDManager(RayJobCRD):
             if cluster_selector:
                 # Using existing cluster - CRITICAL: don't shutdown the cluster after job finishes
                 shutdown_after_job_finishes = False
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "rayjob_cluster_preservation",
                     f"Using existing cluster '{cluster_selector}' - setting shutdownAfterJobFinishes=false to preserve cluster",
                 )
             else:
                 # Creating new ephemeral cluster - shutdown after job finishes to save resources
                 shutdown_after_job_finishes = True
-                LoggingUtility.log_info(
+                self._LoggingUtility.log_info(
                     "rayjob_ephemeral_cluster",
                     f"Creating ephemeral cluster - setting shutdownAfterJobFinishes=true for cleanup",
                 )
 
         # CRITICAL SAFETY CHECK: Ensure existing clusters are not accidentally torn down
         if cluster_selector and shutdown_after_job_finishes:
-            LoggingUtility.log_warning(
+            self._LoggingUtility.log_warning(
                 "rayjob_cluster_safety",
                 f"WARNING: Job configured to use existing cluster '{cluster_selector}' but shutdownAfterJobFinishes=true. This could destroy the existing cluster!",
             )
             # Override for safety
             shutdown_after_job_finishes = False
-            LoggingUtility.log_info(
+            self._LoggingUtility.log_info(
                 "rayjob_cluster_safety",
                 "Safety override: Setting shutdownAfterJobFinishes=false to protect existing cluster",
             )
@@ -106,7 +100,7 @@ class RayJobCRDManager(RayJobCRD):
         if not shutdown_after_job_finishes and ttl_seconds_after_finished is not None:
             # If cluster doesn't shutdown after job finishes, we cannot have TTL
             ttl_seconds_after_finished = None
-            LoggingUtility.log_info(
+            self._LoggingUtility.log_info(
                 "rayjob_ttl_disable",
                 "TTL disabled because shutdownAfterJobFinishes=false (cluster preservation mode)",
             )
@@ -139,21 +133,21 @@ class RayJobCRDManager(RayJobCRD):
         if cluster_selector:
             # Using existing cluster - add cluster selector
             ray_job_spec["spec"]["clusterSelector"] = cluster_selector
-            LoggingUtility.log_info(
+            self._LoggingUtility.log_info(
                 "rayjob_existing_cluster",
                 f"Job configured to use existing cluster: {cluster_selector}",
             )
         else:
             # Creating new cluster - add ray cluster spec
             ray_job_spec["spec"]["rayClusterSpec"] = self._build_default_cluster_spec()
-            LoggingUtility.log_info(
+            self._LoggingUtility.log_info(
                 "rayjob_new_cluster", "Job configured to create new ephemeral cluster"
             )
 
         # Add TTL only if cluster shuts down after job finishes
         if shutdown_after_job_finishes and ttl_seconds_after_finished is not None:
             ray_job_spec["spec"]["ttlSecondsAfterFinished"] = ttl_seconds_after_finished
-            LoggingUtility.log_info(
+            self._LoggingUtility.log_info(
                 "rayjob_ttl_enabled",
                 f"TTL set to {ttl_seconds_after_finished} seconds for ephemeral cluster cleanup",
             )
@@ -172,11 +166,10 @@ class RayJobCRDManager(RayJobCRD):
                 }
             )
 
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             job_spec=ray_job_spec, job_name=job_name
         )
 
-    @ResponseFormatter.handle_exceptions("validate ray job spec")
     def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """Validate RayJob specification."""
         errors = []
@@ -255,7 +248,7 @@ class RayJobCRDManager(RayJobCRD):
             elif isinstance(selector, dict) and not selector:
                 errors.append("spec.clusterSelector dictionary must not be empty")
 
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             valid=len(errors) == 0, errors=errors
         )
 

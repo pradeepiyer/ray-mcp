@@ -1,4 +1,4 @@
-"""RayCluster Custom Resource Definition management."""
+"""Ray Cluster Custom Resource Definition management."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -12,26 +12,20 @@ except ImportError:
     YAML_AVAILABLE = False
     yaml = None
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .interfaces import RayClusterCRD
+from ...foundation.import_utils import get_logging_utils
+from ...foundation.interfaces import RayClusterCRD
 
 
 class RayClusterCRDManager(RayClusterCRD):
-    """Manages RayCluster Custom Resource Definition with schema validation and serialization."""
+    """Manager for RayCluster Custom Resource Definitions."""
 
     def __init__(self):
-        self._response_formatter = ResponseFormatter()
+        """Initialize the RayCluster CRD manager."""
+        # Get utilities from import system
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
+        self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
-    @ResponseFormatter.handle_exceptions("create ray cluster spec")
     def create_spec(
         self,
         head_node_spec: Dict[str, Any],
@@ -52,7 +46,7 @@ class RayClusterCRDManager(RayClusterCRD):
         # Validate head node spec
         head_validation = self._validate_node_spec(head_node_spec, "head")
         if not head_validation["valid"]:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "create ray cluster spec",
                 Exception(f"Invalid head node spec: {head_validation['errors']}"),
             )
@@ -61,7 +55,7 @@ class RayClusterCRDManager(RayClusterCRD):
         for i, worker_spec in enumerate(worker_node_specs):
             worker_validation = self._validate_node_spec(worker_spec, f"worker-{i}")
             if not worker_validation["valid"]:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "create ray cluster spec",
                     Exception(
                         f"Invalid worker node spec {i}: {worker_validation['errors']}"
@@ -111,11 +105,10 @@ class RayClusterCRDManager(RayClusterCRD):
                 }
             )
 
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             cluster_spec=ray_cluster_spec, cluster_name=cluster_name
         )
 
-    @ResponseFormatter.handle_exceptions("validate ray cluster spec")
     def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """Validate RayCluster specification."""
         errors = []
@@ -168,7 +161,7 @@ class RayClusterCRDManager(RayClusterCRD):
                 )
                 errors.extend(worker_validation.get("errors", []))
 
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             valid=len(errors) == 0, errors=errors
         )
 

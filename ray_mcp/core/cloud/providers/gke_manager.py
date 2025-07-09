@@ -1,80 +1,60 @@
-"""Google Kubernetes Engine (GKE) management for Ray MCP."""
+"""Google Kubernetes Engine (GKE) cluster management."""
 
 import asyncio
+import base64
 import json
 import os
+import tempfile
 from typing import Any, Dict, List, Optional
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .cloud_provider_config import CloudProviderConfigManager
-from .cloud_provider_detector import CloudProviderDetector
-from .interfaces import CloudProvider, CloudProviderComponent, GKEManager, StateManager
-from .kubernetes_config import KubernetesConfigManager
-
-# Import Google Cloud SDK modules with error handling
-try:
-    from google.auth import default
-    from google.auth.exceptions import DefaultCredentialsError
-    from google.cloud import container_v1
-
-    GOOGLE_CLOUD_AVAILABLE = True
-except ImportError:
-    GOOGLE_CLOUD_AVAILABLE = False
-    container_v1 = None
-    default = None
-    DefaultCredentialsError = Exception
-
-# Import kubernetes modules
-try:
-    from kubernetes import client, config
-    from kubernetes.client.rest import ApiException
-
-    KUBERNETES_AVAILABLE = True
-except ImportError:
-    KUBERNETES_AVAILABLE = False
-    client = None
-    config = None
-    ApiException = Exception
+from ...foundation.base_managers import (
+    AsyncOperationMixin,
+    CloudProviderBaseManager,
+    StateManagementMixin,
+    ValidationMixin,
+)
+from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
+from ...foundation.interfaces import CloudProvider, GKEManager
+from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
+from ..config.cloud_provider_config import CloudProviderConfigManager
+from ..config.cloud_provider_detector import CloudProviderDetector
 
 # Import additional modules for proper GKE integration
 try:
     import base64
-    import os
     import tempfile
-
-    import google.auth.transport.requests
-
-    GOOGLE_AUTH_AVAILABLE = True
 except ImportError:
-    GOOGLE_AUTH_AVAILABLE = False
+    pass
 
 
-class GKEClusterManager(CloudProviderComponent, GKEManager):
+class GKEClusterManager(
+    CloudProviderBaseManager,
+    ValidationMixin,
+    StateManagementMixin,
+    AsyncOperationMixin,
+    GKEManager,
+):
     """Manages GKE clusters with authentication and discovery capabilities."""
 
     def __init__(
         self,
-        state_manager: StateManager,
+        state_manager,
         detector: Optional[CloudProviderDetector] = None,
         config_manager: Optional[CloudProviderConfigManager] = None,
         kubernetes_config: Optional[KubernetesConfigManager] = None,
     ):
         super().__init__(state_manager)
+
+        # Get Kubernetes imports for this manager as well
+        k8s_imports = get_kubernetes_imports()
+        self._client = k8s_imports["client"]
+        self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
+
         self._detector = detector or CloudProviderDetector(state_manager)
         self._config_manager = config_manager or CloudProviderConfigManager(
             state_manager
         )
         self._kubernetes_config = kubernetes_config or KubernetesConfigManager()
-        self._response_formatter = ResponseFormatter()
         self._gke_client = None
         self._k8s_client = None  # Add Kubernetes client
         # Initialize missing instance variables
@@ -98,96 +78,86 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         project_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Authenticate with GKE using service account."""
-        try:
-            if not GOOGLE_CLOUD_AVAILABLE:
-                return self._response_formatter.format_error_response(
-                    "gke authentication",
-                    Exception(
-                        "Google Cloud SDK is not available. Please install google-cloud-container: pip install google-cloud-container"
-                    ),
-                )
+        return await self._execute_operation(
+            "gke authentication",
+            self._authenticate_gke_operation,
+            service_account_path,
+            project_id,
+        )
 
-            # Use service account path from parameter or environment
-            service_account_path = service_account_path or os.getenv(
-                "GOOGLE_APPLICATION_CREDENTIALS"
-            )
-            if not service_account_path:
-                return self._response_formatter.format_error_response(
-                    "gke authentication",
-                    Exception(
-                        "Service account path not provided and GOOGLE_APPLICATION_CREDENTIALS not set"
-                    ),
-                )
+    async def _authenticate_gke_operation(
+        self,
+        service_account_path: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute GKE authentication operation."""
+        self._ensure_google_cloud_available()
 
-            if not os.path.exists(service_account_path):
-                return self._response_formatter.format_error_response(
-                    "gke authentication",
-                    Exception(
-                        f"Service account file not found: {service_account_path}"
-                    ),
-                )
-
-            # Load credentials from service account file
-            with open(service_account_path, "r") as f:
-                credentials_data = json.load(f)
-
-            # Create credentials object
-            from google.oauth2 import service_account
-
-            self._credentials = service_account.Credentials.from_service_account_info(
-                credentials_data,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        # Use service account path from parameter or environment
+        service_account_path = service_account_path or os.getenv(
+            "GOOGLE_APPLICATION_CREDENTIALS"
+        )
+        if not service_account_path:
+            raise ValueError(
+                "Service account path not provided and GOOGLE_APPLICATION_CREDENTIALS not set"
             )
 
-            # Store project ID
-            self._project_id = project_id or credentials_data.get("project_id")
-            if not self._project_id:
-                return self._response_formatter.format_error_response(
-                    "gke authentication",
-                    ValueError(
-                        "Project ID not found in service account credentials and not provided as parameter"
-                    ),
-                )
+        if not os.path.exists(service_account_path):
+            raise FileNotFoundError(
+                f"Service account file not found: {service_account_path}"
+            )
 
-            # Set environment variable for other Google Cloud libraries
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_path
+        # Load credentials from service account file
+        with open(service_account_path, "r") as f:
+            credentials_data = json.load(f)
 
-            # Test authentication by initializing clients
-            self._ensure_clients()
-            self._is_authenticated = True
+        # Create credentials object
+        self._credentials = self._service_account.Credentials.from_service_account_info(
+            credentials_data,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
 
-            # Update state
-            self.state_manager.update_state(
-                cloud_provider_auth={
-                    "gke": {
-                        "authenticated": True,
-                        "auth_type": "service_account",
-                        "service_account_path": service_account_path,
-                        "project_id": self._project_id,
-                        "auth_time": self._get_current_time(),
-                    }
+        # Store project ID
+        self._project_id = project_id or credentials_data.get("project_id")
+        if not self._project_id:
+            raise ValueError(
+                "Project ID not found in service account credentials and not provided as parameter"
+            )
+
+        # Set environment variable for other Google Cloud libraries
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_path
+
+        # Test authentication by initializing clients
+        self._ensure_clients()
+        self._is_authenticated = True
+
+        # Update state
+        self._update_state(
+            cloud_provider_auth={
+                "gke": {
+                    "authenticated": True,
+                    "auth_type": "service_account",
+                    "service_account_path": service_account_path,
+                    "project_id": self._project_id,
+                    "auth_time": self._get_current_time(),
                 }
-            )
+            }
+        )
 
-            return self._response_formatter.format_success_response(
-                provider="gke",
-                authenticated=True,
-                project_id=self._project_id,
-                service_account_path=service_account_path,
-                service_account_email=credentials_data.get("client_email"),
-            )
-
-        except Exception as e:
-            return self._response_formatter.format_error_response(
-                "gke authentication", e
-            )
+        return {
+            "provider": "gke",
+            "authenticated": True,
+            "project_id": self._project_id,
+            "service_account_path": service_account_path,
+            "service_account_email": credentials_data.get("client_email"),
+        }
 
     # Add aliases for protocol compatibility
     async def discover_gke_clusters(
         self, project_id: Optional[str] = None, zone: Optional[str] = None
     ) -> Dict[str, Any]:
         """Discover GKE clusters in a project."""
-        return self.discover_clusters(project_id)
+        return await self.discover_clusters(project_id)
 
     async def connect_gke_cluster(
         self, cluster_name: str, zone: str, project_id: Optional[str] = None
@@ -207,18 +177,17 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         """Get information about a GKE cluster."""
         return self.get_cluster_info(cluster_name, zone, project_id)
 
-    @ResponseFormatter.handle_exceptions("gke authentication")
     def authenticate(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
         """Authenticate with Google Cloud Platform."""
-        if not GOOGLE_CLOUD_AVAILABLE:
-            return self._response_formatter.format_error_response(
-                "gke authentication",
-                Exception(
-                    "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
-                ),
-            )
-
         try:
+            if not self._GOOGLE_CLOUD_AVAILABLE:
+                return self._response_formatter.format_error_response(
+                    "gke authentication",
+                    Exception(
+                        "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
+                    ),
+                )
+
             credentials_json = credentials.get("service_account_json")
             if not credentials_json:
                 return self._response_formatter.format_error_response(
@@ -243,11 +212,11 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                 credentials_data = credentials_json
 
             # Create credentials object
-            from google.oauth2 import service_account
-
-            self._credentials = service_account.Credentials.from_service_account_info(
-                credentials_data,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            self._credentials = (
+                self._service_account.Credentials.from_service_account_info(
+                    credentials_data,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
             )
 
             # Store project ID
@@ -269,89 +238,80 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
             )
 
         except Exception as e:
+            self._log_error("gke authentication", e)
             return self._response_formatter.format_error_response(
                 "gke authentication", e
             )
 
-    @ResponseFormatter.handle_exceptions("gke cluster discovery")
-    def discover_clusters(self, project_id: Optional[str] = None) -> Dict[str, Any]:
+    async def discover_clusters(
+        self, project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Discover GKE clusters."""
-        if not GOOGLE_CLOUD_AVAILABLE:
-            return self._response_formatter.format_error_response(
-                "gke cluster discovery",
-                Exception(
-                    "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
-                ),
-            )
+        return await self._execute_operation(
+            "gke cluster discovery", self._discover_clusters_operation, project_id
+        )
+
+    def _discover_clusters_operation(
+        self, project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Execute GKE cluster discovery operation."""
+        self._ensure_google_cloud_available()
 
         if not self._is_authenticated:
-            return self._response_formatter.format_error_response(
-                "gke cluster discovery",
-                Exception("Not authenticated with GKE. Please authenticate first."),
+            raise RuntimeError("Not authenticated with GKE. Please authenticate first.")
+
+        project_id = project_id or self._project_id
+        if not project_id:
+            raise ValueError("Project ID is required for cluster discovery")
+
+        parent = f"projects/{project_id}/locations/-"
+        clusters_response = self._gke_client.list_clusters(parent=parent)
+
+        discovered_clusters = []
+        for cluster in clusters_response.clusters:
+            # Safely determine location type based on location format
+            location_type = (
+                "zonal"
+                if "-" in cluster.location and cluster.location.count("-") == 2
+                else "regional"
             )
 
-        try:
-            project_id = project_id or self._project_id
-            if not project_id:
-                return self._response_formatter.format_error_response(
-                    "gke cluster discovery",
-                    ValueError("Project ID is required for cluster discovery"),
-                )
+            cluster_info = {
+                "name": getattr(cluster, "name", "unknown"),
+                "location": getattr(cluster, "location", "unknown"),
+                "status": (
+                    getattr(cluster.status, "name", "unknown")
+                    if hasattr(cluster, "status")
+                    else "unknown"
+                ),
+                "node_count": getattr(cluster, "current_node_count", 0),
+                "version": getattr(cluster, "current_master_version", "unknown"),
+                "created_time": self._format_timestamp(
+                    getattr(cluster, "create_time", None)
+                ),
+                "endpoint": getattr(cluster, "endpoint", ""),
+                "location_type": location_type,
+                "network": getattr(cluster, "network", ""),
+                "subnetwork": getattr(cluster, "subnetwork", ""),
+                "project_id": project_id,
+            }
+            discovered_clusters.append(cluster_info)
 
-            parent = f"projects/{project_id}/locations/-"
-            clusters_response = self._gke_client.list_clusters(parent=parent)
-
-            discovered_clusters = []
-            for cluster in clusters_response.clusters:
-                # Safely determine location type based on location format
-                location_type = (
-                    "zonal"
-                    if "-" in cluster.location and cluster.location.count("-") == 2
-                    else "regional"
-                )
-
-                cluster_info = {
-                    "name": getattr(cluster, "name", "unknown"),
-                    "location": getattr(cluster, "location", "unknown"),
-                    "status": (
-                        getattr(cluster.status, "name", "unknown")
-                        if hasattr(cluster, "status")
-                        else "unknown"
-                    ),
-                    "node_count": getattr(cluster, "current_node_count", 0),
-                    "version": getattr(cluster, "current_master_version", "unknown"),
-                    "created_time": self._format_timestamp(
-                        getattr(cluster, "create_time", None)
-                    ),
-                    "endpoint": getattr(cluster, "endpoint", ""),
-                    "location_type": location_type,
-                    "network": getattr(cluster, "network", ""),
-                    "subnetwork": getattr(cluster, "subnetwork", ""),
-                    "project_id": project_id,
-                }
-                discovered_clusters.append(cluster_info)
-
-            return self._response_formatter.format_success_response(
-                clusters=discovered_clusters,
-                total_count=len(discovered_clusters),
-                project_id=project_id,
-            )
-
-        except Exception as e:
-            return self._response_formatter.format_error_response(
-                "gke cluster discovery", e
-            )
+        return {
+            "clusters": discovered_clusters,
+            "total_count": len(discovered_clusters),
+            "project_id": project_id,
+        }
 
     def _ensure_clients(self) -> None:
         """Ensure GKE clients are initialized."""
-        if not GOOGLE_CLOUD_AVAILABLE:
-            raise RuntimeError("Google Cloud SDK is not available")
+        self._ensure_google_cloud_available()
 
         if not self._credentials:
             raise RuntimeError("Not authenticated with GKE")
 
         if self._gke_client is None:
-            self._gke_client = container_v1.ClusterManagerClient(
+            self._gke_client = self._container_v1.ClusterManagerClient(
                 credentials=self._credentials
             )
 
@@ -379,7 +339,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Connect to a GKE cluster and establish Kubernetes connection."""
-        if not GOOGLE_CLOUD_AVAILABLE:
+        if not self._GOOGLE_CLOUD_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "gke cluster connection",
                 Exception(
@@ -387,7 +347,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                 ),
             )
 
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "gke cluster connection",
                 Exception(
@@ -468,18 +428,18 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
     ) -> Dict[str, Any]:
         """Establish Kubernetes connection using GKE cluster details and Google Cloud credentials."""
         try:
-            if not GOOGLE_AUTH_AVAILABLE:
+            if not self._GOOGLE_AUTH_AVAILABLE:
                 return self._response_formatter.format_error_response(
                     "kubernetes connection",
                     Exception("Google auth transport not available"),
                 )
 
             # Create Kubernetes client configuration
-            configuration = client.Configuration()
+            configuration = self._client.Configuration()
             configuration.host = f"https://{cluster.endpoint}"
 
             # Get fresh access token from Google Cloud credentials
-            request = google.auth.transport.requests.Request()
+            request = self._google_auth_transport.Request()
             self._credentials.refresh(request)
 
             # Set up bearer token authentication
@@ -516,9 +476,9 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
                 configuration.verify_ssl = True
 
             # Test the connection by creating a client and making an API call
-            with client.ApiClient(configuration) as api_client:
-                v1 = client.CoreV1Api(api_client)
-                version_api = client.VersionApi(api_client)
+            with self._client.ApiClient(configuration) as api_client:
+                v1 = self._client.CoreV1Api(api_client)
+                version_api = self._client.VersionApi(api_client)
 
                 # Test connection by getting server version
                 version_info = await asyncio.to_thread(version_api.get_code)
@@ -598,7 +558,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a GKE cluster."""
-        if not GOOGLE_CLOUD_AVAILABLE:
+        if not self._GOOGLE_CLOUD_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "gke cluster creation",
                 Exception(
@@ -653,7 +613,7 @@ class GKEClusterManager(CloudProviderComponent, GKEManager):
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get information about a GKE cluster."""
-        if not GOOGLE_CLOUD_AVAILABLE:
+        if not self._GOOGLE_CLOUD_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "gke cluster info",
                 Exception(

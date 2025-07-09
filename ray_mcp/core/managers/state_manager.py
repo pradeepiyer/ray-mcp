@@ -1,20 +1,16 @@
-"""Ray cluster state management."""
+"""Centralized state management for Ray MCP components.
 
+This module provides thread-safe state management for all Ray MCP components,
+ensuring consistency across cluster, job, and configuration operations.
+"""
+
+import asyncio
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 
-try:
-    from ..logging_utils import LoggingUtility
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility
-
-from .interfaces import StateManager
+from ..foundation.interfaces import StateManager
+from ..foundation.logging_utils import LoggingUtility
 
 # Import Ray modules with error handling
 try:

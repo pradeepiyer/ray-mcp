@@ -1,40 +1,41 @@
-"""KubeRay job management for Ray jobs on Kubernetes."""
+"""KubeRay job management implementation."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .crd_operations import CRDOperationsClient
-from .interfaces import KubeRayComponent, KubeRayJobManager, StateManager
-from .ray_job_crd import RayJobCRDManager
+from ...foundation.base_managers import (
+    AsyncOperationMixin,
+    KubeRayBaseManager,
+    StateManagementMixin,
+    ValidationMixin,
+)
+from ...foundation.interfaces import KubeRayJobManager
+from ..crds.crd_operations import CRDOperationsClient
+from ..crds.ray_job_crd import RayJobCRDManager
 
 
-class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
+class KubeRayJobManagerImpl(
+    KubeRayBaseManager,
+    ValidationMixin,
+    StateManagementMixin,
+    AsyncOperationMixin,
+    KubeRayJobManager,
+):
     """Manages Ray job lifecycle using KubeRay Custom Resources."""
 
     def __init__(
         self,
-        state_manager: StateManager,
+        state_manager,
         crd_operations: Optional[CRDOperationsClient] = None,
         job_crd: Optional[RayJobCRDManager] = None,
     ):
         super().__init__(state_manager)
         self._crd_operations = crd_operations or CRDOperationsClient()
         self._job_crd = job_crd or RayJobCRDManager()
-        self._response_formatter = ResponseFormatter()
 
     def set_kubernetes_config(self, kubernetes_config) -> None:
         """Set the Kubernetes configuration for API operations."""
         try:
-            from ..logging_utils import LoggingUtility
+            from ...foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_info(
                 "kuberay_job_set_k8s_config",
@@ -47,14 +48,13 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
             )
         except Exception as e:
             # Log the error instead of silently ignoring it
-            from ..logging_utils import LoggingUtility
+            from ...foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_error(
                 "kuberay_job_set_k8s_config",
                 Exception(f"Failed to set Kubernetes configuration: {str(e)}"),
             )
 
-    @ResponseFormatter.handle_exceptions("create ray job")
     async def create_ray_job(
         self, job_spec: Dict[str, Any], namespace: str = "default"
     ) -> Dict[str, Any]:
@@ -137,7 +137,6 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         else:
             return create_result
 
-    @ResponseFormatter.handle_exceptions("get ray job")
     async def get_ray_job(
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
@@ -186,7 +185,6 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         else:
             return result
 
-    @ResponseFormatter.handle_exceptions("list ray jobs")
     async def list_ray_jobs(self, namespace: str = "default") -> Dict[str, Any]:
         """List Ray jobs."""
         self._ensure_kuberay_ready()
@@ -220,7 +218,6 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         else:
             return result
 
-    @ResponseFormatter.handle_exceptions("delete ray job")
     async def delete_ray_job(
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
@@ -245,7 +242,6 @@ class KubeRayJobManagerImpl(KubeRayComponent, KubeRayJobManager):
         else:
             return result
 
-    @ResponseFormatter.handle_exceptions("get ray job logs")
     async def get_ray_job_logs(
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:

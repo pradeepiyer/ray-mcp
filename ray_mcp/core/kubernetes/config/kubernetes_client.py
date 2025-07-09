@@ -1,59 +1,48 @@
-"""Kubernetes API client for direct server communication."""
+"""Kubernetes API client management."""
 
 import asyncio
 from typing import Any, Dict, List, Optional
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .interfaces import KubernetesClient
+from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
+from ...foundation.interfaces import KubernetesClient
 from .kubernetes_config import KubernetesConfigManager
-
-# Import kubernetes modules with error handling
-try:
-    from kubernetes import client
-    from kubernetes.client.rest import ApiException
-
-    KUBERNETES_AVAILABLE = True
-except ImportError:
-    KUBERNETES_AVAILABLE = False
-    client = None
-    ApiException = Exception
 
 
 class KubernetesApiClient(KubernetesClient):
     """Kubernetes API client with comprehensive cluster interaction capabilities."""
 
     def __init__(self, config_manager: Optional[KubernetesConfigManager] = None):
+        # Get imports
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
+        self._ResponseFormatter = logging_utils["ResponseFormatter"]
+
+        k8s_imports = get_kubernetes_imports()
+        self._client = k8s_imports["client"]
+        self._ApiException = k8s_imports["ApiException"]
+        self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
+
         self._config_manager = config_manager or KubernetesConfigManager()
-        self._response_formatter = ResponseFormatter()
+        self._response_formatter = self._ResponseFormatter()
         self._core_v1_api = None
         self._apps_v1_api = None
         self._version_api = None
 
     def _ensure_clients(self) -> None:
         """Ensure API clients are initialized."""
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             raise RuntimeError("Kubernetes client library is not available")
 
         if self._core_v1_api is None:
-            self._core_v1_api = client.CoreV1Api()
+            self._core_v1_api = self._client.CoreV1Api()
         if self._apps_v1_api is None:
-            self._apps_v1_api = client.AppsV1Api()
+            self._apps_v1_api = self._client.AppsV1Api()
         if self._version_api is None:
-            self._version_api = client.VersionApi()
+            self._version_api = self._client.VersionApi()
 
-    @ResponseFormatter.handle_exceptions("test kubernetes connection")
     async def test_connection(self) -> Dict[str, Any]:
         """Test connection to Kubernetes cluster."""
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "test kubernetes connection",
                 Exception(
@@ -73,7 +62,7 @@ class KubernetesApiClient(KubernetesClient):
                 server_version=git_version,
                 context=self._config_manager.get_current_context(),
             )
-        except ApiException as e:
+        except self._ApiException as e:
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
@@ -85,10 +74,9 @@ class KubernetesApiClient(KubernetesClient):
                 "test kubernetes connection", e
             )
 
-    @ResponseFormatter.handle_exceptions("get kubernetes cluster info")
     async def get_cluster_info(self) -> Dict[str, Any]:
         """Get comprehensive cluster information."""
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "get kubernetes cluster info",
                 Exception("Kubernetes client library is not available"),
@@ -143,7 +131,7 @@ class KubernetesApiClient(KubernetesClient):
                 total_cpu_cores=round(total_cpu, 2),
                 total_memory_gb=round(total_memory, 2),
             )
-        except ApiException as e:
+        except self._ApiException as e:
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
@@ -155,10 +143,9 @@ class KubernetesApiClient(KubernetesClient):
                 "get kubernetes cluster info", e
             )
 
-    @ResponseFormatter.handle_exceptions("list kubernetes namespaces")
     async def list_namespaces(self) -> Dict[str, Any]:
         """List available namespaces."""
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "list kubernetes namespaces",
                 Exception(
@@ -187,7 +174,7 @@ class KubernetesApiClient(KubernetesClient):
             return self._response_formatter.format_success_response(
                 namespaces=namespace_list, total_count=len(namespace_list)
             )
-        except ApiException as e:
+        except self._ApiException as e:
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
@@ -199,10 +186,9 @@ class KubernetesApiClient(KubernetesClient):
                 "list kubernetes namespaces", e
             )
 
-    @ResponseFormatter.handle_exceptions("get kubernetes nodes")
     async def get_nodes(self) -> Dict[str, Any]:
         """Get information about cluster nodes."""
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "get kubernetes nodes",
                 Exception(
@@ -255,7 +241,7 @@ class KubernetesApiClient(KubernetesClient):
             return self._response_formatter.format_success_response(
                 nodes=node_list, total_count=len(node_list)
             )
-        except ApiException as e:
+        except self._ApiException as e:
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
@@ -266,12 +252,11 @@ class KubernetesApiClient(KubernetesClient):
                 "get kubernetes nodes", e
             )
 
-    @ResponseFormatter.handle_exceptions("list kubernetes pods")
     async def list_pods(
         self, namespace: str = "default", label_selector: Optional[str] = None
     ) -> Dict[str, Any]:
         """List pods in a namespace."""
-        if not KUBERNETES_AVAILABLE:
+        if not self._KUBERNETES_AVAILABLE:
             return self._response_formatter.format_error_response(
                 "list kubernetes pods",
                 Exception(
@@ -316,7 +301,7 @@ class KubernetesApiClient(KubernetesClient):
             return self._response_formatter.format_success_response(
                 pods=pod_list, total_count=len(pod_list), namespace=namespace
             )
-        except ApiException as e:
+        except self._ApiException as e:
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             return self._response_formatter.format_error_response(
@@ -327,7 +312,6 @@ class KubernetesApiClient(KubernetesClient):
                 "list kubernetes pods", e
             )
 
-    @ResponseFormatter.handle_exceptions("get kubernetes pods")
     async def get_pods(self, namespace: str = "default") -> Dict[str, Any]:
         """Get pods in a namespace (interface method)."""
         # This method is required by the KubernetesClient interface

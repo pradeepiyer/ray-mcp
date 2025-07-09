@@ -13,7 +13,7 @@ import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
-from .logging_utils import LoggingUtility, ResponseFormatter
+from ..foundation.logging_utils import LoggingUtility, ResponseFormatter
 
 
 class WorkerManager:

@@ -1,11 +1,15 @@
-"""Tests for Kubernetes manager integration."""
+"""Unit tests for KubernetesClusterManager component.
 
+Tests focus on Kubernetes cluster management behavior with 100% mocking.
+"""
+
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.kubernetes_manager import KubernetesClusterManager
-from ray_mcp.core.state_manager import RayStateManager
+from ray_mcp.core.kubernetes.managers.kubernetes_manager import KubernetesClusterManager
+from ray_mcp.core.managers.state_manager import RayStateManager
 
 
 class TestKubernetesManager:
@@ -23,11 +27,14 @@ class TestKubernetesManager:
         assert self.kubernetes_manager.get_config_manager() is not None
         assert self.kubernetes_manager.get_client() is not None
 
-    @patch("ray_mcp.core.kubernetes_config.KUBERNETES_AVAILABLE", False)
     @pytest.mark.asyncio
     async def test_connect_cluster_without_kubernetes_lib(self):
         """Test connecting to cluster without kubernetes library."""
         manager = KubernetesClusterManager(self.state_manager)
+
+        # Mock the import system to simulate kubernetes not being available
+        manager._config_manager._KUBERNETES_AVAILABLE = False
+
         result = await manager.connect()
 
         assert result is not None
@@ -99,7 +106,7 @@ class TestKubernetesManagerIntegration:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from ray_mcp.core.unified_manager import RayUnifiedManager
+        from ray_mcp.core.managers.unified_manager import RayUnifiedManager
 
         self.unified_manager = RayUnifiedManager()
 

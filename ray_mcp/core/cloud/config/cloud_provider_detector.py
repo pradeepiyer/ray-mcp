@@ -1,34 +1,26 @@
-"""Cloud provider detection logic for Ray MCP."""
+"""Cloud provider detection and environment analysis."""
 
-import asyncio
-import json
 import os
+import platform
+import socket
+import subprocess
 from typing import Any, Dict, Optional
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .interfaces import (
-    AuthenticationType,
-    CloudProvider,
-    CloudProviderAuth,
-    StateManager,
-)
+from ...foundation.import_utils import get_logging_utils
+from ...foundation.interfaces import AuthenticationType, CloudProvider, StateManager
 
 
-class CloudProviderDetector(CloudProviderAuth):
-    """Detects cloud provider environments and authentication methods."""
+class CloudProviderDetector:
+    """Detects cloud provider environment and configuration."""
 
     def __init__(self, state_manager: Optional[StateManager] = None):
+        # Get imports
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
+        self._ResponseFormatter = logging_utils["ResponseFormatter"]
+
         self._state_manager = state_manager
-        self._response_formatter = ResponseFormatter()
+        self._response_formatter = self._ResponseFormatter()
         self._detection_cache = {}
         self._cache_ttl = 300  # 5 minutes
 

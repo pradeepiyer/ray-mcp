@@ -16,7 +16,7 @@ class TestWorkerManagerProcessCleanup:
     @pytest.fixture
     def worker_manager(self):
         """Create a WorkerManager instance for testing."""
-        from ray_mcp.worker_manager import WorkerManager
+        from ray_mcp.core.managers.worker_manager import WorkerManager
 
         return WorkerManager()
 

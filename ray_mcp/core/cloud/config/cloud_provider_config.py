@@ -1,4 +1,4 @@
-"""Cloud provider configuration templates and management for Ray MCP."""
+"""Cloud provider configuration management."""
 
 import json
 import os
@@ -6,25 +6,21 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .interfaces import CloudProvider, CloudProviderConfig, StateManager
+from ...foundation.import_utils import get_logging_utils
+from ...foundation.interfaces import CloudProvider, CloudProviderConfig, StateManager
 
 
 class CloudProviderConfigManager(CloudProviderConfig):
     """Manages cloud provider configurations and templates."""
 
     def __init__(self, state_manager: Optional[StateManager] = None):
+        # Get imports
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
+        self._ResponseFormatter = logging_utils["ResponseFormatter"]
+
         self._state_manager = state_manager
-        self._response_formatter = ResponseFormatter()
+        self._response_formatter = self._ResponseFormatter()
         self._config_cache = {}
         self._templates = self._load_templates()
 

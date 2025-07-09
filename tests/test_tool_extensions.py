@@ -1,10 +1,14 @@
-"""Tests for Phase 3 tool extensions."""
+"""Unit tests for tool extensions and advanced functionality.
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+Tests focus on extended tool capabilities with 100% mocking.
+"""
+
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.unified_manager import RayUnifiedManager
+from ray_mcp.core.managers.unified_manager import RayUnifiedManager
 from ray_mcp.tool_registry import ToolRegistry
 
 
@@ -14,13 +18,13 @@ class TestToolExtensions:
     @pytest.fixture
     def mock_ray_manager(self):
         """Create a mock ray manager."""
-        manager = MagicMock(spec=RayUnifiedManager)
+        manager = Mock(spec=RayUnifiedManager)
 
-        # Set up properties using PropertyMock
-        type(manager).is_initialized = PropertyMock(return_value=False)
-        type(manager).is_kubernetes_connected = PropertyMock(return_value=False)
-        type(manager).kuberay_clusters = PropertyMock(return_value={})
-        type(manager).kuberay_jobs = PropertyMock(return_value={})
+        # Set up properties as actual values (not Mock objects) for truthiness checks
+        manager.is_initialized = False
+        manager.is_kubernetes_connected = False
+        manager.kuberay_clusters = {}  # Direct assignment for truthiness check
+        manager.kuberay_jobs = {}  # Direct assignment for truthiness check
 
         # Set up async methods
         manager.init_cluster = AsyncMock(return_value={"status": "success"})
@@ -28,6 +32,9 @@ class TestToolExtensions:
         manager.list_kuberay_jobs = AsyncMock(
             return_value={"status": "success"}
         )  # Still needed for internal calls
+        manager.list_ray_clusters = AsyncMock(
+            return_value={"status": "success", "clusters": []}
+        )
         manager.create_kuberay_cluster = AsyncMock(return_value={"status": "success"})
         manager.create_kuberay_job = AsyncMock(return_value={"status": "success"})
 
@@ -230,15 +237,13 @@ class TestToolExtensions:
     @pytest.mark.asyncio
     async def test_job_type_auto_detection_local(self, tool_registry, mock_ray_manager):
         """Test job type auto-detection for local clusters."""
-        # Setup manager state using PropertyMock
-        type(mock_ray_manager).kuberay_clusters = PropertyMock(return_value={})
-        type(mock_ray_manager).is_kubernetes_connected = PropertyMock(
-            return_value=False
-        )
-        type(mock_ray_manager).is_initialized = PropertyMock(return_value=True)
+        # Setup manager state - set properties directly for truthiness checks
+        mock_ray_manager.kuberay_clusters = {}  # Direct assignment for truthiness check
+        mock_ray_manager.is_kubernetes_connected = False
+        mock_ray_manager.is_initialized = True
 
         # Mock state_manager.get_state() to return a state indicating local cluster
-        mock_state_manager = MagicMock()
+        mock_state_manager = Mock()
         mock_state_manager.get_state.return_value = {
             "cloud_provider_connections": {},
             "kubernetes_connected": False,
@@ -276,14 +281,14 @@ class TestToolExtensions:
         self, tool_registry, mock_ray_manager
     ):
         """Test job type auto-detection for kubernetes clusters."""
-        # Setup manager state using PropertyMock
-        type(mock_ray_manager).kuberay_clusters = PropertyMock(
-            return_value={"default/test-cluster": {}}
-        )
-        type(mock_ray_manager).is_kubernetes_connected = PropertyMock(return_value=True)
+        # Setup manager state - set properties directly for truthiness checks
+        mock_ray_manager.kuberay_clusters = {
+            "default/test-cluster": {}
+        }  # Direct assignment for truthiness check
+        mock_ray_manager.is_kubernetes_connected = True
 
         # Mock state_manager.get_state() to return a state indicating kubernetes cluster
-        mock_state_manager = MagicMock()
+        mock_state_manager = Mock()
         mock_state_manager.get_state.return_value = {
             "cloud_provider_connections": {},
             "kubernetes_connected": True,

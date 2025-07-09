@@ -3,11 +3,12 @@
 Tests focus on log management behavior with 100% mocking.
 """
 
-from unittest.mock import Mock, patch
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.log_manager import RayLogManager
+from ray_mcp.core.managers.log_manager import RayLogManager
 
 
 @pytest.mark.fast
@@ -20,6 +21,10 @@ class TestRayLogManagerCore:
         manager = RayLogManager(state_manager)
         assert manager is not None
         assert manager.state_manager == state_manager
+        # Test that the new base functionality is available
+        assert hasattr(manager, "_log_info")
+        assert hasattr(manager, "_format_success_response")
+        assert hasattr(manager, "_execute_operation")
 
     async def test_retrieve_logs_validation_success_job(self):
         """Test log retrieval with valid job parameters."""
@@ -92,9 +97,7 @@ class TestRayLogManagerCore:
 class TestRayLogManagerJobLogs:
     """Test job log retrieval functionality."""
 
-    @patch("ray_mcp.core.log_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.log_manager.JobSubmissionClient")
-    async def test_retrieve_job_logs_success(self, mock_client_class):
+    async def test_retrieve_job_logs_success(self):
         """Test successful job log retrieval."""
         state_manager = Mock()
         state_manager.is_initialized.return_value = True
@@ -102,9 +105,10 @@ class TestRayLogManagerJobLogs:
         # Mock job client
         mock_client = Mock()
         mock_client.get_job_logs.return_value = "Job log content\nLine 2\nLine 3"
-        mock_client_class.return_value = mock_client
 
         manager = RayLogManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._JobSubmissionClient = Mock(return_value=mock_client)
 
         with patch.object(manager, "_get_job_client", return_value=mock_client):
             result = await manager._retrieve_job_logs_unified("job_123", num_lines=100)
@@ -249,27 +253,23 @@ FAILED: Operation unsuccessful"""
 class TestRayLogManagerClientHandling:
     """Test job client handling functionality."""
 
-    @patch("ray_mcp.core.log_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.log_manager.JobSubmissionClient")
-    async def test_get_job_client_from_state(self, mock_client_class):
+    async def test_get_job_client_from_state(self):
         """Test getting job client from state."""
         existing_client = Mock()
         state_manager = Mock()
         state_manager.get_state.return_value = {"job_client": existing_client}
 
         manager = RayLogManager(state_manager)
+        manager._RAY_AVAILABLE = True
 
         client = await manager._get_job_client()
 
         assert client == existing_client
 
-    @patch("ray_mcp.core.log_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.log_manager.JobSubmissionClient")
-    async def test_get_job_client_create_new(self, mock_client_class):
+    async def test_get_job_client_create_new(self):
         """Test creating new job client when none exists."""
         mock_client = Mock()
         mock_client.list_jobs.return_value = []
-        mock_client_class.return_value = mock_client
 
         state_manager = Mock()
         state_manager.get_state.return_value = {
@@ -278,22 +278,25 @@ class TestRayLogManagerClientHandling:
         }
 
         manager = RayLogManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._JobSubmissionClient = Mock(return_value=mock_client)
 
         client = await manager._get_job_client()
 
         assert client == mock_client
-        mock_client_class.assert_called_with("http://127.0.0.1:8265")
+        manager._JobSubmissionClient.assert_called_with("http://127.0.0.1:8265")
         state_manager.update_state.assert_called_with(job_client=mock_client)
 
-    @patch("ray_mcp.core.log_manager.RAY_AVAILABLE", False)
     async def test_get_job_client_ray_not_available(self):
         """Test getting job client when Ray is not available."""
         state_manager = Mock()
         manager = RayLogManager(state_manager)
+        manager._RAY_AVAILABLE = False
 
-        client = await manager._get_job_client()
-
-        assert client is None
+        # The _get_job_client method calls _ensure_ray_available which raises an exception
+        # when Ray is not available, so we need to handle that
+        with pytest.raises(RuntimeError, match="Ray is not available"):
+            await manager._get_job_client()
 
 
 @pytest.mark.fast
@@ -302,7 +305,7 @@ class TestLogProcessorMemoryEfficiency:
 
     def test_stream_logs_with_limits_memory_efficient_processing(self):
         """Test that large logs are processed memory-efficiently."""
-        from ray_mcp.logging_utils import LogProcessor
+        from ray_mcp.core.foundation.logging_utils import LogProcessor
 
         # Create a large log string (5MB)
         large_log = "INFO: Processing data\n" * 100000
@@ -320,7 +323,7 @@ class TestLogProcessorMemoryEfficiency:
 
     def test_stream_logs_with_limits_per_line_size_protection(self):
         """Test protection against individual large lines."""
-        from ray_mcp.logging_utils import LogProcessor
+        from ray_mcp.core.foundation.logging_utils import LogProcessor
 
         # Create log with one very large line
         large_line = "ERROR: " + "A" * 50000  # 50KB line
@@ -339,7 +342,7 @@ class TestLogProcessorMemoryEfficiency:
 
     async def test_stream_logs_with_pagination_large_logs_estimation(self):
         """Test that pagination handles large logs efficiently with estimation."""
-        from ray_mcp.logging_utils import LogProcessor
+        from ray_mcp.core.foundation.logging_utils import LogProcessor
 
         # Create a large log string (15MB)
         large_log = "INFO: Processing data\n" * 300000

@@ -4,18 +4,20 @@ This module centralizes all tool definitions, schemas, and implementations to el
 duplication and provide a single source of truth for tool metadata.
 """
 
+import asyncio
 import inspect
 import json
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+import shutil
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from mcp.types import Tool
 
-from .core.unified_manager import RayUnifiedManager
+from .core.managers.unified_manager import RayUnifiedManager
 
 logger = logging.getLogger(__name__)
-from .logging_utils import ResponseFormatter
+from .core.foundation.logging_utils import ResponseFormatter
 
 
 class ToolRegistry:
@@ -1005,7 +1007,7 @@ class ToolRegistry:
                     await self.ray_manager._ensure_kuberay_gke_coordination()
                 except Exception as coord_error:
                     # Log coordination error but don't fail the connection
-                    from ray_mcp.logging_utils import LoggingUtility
+                    from ray_mcp.core.foundation.logging_utils import LoggingUtility
 
                     LoggingUtility.log_warning(
                         "init_ray_gke_coordination",
@@ -1407,7 +1409,7 @@ class ToolRegistry:
         # discover existing KubeRay clusters and use them
         if not job_spec.get("cluster_selector"):
             try:
-                from ray_mcp.logging_utils import LoggingUtility
+                from ray_mcp.core.foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_info(
                     "auto_cluster_discovery",
@@ -1526,7 +1528,7 @@ class ToolRegistry:
 
             except Exception as e:
                 # If auto-detection fails completely, continue without cluster_selector (will create new cluster)
-                from ray_mcp.logging_utils import LoggingUtility
+                from ray_mcp.core.foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_warning(
                     "auto_cluster_discovery",
@@ -1578,7 +1580,7 @@ class ToolRegistry:
                     await self.ray_manager._ensure_kuberay_gke_coordination()
         except AttributeError as attr_e:
             # Handle case where state manager access fails
-            from ray_mcp.logging_utils import LoggingUtility
+            from ray_mcp.core.foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_error(
                 "ensure_gke_coordination",
@@ -1586,7 +1588,7 @@ class ToolRegistry:
             )
         except Exception as e:
             # Don't fail operations if coordination fails, just log it
-            from ray_mcp.logging_utils import LoggingUtility
+            from ray_mcp.core.foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_warning(
                 "ensure_gke_coordination", f"Failed to ensure GKE coordination: {e}"
@@ -1751,7 +1753,7 @@ class ToolRegistry:
 
         if cluster_type == "local":
             # Local Ray clusters don't support dynamic scaling
-            from ray_mcp.logging_utils import LoggingUtility
+            from ray_mcp.core.foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_info(
                 "scale_ray_cluster",
@@ -1805,7 +1807,7 @@ class ToolRegistry:
 
     async def _authenticate_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for authenticate_cloud_provider tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1829,7 +1831,7 @@ class ToolRegistry:
 
     async def _list_cloud_clusters_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_cloud_clusters tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1848,7 +1850,7 @@ class ToolRegistry:
 
     async def _connect_cloud_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for connect_cloud_cluster tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1867,7 +1869,7 @@ class ToolRegistry:
 
     async def _create_cloud_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for create_cloud_cluster tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1887,7 +1889,7 @@ class ToolRegistry:
 
     async def _get_cloud_cluster_info_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_cloud_cluster_info tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1906,7 +1908,7 @@ class ToolRegistry:
 
     async def _get_cloud_provider_status_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_cloud_provider_status tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1916,7 +1918,7 @@ class ToolRegistry:
 
     async def _disconnect_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for disconnect_cloud_provider tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)
@@ -1926,7 +1928,7 @@ class ToolRegistry:
 
     async def _get_cloud_config_template_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_cloud_config_template tool."""
-        from ray_mcp.core.interfaces import CloudProvider
+        from ray_mcp.core.foundation.interfaces import CloudProvider
 
         provider_str = kwargs["provider"]
         provider = CloudProvider(provider_str)

@@ -2,13 +2,13 @@
 
 from typing import Any, Dict, Optional
 
-from .cloud_provider_manager import UnifiedCloudProviderManager
+from ..cloud.providers.cloud_provider_manager import UnifiedCloudProviderManager
+from ..foundation.interfaces import CloudProvider
+from ..kubernetes.managers.kuberay_cluster_manager import KubeRayClusterManagerImpl
+from ..kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
+from ..kubernetes.managers.kubernetes_manager import KubernetesClusterManager
 from .cluster_manager import RayClusterManager
-from .interfaces import CloudProvider
 from .job_manager import RayJobManager
-from .kuberay_cluster_manager import KubeRayClusterManagerImpl
-from .kuberay_job_manager import KubeRayJobManagerImpl
-from .kubernetes_manager import KubernetesClusterManager
 from .log_manager import RayLogManager
 from .port_manager import RayPortManager
 from .state_manager import RayStateManager
@@ -180,7 +180,9 @@ class RayUnifiedManager:
         self, config_file: Optional[str] = None, context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Connect to Kubernetes cluster."""
-        return await self._kubernetes_manager.connect(context=context)
+        return await self._kubernetes_manager.connect_cluster(
+            config_file=config_file, context=context
+        )
 
     async def disconnect_kubernetes_cluster(self) -> Dict[str, Any]:
         """Disconnect from Kubernetes cluster."""
@@ -400,7 +402,7 @@ class RayUnifiedManager:
     async def _coordinate_gke_kubernetes_config(self) -> None:
         """Coordinate GKE Kubernetes configuration with KubeRay managers."""
         try:
-            from ..logging_utils import LoggingUtility
+            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_info(
                 "coordinate_gke_config",
@@ -442,7 +444,7 @@ class RayUnifiedManager:
                 )
         except Exception as e:
             # Log the specific error for debugging
-            from ..logging_utils import LoggingUtility
+            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_error(
                 "coordinate_gke_config",
@@ -453,7 +455,7 @@ class RayUnifiedManager:
     async def _ensure_kuberay_gke_coordination(self) -> None:
         """Ensure KubeRay managers are coordinated with GKE if connection exists."""
         try:
-            from ..logging_utils import LoggingUtility
+            from ..foundation.logging_utils import LoggingUtility
 
             state = self._state_manager.get_state()
 
@@ -489,7 +491,7 @@ class RayUnifiedManager:
                 )
         except Exception as e:
             # Don't fail KubeRay operations if coordination fails
-            from ..logging_utils import LoggingUtility
+            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_warning(
                 "ensure_kuberay_gke_coordination",

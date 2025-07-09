@@ -1,36 +1,32 @@
-"""Unified cloud provider manager for Ray MCP."""
+"""Unified cloud provider management for Ray MCP."""
 
 import asyncio
 from typing import Any, Dict, Optional
 
-try:
-    from ..logging_utils import LoggingUtility, ResponseFormatter
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from logging_utils import LoggingUtility, ResponseFormatter
-
-from .cloud_provider_config import CloudProviderConfigManager
-from .cloud_provider_detector import CloudProviderDetector
-from .gke_manager import GKEClusterManager
-from .interfaces import (
-    AuthenticationType,
-    CloudProvider,
-    CloudProviderComponent,
-    CloudProviderManager,
-    StateManager,
+from ...foundation.base_managers import (
+    AsyncOperationMixin,
+    CloudProviderBaseManager,
+    StateManagementMixin,
+    ValidationMixin,
 )
+from ...foundation.interfaces import CloudProvider, CloudProviderManager
+from ..config.cloud_provider_config import CloudProviderConfigManager
+from ..config.cloud_provider_detector import CloudProviderDetector
+from .gke_manager import GKEClusterManager
 
 
-class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
+class UnifiedCloudProviderManager(
+    CloudProviderBaseManager,
+    ValidationMixin,
+    StateManagementMixin,
+    AsyncOperationMixin,
+    CloudProviderManager,
+):
     """Unified manager for all cloud provider operations."""
 
     def __init__(
         self,
-        state_manager: StateManager,
+        state_manager,
         detector: Optional[CloudProviderDetector] = None,
         config_manager: Optional[CloudProviderConfigManager] = None,
         gke_manager: Optional[GKEClusterManager] = None,
@@ -43,7 +39,6 @@ class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
         self._gke_manager = gke_manager or GKEClusterManager(
             state_manager, self._detector, self._config_manager
         )
-        self._response_formatter = ResponseFormatter()
 
     async def detect_cloud_provider(self) -> Dict[str, Any]:
         """Detect available cloud providers and authentication methods."""
@@ -237,7 +232,7 @@ class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
         """Authenticate with local Kubernetes."""
         try:
             # Use existing Kubernetes configuration
-            from .kubernetes_config import KubernetesConfigManager
+            from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
 
             k8s_config = KubernetesConfigManager()
 
@@ -276,10 +271,11 @@ class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
     async def _check_gke_availability(self) -> Dict[str, Any]:
         """Check GKE availability."""
         try:
-            # Import here to avoid import errors
-            from .gke_manager import GOOGLE_CLOUD_AVAILABLE
+            # Check if Google Cloud is available using the detector
+            from ...foundation.import_utils import get_google_cloud_imports
 
-            if not GOOGLE_CLOUD_AVAILABLE:
+            gcp_imports = get_google_cloud_imports()
+            if not gcp_imports["GOOGLE_CLOUD_AVAILABLE"]:
                 return {
                     "available": False,
                     "reason": "Google Cloud SDK not installed",
@@ -304,7 +300,7 @@ class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
     async def _list_local_contexts(self) -> Dict[str, Any]:
         """List local Kubernetes contexts."""
         try:
-            from .kubernetes_config import KubernetesConfigManager
+            from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
 
             k8s_config = KubernetesConfigManager()
             return k8s_config.list_contexts()
@@ -319,7 +315,9 @@ class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
     ) -> Dict[str, Any]:
         """Connect to local Kubernetes cluster."""
         try:
-            from .kubernetes_manager import KubernetesClusterManager
+            from ...kubernetes.managers.kubernetes_manager import (
+                KubernetesClusterManager,
+            )
 
             k8s_manager = KubernetesClusterManager(self.state_manager)
 
@@ -335,7 +333,9 @@ class UnifiedCloudProviderManager(CloudProviderComponent, CloudProviderManager):
     async def _get_local_cluster_info(self, cluster_name: str) -> Dict[str, Any]:
         """Get local cluster information."""
         try:
-            from .kubernetes_manager import KubernetesClusterManager
+            from ...kubernetes.managers.kubernetes_manager import (
+                KubernetesClusterManager,
+            )
 
             k8s_manager = KubernetesClusterManager(self.state_manager)
 

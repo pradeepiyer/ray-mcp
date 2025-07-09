@@ -1,14 +1,20 @@
-"""Tests for KubeRay manager integration."""
+"""Unit tests for KubeRay manager components.
 
+Tests focus on KubeRay cluster and job management behavior with 100% mocking.
+"""
+
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.kuberay_cluster_manager import KubeRayClusterManagerImpl
-from ray_mcp.core.kuberay_job_manager import KubeRayJobManagerImpl
-from ray_mcp.core.ray_cluster_crd import RayClusterCRDManager
-from ray_mcp.core.ray_job_crd import RayJobCRDManager
-from ray_mcp.core.state_manager import RayStateManager
+from ray_mcp.core.kubernetes.crds.ray_cluster_crd import RayClusterCRDManager
+from ray_mcp.core.kubernetes.crds.ray_job_crd import RayJobCRDManager
+from ray_mcp.core.kubernetes.managers.kuberay_cluster_manager import (
+    KubeRayClusterManagerImpl,
+)
+from ray_mcp.core.kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
+from ray_mcp.core.managers.state_manager import RayStateManager
 
 
 class TestRayClusterCRD:
@@ -94,7 +100,7 @@ class TestRayClusterCRD:
         assert result.get("valid") is False
         assert len(result.get("errors", [])) > 0
 
-    @patch("ray_mcp.core.ray_cluster_crd.YAML_AVAILABLE", True)
+    @patch("ray_mcp.core.kubernetes.crds.ray_cluster_crd.YAML_AVAILABLE", True)
     def test_to_yaml(self):
         """Test YAML serialization."""
         spec = {"test": "data"}
@@ -223,7 +229,10 @@ class TestKubeRayClusterManager:
 
         assert result.get("status") == "success"
         assert result.get("cluster_name") == "test-cluster"
-        assert result.get("cluster_status") == "creating"
+        # The new implementation doesn't set cluster_status to "creating" directly
+        # Instead it returns the create_result which has the resource info
+        assert "cluster_spec" in result
+        assert "resource" in result
 
     @pytest.mark.asyncio
     async def test_create_ray_cluster_missing_head_spec(self):
@@ -423,7 +432,7 @@ class TestKubeRayUnifiedManagerIntegration:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from ray_mcp.core.unified_manager import RayUnifiedManager
+        from ray_mcp.core.managers.unified_manager import RayUnifiedManager
 
         self.unified_manager = RayUnifiedManager()
 

@@ -3,11 +3,12 @@
 Tests focus on job management behavior with 100% mocking.
 """
 
-from unittest.mock import Mock, patch
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.job_manager import RayJobManager
+from ray_mcp.core.managers.job_manager import RayJobManager
 
 
 @pytest.mark.fast
@@ -20,8 +21,11 @@ class TestRayJobManagerCore:
         manager = RayJobManager(state_manager)
         assert manager is not None
         assert manager.state_manager == state_manager
+        # Test that the new base functionality is available
+        assert hasattr(manager, "_log_info")
+        assert hasattr(manager, "_format_success_response")
+        assert hasattr(manager, "_execute_operation")
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
     async def test_submit_job_success(self):
         """Test successful job submission."""
         state_manager = Mock()
@@ -36,8 +40,12 @@ class TestRayJobManagerCore:
 
         manager = RayJobManager(state_manager)
 
-        with patch.object(
-            manager, "_get_or_create_job_client", return_value=mock_job_client
+        # Mock the Ray availability check and job client
+        with (
+            patch.object(manager, "_RAY_AVAILABLE", True),
+            patch.object(
+                manager, "_get_or_create_job_client", return_value=mock_job_client
+            ),
         ):
             result = await manager.submit_job("python script.py")
 
@@ -190,9 +198,7 @@ class TestRayJobManagerCore:
 class TestRayJobManagerClientHandling:
     """Test job client initialization and management."""
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.JobSubmissionClient")
-    async def test_job_client_creation_success(self, mock_client_class):
+    async def test_job_client_creation_success(self):
         """Test successful job client creation."""
         state_manager = Mock()
         state_manager.get_state.return_value = {
@@ -200,11 +206,14 @@ class TestRayJobManagerClientHandling:
             "job_client": None,
         }
 
+        # Mock the imports at instance level
         mock_client = Mock()
         mock_client.list_jobs.return_value = []
-        mock_client_class.return_value = mock_client
+        mock_client_class = Mock(return_value=mock_client)
 
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._JobSubmissionClient = mock_client_class
 
         client = await manager._get_or_create_job_client("test_operation")
 
@@ -224,20 +233,18 @@ class TestRayJobManagerClientHandling:
 
         assert client == existing_client
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", False)
     async def test_job_client_ray_not_available(self):
-        """Test job client creation when Ray is not available."""
+        """Test getting job client when Ray is not available."""
         state_manager = Mock()
-
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = False
 
-        client = await manager._get_or_create_job_client("test_operation")
+        # The _get_or_create_job_client method calls _ensure_ray_available which raises an exception
+        # when Ray is not available, so we need to handle that
+        with pytest.raises(RuntimeError, match="Ray is not available"):
+            await manager._get_or_create_job_client("test_operation")
 
-        assert client is None
-
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.JobSubmissionClient")
-    async def test_job_client_creation_with_retry(self, mock_client_class):
+    async def test_job_client_creation_with_retry(self):
         """Test job client creation with retry logic."""
         state_manager = Mock()
         state_manager.get_state.return_value = {
@@ -252,9 +259,11 @@ class TestRayJobManagerClientHandling:
             Exception("Still failing"),
             [],  # Success
         ]
-        mock_client_class.return_value = mock_client
+        mock_client_class = Mock(return_value=mock_client)
 
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._JobSubmissionClient = mock_client_class
 
         client = await manager._initialize_job_client_with_retry(
             "http://127.0.0.1:8265", max_retries=3, retry_delay=0.01
@@ -263,15 +272,15 @@ class TestRayJobManagerClientHandling:
         assert client == mock_client
         assert mock_client.list_jobs.call_count == 3
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.JobSubmissionClient")
-    async def test_job_client_creation_all_retries_fail(self, mock_client_class):
+    async def test_job_client_creation_all_retries_fail(self):
         """Test job client creation when all retries fail."""
         mock_client = Mock()
         mock_client.list_jobs.side_effect = Exception("Connection failed")
-        mock_client_class.return_value = mock_client
+        mock_client_class = Mock(return_value=mock_client)
 
         manager = RayJobManager(Mock())
+        manager._RAY_AVAILABLE = True
+        manager._JobSubmissionClient = mock_client_class
 
         client = await manager._initialize_job_client_with_retry(
             "http://127.0.0.1:8265", max_retries=2, retry_delay=0.01
@@ -279,19 +288,21 @@ class TestRayJobManagerClientHandling:
 
         assert client is None
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.ray")
-    async def test_initialize_job_client_if_available(self, mock_ray):
+    async def test_initialize_job_client_if_available(self):
         """Test initializing job client when Ray cluster is available."""
         mock_context = Mock()
         mock_context.get_node_id.return_value = "node_123"
         mock_context.gcs_address = "192.168.1.100:10001"  # Mock GCS address
+
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = True
         mock_ray.get_runtime_context.return_value = mock_context
 
         state_manager = Mock()
         state_manager.get_state.return_value = {}  # No existing dashboard URL
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._ray = mock_ray
 
         dashboard_url = await manager._initialize_job_client_if_available()
 
@@ -302,11 +313,10 @@ class TestRayJobManagerClientHandling:
             dashboard_url="http://192.168.1.100:8265"
         )
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.ray")
-    async def test_initialize_job_client_with_existing_url(self, mock_ray):
+    async def test_initialize_job_client_with_existing_url(self):
         """Test initializing job client when dashboard URL already exists in state."""
         mock_context = Mock()
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = True
         mock_ray.get_runtime_context.return_value = mock_context
 
@@ -315,24 +325,28 @@ class TestRayJobManagerClientHandling:
             "dashboard_url": "http://existing.host:8265"
         }
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._ray = mock_ray
 
         dashboard_url = await manager._initialize_job_client_if_available()
 
         assert dashboard_url == "http://existing.host:8265"  # Should use existing URL
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.ray")
-    async def test_initialize_job_client_fallback_to_localhost(self, mock_ray):
+    async def test_initialize_job_client_fallback_to_localhost(self):
         """Test initializing job client falls back to localhost when no GCS address."""
         mock_context = Mock()
         mock_context.get_node_id.return_value = "node_123"
         mock_context.gcs_address = None  # No GCS address
+
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = True
         mock_ray.get_runtime_context.return_value = mock_context
 
         state_manager = Mock()
         state_manager.get_state.return_value = {}  # No existing dashboard URL
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._ray = mock_ray
 
         dashboard_url = await manager._initialize_job_client_if_available()
 
@@ -341,14 +355,15 @@ class TestRayJobManagerClientHandling:
             dashboard_url="http://127.0.0.1:8265"
         )
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.job_manager.ray")
-    async def test_initialize_job_client_ray_not_initialized(self, mock_ray):
+    async def test_initialize_job_client_ray_not_initialized(self):
         """Test initializing job client when Ray is not initialized."""
+        mock_ray = Mock()
         mock_ray.is_initialized.return_value = False
 
         state_manager = Mock()
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
+        manager._ray = mock_ray
 
         dashboard_url = await manager._initialize_job_client_if_available()
 
@@ -359,7 +374,6 @@ class TestRayJobManagerClientHandling:
 class TestRayJobManagerErrorHandling:
     """Test error handling in job operations."""
 
-    @patch("ray_mcp.core.job_manager.RAY_AVAILABLE", True)
     async def test_job_operation_client_initialization_failure(self):
         """Test job operation when client initialization fails, including infinite loop prevention."""
         state_manager = Mock()
@@ -370,6 +384,7 @@ class TestRayJobManagerErrorHandling:
         }
 
         manager = RayJobManager(state_manager)
+        manager._RAY_AVAILABLE = True
 
         # Test 1: Basic client initialization failure
         with patch.object(manager, "_get_or_create_job_client", return_value=None):
@@ -468,7 +483,9 @@ class TestRayJobManagerErrorHandling:
         mock_job_client.submit_job.return_value = "job_filtered"
 
         # Mock inspect.signature to return specific parameters
-        with patch("ray_mcp.core.job_manager.inspect.signature") as mock_signature:
+        with patch(
+            "ray_mcp.core.managers.job_manager.inspect.signature"
+        ) as mock_signature:
             mock_sig = Mock()
             mock_sig.parameters.keys.return_value = [
                 "entrypoint",
