@@ -484,7 +484,25 @@ class ToolRegistry:
 
     async def _authenticate_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for authenticate_cloud_provider tool."""
-        return await self.ray_manager.authenticate_cloud_provider(**kwargs)
+        provider = kwargs.get("provider")
+        if not provider:
+            return ResponseFormatter.format_validation_error("provider is required")
+        
+        # Bundle auth parameters into auth_config
+        auth_config = {}
+        auth_params = [
+            "service_account_path", "project_id", "aws_access_key_id", 
+            "aws_secret_access_key", "region", "config_file", "context"
+        ]
+        
+        for param in auth_params:
+            if param in kwargs:
+                auth_config[param] = kwargs[param]
+        
+        # Pass only provider and auth_config to the underlying method
+        return await self.ray_manager.authenticate_cloud_provider(
+            provider=provider, auth_config=auth_config if auth_config else None
+        )
 
     async def _list_cloud_clusters_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_cloud_clusters tool."""
