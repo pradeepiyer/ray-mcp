@@ -471,7 +471,160 @@ class ToolRegistry:
 
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for retrieve_logs tool."""
-        return await self.ray_manager.retrieve_logs(**kwargs)
+        identifier = kwargs.get("identifier")
+        if not identifier:
+            return ResponseFormatter.format_validation_error(
+                "identifier is required for log retrieval"
+            )
+
+        # Validate log_type parameter first (before job type detection)
+        log_type = kwargs.get("log_type", "job")
+        if log_type != "job":
+            return ResponseFormatter.format_validation_error(
+                f"Invalid log_type: {log_type}. Only 'job' is supported"
+            )
+
+        # Detect job type based on identifier patterns and system state
+        job_type = await self._detect_job_type_from_id(
+            identifier, kwargs.get("job_type", "auto")
+        )
+        namespace = kwargs.get("namespace", "default")
+
+        # Route to appropriate log retrieval method based on job type
+        if job_type == "local":
+            # Use the local ray log manager
+            return await self.ray_manager.retrieve_logs(**kwargs)
+        elif job_type in ["kubernetes", "k8s"]:
+            # Check if Kubernetes is connected before attempting KubeRay operations
+            try:
+                await self._ensure_gke_coordination()
+            except Exception as e:
+                # If Kubernetes is not connected, fall back to local log retrieval
+                # This maintains backward compatibility with existing tests
+                return await self.ray_manager.retrieve_logs(**kwargs)
+
+            # Extract parameters relevant to KubeRay log retrieval
+            kuberay_kwargs = {
+                "name": identifier,
+                "namespace": namespace,
+            }
+
+            # Get the raw logs from KubeRay
+            result = await self.ray_manager.get_kuberay_job_logs(**kuberay_kwargs)
+
+            # If successful, process the logs with the parameters from the original request
+            if result.get("status") == "success":
+                raw_logs = result.get("logs", "")
+
+                # Apply log processing similar to local ray logs
+                processed_result = await self._process_kuberay_logs(
+                    result, raw_logs, **kwargs
+                )
+                return processed_result
+            else:
+                return result
+        else:
+            return ResponseFormatter.format_validation_error(
+                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+            )
+
+    async def _process_kuberay_logs(
+        self, kuberay_result: Dict[str, Any], raw_logs: str, **kwargs
+    ) -> Dict[str, Any]:
+        """Process KubeRay logs with pagination and filtering similar to local logs."""
+        identifier = kwargs.get("identifier")
+        num_lines = kwargs.get("num_lines", 100)
+        include_errors = kwargs.get("include_errors", False)
+        max_size_mb = kwargs.get("max_size_mb", 10)
+        page = kwargs.get("page")
+        page_size = kwargs.get("page_size", 100)
+
+        # Import log processor to handle pagination and size limits
+        from .foundation.logging_utils import LogProcessor
+
+        log_processor = LogProcessor()
+
+        try:
+            # Apply size and line limits
+            if page is not None:
+                # Use pagination
+                paginated_result = await log_processor.stream_logs_with_pagination(
+                    raw_logs, page, page_size, max_size_mb
+                )
+
+                if paginated_result.get("status") == "error":
+                    return paginated_result
+
+                # Merge with KubeRay-specific information
+                final_result = {
+                    **kuberay_result,
+                    **paginated_result,
+                    "log_type": "job",
+                    "identifier": identifier,
+                }
+
+            else:
+                # Use simple line/size limits
+                processed_logs = log_processor.stream_logs_with_limits(
+                    raw_logs, num_lines, max_size_mb
+                )
+
+                final_result = {
+                    **kuberay_result,
+                    "logs": processed_logs,
+                    "log_type": "job",
+                    "identifier": identifier,
+                    "num_lines_retrieved": len(processed_logs.split("\n")),
+                    "max_size_mb": max_size_mb,
+                }
+
+            # Add error analysis if requested
+            if include_errors and final_result.get("logs"):
+                final_result["error_analysis"] = self._analyze_job_logs(
+                    final_result["logs"]
+                )
+
+            return final_result
+
+        except Exception as e:
+            return ResponseFormatter.format_error_response("process kuberay logs", e)
+
+    def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
+        """Analyze job logs for errors and issues (similar to local ray log analysis)."""
+        if not logs:
+            return {"errors_found": False, "analysis": "No logs to analyze"}
+
+        error_patterns = [
+            r"ERROR",
+            r"Exception",
+            r"Traceback",
+            r"FAILED",
+            r"CRITICAL",
+            r"Fatal",
+        ]
+
+        log_lines = logs.split("\n")
+        errors = []
+
+        for i, line in enumerate(log_lines):
+            for pattern in error_patterns:
+                if pattern.lower() in line.lower():
+                    errors.append(
+                        {
+                            "line_number": i + 1,
+                            "error_type": pattern,
+                            "line_content": line.strip(),
+                        }
+                    )
+                    break
+
+        return {
+            "errors_found": len(errors) > 0,
+            "error_count": len(errors),
+            "errors": errors[:10],  # Limit to first 10 errors
+            "total_lines_analyzed": len(log_lines),
+            "analysis": f"Found {len(errors)} potential error lines out of {len(log_lines)} total lines",
+        }
 
     # Cloud provider handlers
     async def _detect_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:

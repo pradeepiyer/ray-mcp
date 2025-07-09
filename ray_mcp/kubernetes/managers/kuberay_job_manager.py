@@ -253,26 +253,190 @@ class KubeRayJobManagerImpl(ResourceManager, KubeRayJobManager):
                 Exception(f"No Ray cluster associated with job '{name}'"),
             )
 
-        # In a full implementation, this would:
-        # 1. Connect to the Ray cluster dashboard API
-        # 2. Retrieve job logs using the Ray Job API
-        # 3. Or query Kubernetes pod logs for the job
+        # Get logs from the job's pods
+        try:
+            # Create a Kubernetes client to get pod logs
+            from ..config.kubernetes_client import KubernetesApiClient
 
-        # For now, return a placeholder with available information
-        return self._response_formatter.format_success_response(
-            job_name=name,
-            namespace=namespace,
-            ray_cluster_name=ray_cluster_name,
-            job_status=job.get("job_status"),
-            logs_available=True,
-            message="Log retrieval would be implemented to fetch from Ray cluster dashboard or Kubernetes pods",
-            log_sources=[
-                f"Ray cluster: {ray_cluster_name}",
-                f"Kubernetes namespace: {namespace}",
-                "Job runner pod logs",
-                "Ray dashboard job logs API",
-            ],
-        )
+            k8s_client = KubernetesApiClient()
+
+            # Set the same Kubernetes configuration as CRD operations if available
+            if (
+                hasattr(self._crd_operations, "_kubernetes_config")
+                and self._crd_operations._kubernetes_config
+            ):
+                k8s_client.set_kubernetes_config(
+                    self._crd_operations._kubernetes_config
+                )
+
+            # Approach 1: Try to get logs from job runner pods
+            # RayJob creates pods with labels indicating they belong to this job
+            job_label_selector = (
+                f"ray.io/cluster={ray_cluster_name},ray.io/job-name={name}"
+            )
+
+            job_logs_result = await k8s_client.get_pod_logs(
+                namespace=namespace,
+                label_selector=job_label_selector,
+                lines=1000,  # Get more lines for job logs
+                timestamps=True,
+            )
+
+            # If we got logs from job-specific pods, return them
+            if (
+                job_logs_result.get("status") == "success"
+                and job_logs_result.get("pod_count", 0) > 0
+            ):
+                logs = job_logs_result.get("logs", "")
+
+                # Process the logs to extract key information
+                processed_logs = self._process_ray_job_logs(logs)
+
+                return self._response_formatter.format_success_response(
+                    job_name=name,
+                    namespace=namespace,
+                    ray_cluster_name=ray_cluster_name,
+                    job_status=job.get("job_status"),
+                    logs=processed_logs,
+                    log_source="job_runner_pods",
+                    pod_count=job_logs_result.get("pod_count", 0),
+                    raw_logs=logs,
+                )
+
+            # Approach 2: If no job-specific pods, try to get logs from head node
+            # This may contain job submission logs and general job information
+            head_pod_selector = (
+                f"ray.io/cluster={ray_cluster_name},ray.io/node-type=head"
+            )
+
+            head_logs_result = await k8s_client.get_pod_logs(
+                namespace=namespace,
+                label_selector=head_pod_selector,
+                lines=500,  # Get fewer lines from head node
+                timestamps=True,
+            )
+
+            if (
+                head_logs_result.get("status") == "success"
+                and head_logs_result.get("pod_count", 0) > 0
+            ):
+                head_logs = head_logs_result.get("logs", "")
+
+                # Filter head logs to show job-related entries
+                job_related_logs = self._filter_head_logs_for_job(head_logs, name)
+
+                return self._response_formatter.format_success_response(
+                    job_name=name,
+                    namespace=namespace,
+                    ray_cluster_name=ray_cluster_name,
+                    job_status=job.get("job_status"),
+                    logs=job_related_logs,
+                    log_source="head_node_filtered",
+                    pod_count=head_logs_result.get("pod_count", 0),
+                    message=f"Job-specific logs not found, showing job-related entries from head node",
+                )
+
+            # Approach 3: Last resort - get general cluster logs
+            cluster_selector = f"ray.io/cluster={ray_cluster_name}"
+
+            cluster_logs_result = await k8s_client.get_pod_logs(
+                namespace=namespace,
+                label_selector=cluster_selector,
+                lines=200,  # Get fewer lines for general cluster logs
+                timestamps=True,
+            )
+
+            if cluster_logs_result.get("status") == "success":
+                cluster_logs = cluster_logs_result.get("logs", "")
+
+                return self._response_formatter.format_success_response(
+                    job_name=name,
+                    namespace=namespace,
+                    ray_cluster_name=ray_cluster_name,
+                    job_status=job.get("job_status"),
+                    logs=cluster_logs,
+                    log_source="cluster_general",
+                    pod_count=cluster_logs_result.get("pod_count", 0),
+                    message=f"Job-specific logs not available, showing general cluster logs",
+                )
+
+            # If all approaches fail, return an informative error
+            return self._response_formatter.format_error_response(
+                "get ray job logs",
+                Exception(
+                    f"Could not retrieve logs for job '{name}' from cluster '{ray_cluster_name}'"
+                ),
+            )
+
+        except Exception as e:
+            return self._response_formatter.format_error_response(
+                "get ray job logs",
+                Exception(f"Error retrieving logs: {str(e)}"),
+            )
+
+    def _process_ray_job_logs(self, logs: str) -> str:
+        """Process and format Ray job logs for better readability."""
+        if not logs:
+            return "No logs available"
+
+        # Split logs into lines for processing
+        lines = logs.split("\n")
+        processed_lines = []
+
+        for line in lines:
+            # Remove excessive whitespace
+            line = line.strip()
+            if not line:
+                continue
+
+            # Highlight important log entries
+            if any(
+                keyword in line.lower()
+                for keyword in ["error", "exception", "failed", "traceback"]
+            ):
+                processed_lines.append(f"🔴 {line}")
+            elif any(keyword in line.lower() for keyword in ["warning", "warn"]):
+                processed_lines.append(f"🟡 {line}")
+            elif any(
+                keyword in line.lower()
+                for keyword in ["success", "completed", "finished"]
+            ):
+                processed_lines.append(f"🟢 {line}")
+            else:
+                processed_lines.append(line)
+
+        return "\n".join(processed_lines)
+
+    def _filter_head_logs_for_job(self, logs: str, job_name: str) -> str:
+        """Filter head node logs to show only job-related entries."""
+        if not logs:
+            return "No logs available"
+
+        lines = logs.split("\n")
+        job_related_lines = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Look for lines that mention the job name or job-related keywords
+            if job_name in line or any(
+                keyword in line.lower()
+                for keyword in [
+                    "job",
+                    "submit",
+                    "raysubmit",
+                    "entrypoint",
+                    "runtime_env",
+                ]
+            ):
+                job_related_lines.append(line)
+
+        if not job_related_lines:
+            return f"No job-related logs found for job '{job_name}' in head node logs"
+
+        return "\n".join(job_related_lines)
 
     def _update_job_state(self, job_name: str, namespace: str, status: str) -> None:
         """Update job state in state manager."""

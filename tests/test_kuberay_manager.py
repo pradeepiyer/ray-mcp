@@ -420,11 +420,132 @@ class TestKubeRayJobManager:
             }
         )
 
+        # Mock the Kubernetes client for pod logs
+        with patch(
+            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesApiClient"
+        ) as mock_k8s_client_class:
+            mock_k8s_client = Mock()
+            mock_k8s_client_class.return_value = mock_k8s_client
+
+            # Mock successful pod logs retrieval
+            mock_k8s_client.get_pod_logs = AsyncMock(
+                return_value={
+                    "status": "success",
+                    "logs": "INFO: Job started successfully\nINFO: Processing data\nINFO: Job completed",
+                    "pod_count": 1,
+                }
+            )
+
+            result = await self.job_manager.get_ray_job_logs("test-job")
+
+            assert result.get("status") == "success"
+            assert result.get("ray_cluster_name") == "test-cluster"
+            assert result.get("job_name") == "test-job"
+            assert result.get("log_source") == "job_runner_pods"
+            assert result.get("pod_count") == 1
+            assert "logs" in result
+            assert "Job started successfully" in result["logs"]
+
+            # Verify the Kubernetes client was called with correct parameters
+            mock_k8s_client.get_pod_logs.assert_called_once_with(
+                namespace="default",
+                label_selector="ray.io/cluster=test-cluster,ray.io/job-name=test-job",
+                lines=1000,
+                timestamps=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_ray_job_logs_no_job_pods(self):
+        """Test Ray job log retrieval when no job-specific pods are found."""
+        # Mock getting job first
+        self.mock_crd_operations.get_resource = AsyncMock(
+            return_value={
+                "status": "success",
+                "resource": {"status": {"rayClusterName": "test-cluster"}},
+            }
+        )
+
+        # Mock the Kubernetes client for pod logs
+        with patch(
+            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesApiClient"
+        ) as mock_k8s_client_class:
+            mock_k8s_client = Mock()
+            mock_k8s_client_class.return_value = mock_k8s_client
+
+            # Mock no job-specific pods found, but head node pods available
+            mock_k8s_client.get_pod_logs = AsyncMock(
+                side_effect=[
+                    # First call for job-specific pods - no pods found
+                    {
+                        "status": "success",
+                        "logs": "No pods found matching the label selector",
+                        "pod_count": 0,
+                    },
+                    # Second call for head node pods - some logs found
+                    {
+                        "status": "success",
+                        "logs": "INFO: Ray head node started\nINFO: Job test-job submitted\nINFO: Job test-job completed",
+                        "pod_count": 1,
+                    },
+                ]
+            )
+
+            result = await self.job_manager.get_ray_job_logs("test-job")
+
+            assert result.get("status") == "success"
+            assert result.get("ray_cluster_name") == "test-cluster"
+            assert result.get("job_name") == "test-job"
+            assert result.get("log_source") == "head_node_filtered"
+            assert result.get("pod_count") == 1
+            assert "logs" in result
+            assert "Job test-job" in result["logs"]
+
+            # Verify both calls were made
+            assert mock_k8s_client.get_pod_logs.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_ray_job_logs_no_cluster(self):
+        """Test Ray job log retrieval when no cluster is associated."""
+        # Mock getting job without cluster
+        self.mock_crd_operations.get_resource = AsyncMock(
+            return_value={
+                "status": "success",
+                "resource": {"status": {}},  # No rayClusterName
+            }
+        )
+
         result = await self.job_manager.get_ray_job_logs("test-job")
 
-        assert result.get("status") == "success"
-        assert result.get("ray_cluster_name") == "test-cluster"
-        assert result.get("logs_available") is True
+        assert result.get("status") == "error"
+        assert "No Ray cluster associated" in result.get("message", "")
+
+    @pytest.mark.asyncio
+    async def test_get_ray_job_logs_kubernetes_error(self):
+        """Test Ray job log retrieval when Kubernetes client fails."""
+        # Mock getting job first
+        self.mock_crd_operations.get_resource = AsyncMock(
+            return_value={
+                "status": "success",
+                "resource": {"status": {"rayClusterName": "test-cluster"}},
+            }
+        )
+
+        # Mock the Kubernetes client to raise an exception
+        with patch(
+            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesApiClient"
+        ) as mock_k8s_client_class:
+            mock_k8s_client = Mock()
+            mock_k8s_client_class.return_value = mock_k8s_client
+
+            # Mock Kubernetes client failure
+            mock_k8s_client.get_pod_logs = AsyncMock(
+                side_effect=Exception("Kubernetes connection failed")
+            )
+
+            result = await self.job_manager.get_ray_job_logs("test-job")
+
+            assert result.get("status") == "error"
+            assert "Error retrieving logs" in result.get("message", "")
 
 
 class TestKubeRayUnifiedManagerIntegration:

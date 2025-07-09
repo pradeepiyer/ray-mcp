@@ -11,7 +11,11 @@ from .kubernetes_config import KubernetesConfigManager
 class KubernetesApiClient(KubernetesClient):
     """Kubernetes API client with comprehensive cluster interaction capabilities."""
 
-    def __init__(self, config_manager: Optional[KubernetesConfigManager] = None):
+    def __init__(
+        self,
+        config_manager: Optional[KubernetesConfigManager] = None,
+        kubernetes_config: Optional[Any] = None,
+    ):
         # Get imports
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]
@@ -23,7 +27,16 @@ class KubernetesApiClient(KubernetesClient):
         self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
 
         self._config_manager = config_manager or KubernetesConfigManager()
+        self._kubernetes_config = kubernetes_config  # Pre-configured Kubernetes client
         self._response_formatter = self._ResponseFormatter()
+        self._core_v1_api = None
+        self._apps_v1_api = None
+        self._version_api = None
+
+    def set_kubernetes_config(self, kubernetes_config: Any) -> None:
+        """Set the Kubernetes configuration to use for API calls."""
+        self._kubernetes_config = kubernetes_config
+        # Reset the clients so they get recreated with the new config
         self._core_v1_api = None
         self._apps_v1_api = None
         self._version_api = None
@@ -34,11 +47,28 @@ class KubernetesApiClient(KubernetesClient):
             raise RuntimeError("Kubernetes client library is not available")
 
         if self._core_v1_api is None:
-            self._core_v1_api = self._client.CoreV1Api()
+            if self._kubernetes_config:
+                # Use the pre-configured Kubernetes client
+                api_client = self._client.ApiClient(self._kubernetes_config)
+                self._core_v1_api = self._client.CoreV1Api(api_client)
+            else:
+                self._core_v1_api = self._client.CoreV1Api()
+
         if self._apps_v1_api is None:
-            self._apps_v1_api = self._client.AppsV1Api()
+            if self._kubernetes_config:
+                # Use the pre-configured Kubernetes client
+                api_client = self._client.ApiClient(self._kubernetes_config)
+                self._apps_v1_api = self._client.AppsV1Api(api_client)
+            else:
+                self._apps_v1_api = self._client.AppsV1Api()
+
         if self._version_api is None:
-            self._version_api = self._client.VersionApi()
+            if self._kubernetes_config:
+                # Use the pre-configured Kubernetes client
+                api_client = self._client.ApiClient(self._kubernetes_config)
+                self._version_api = self._client.VersionApi(api_client)
+            else:
+                self._version_api = self._client.VersionApi()
 
     async def test_connection(self) -> Dict[str, Any]:
         """Test connection to Kubernetes cluster."""
@@ -317,6 +347,114 @@ class KubernetesApiClient(KubernetesClient):
         # This method is required by the KubernetesClient interface
         # Delegate to the existing list_pods method
         return await self.list_pods(namespace=namespace)
+
+    async def get_pod_logs(
+        self,
+        pod_name: Optional[str] = None,
+        namespace: str = "default",
+        container: Optional[str] = None,
+        label_selector: Optional[str] = None,
+        lines: Optional[int] = None,
+        since_seconds: Optional[int] = None,
+        follow: bool = False,
+        timestamps: bool = False,
+    ) -> Dict[str, Any]:
+        """Get logs from a pod or pods matching a label selector."""
+        if not self._KUBERNETES_AVAILABLE:
+            return self._response_formatter.format_error_response(
+                "get pod logs",
+                Exception("Kubernetes client library is not available"),
+            )
+
+        try:
+            self._ensure_clients()
+
+            # If pod_name is specified, get logs from that specific pod
+            if pod_name:
+                log_response = await asyncio.to_thread(
+                    self._core_v1_api.read_namespaced_pod_log,
+                    name=pod_name,
+                    namespace=namespace,
+                    container=container,
+                    tail_lines=lines,
+                    since_seconds=since_seconds,
+                    follow=follow,
+                    timestamps=timestamps,
+                )
+
+                return self._response_formatter.format_success_response(
+                    logs=log_response,
+                    pod_name=pod_name,
+                    namespace=namespace,
+                    container=container,
+                )
+
+            # If label_selector is specified, get logs from all matching pods
+            elif label_selector:
+                pods_result = await self.list_pods(
+                    namespace=namespace, label_selector=label_selector
+                )
+
+                if pods_result.get("status") != "success":
+                    return pods_result
+
+                pods = pods_result.get("pods", [])
+                if not pods:
+                    return self._response_formatter.format_success_response(
+                        logs="No pods found matching the label selector",
+                        pod_count=0,
+                        namespace=namespace,
+                        label_selector=label_selector,
+                    )
+
+                # Collect logs from all matching pods
+                all_logs = []
+                for pod in pods:
+                    pod_name = pod.get("name")
+                    try:
+                        log_response = await asyncio.to_thread(
+                            self._core_v1_api.read_namespaced_pod_log,
+                            name=pod_name,
+                            namespace=namespace,
+                            container=container,
+                            tail_lines=lines,
+                            since_seconds=since_seconds,
+                            follow=follow,
+                            timestamps=timestamps,
+                        )
+
+                        # Add pod header to distinguish logs from different pods
+                        pod_logs = f"=== Pod: {pod_name} ===\n{log_response}\n"
+                        all_logs.append(pod_logs)
+
+                    except self._ApiException as e:
+                        # Continue with other pods if one fails
+                        error_msg = f"=== Pod: {pod_name} - Error: {getattr(e, 'reason', 'unknown')} ===\n"
+                        all_logs.append(error_msg)
+
+                combined_logs = "\n".join(all_logs)
+
+                return self._response_formatter.format_success_response(
+                    logs=combined_logs,
+                    pod_count=len(pods),
+                    namespace=namespace,
+                    label_selector=label_selector,
+                )
+
+            else:
+                return self._response_formatter.format_error_response(
+                    "get pod logs",
+                    Exception("Either pod_name or label_selector must be specified"),
+                )
+
+        except self._ApiException as e:
+            status = getattr(e, "status", "unknown")
+            reason = getattr(e, "reason", "unknown")
+            return self._response_formatter.format_error_response(
+                "get pod logs", Exception(f"API Error: {status} - {reason}")
+            )
+        except Exception as e:
+            return self._response_formatter.format_error_response("get pod logs", e)
 
     def _extract_node_roles_from_labels(self, labels: dict) -> str:
         """Extract node roles from labels."""

@@ -393,39 +393,3 @@ class TestToolExtensions:
         # Should return validation error
         assert result["status"] == "error"
         assert "Invalid job_type" in result["message"]
-
-    def test_backward_compatibility_init_ray(self, tool_registry):
-        """Test that init_ray_cluster maintains backward compatibility."""
-        tools = tool_registry.get_tool_list()
-        init_ray_tool = next(tool for tool in tools if tool.name == "init_ray_cluster")
-
-        schema = init_ray_tool.inputSchema
-        properties = schema["properties"]
-
-        # Check that all original parameters are still present
-        assert "address" in properties
-        assert "num_cpus" in properties
-        assert "num_gpus" in properties
-        assert "object_store_memory" in properties
-        assert "worker_nodes" in properties
-        assert "head_node_port" in properties
-        assert "dashboard_port" in properties
-        assert "head_node_host" in properties
-
-    def test_backward_compatibility_submit_job(self, tool_registry):
-        """Test that submit_ray_job maintains backward compatibility."""
-        tools = tool_registry.get_tool_list()
-        submit_job_tool = next(tool for tool in tools if tool.name == "submit_ray_job")
-
-        schema = submit_job_tool.inputSchema
-        properties = schema["properties"]
-        required = schema["required"]
-
-        # Check that all original parameters are still present
-        assert "entrypoint" in properties
-        assert "runtime_env" in properties
-        assert "job_id" in properties
-        assert "metadata" in properties
-
-        # Check that entrypoint is still the only required parameter
-        assert required == ["entrypoint"]

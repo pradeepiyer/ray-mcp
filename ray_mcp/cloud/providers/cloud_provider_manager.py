@@ -564,11 +564,16 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             if result["dependencies"]["kubernetes_python"]:
                 try:
                     from kubernetes import config
+
                     contexts, active_context = config.list_kube_config_contexts()
                     if active_context:
                         result["authentication"]["kubeconfig"] = True
-                        result["authentication"]["current_context"] = active_context["name"]
-                        result["environment"]["current_context"] = active_context["name"]
+                        result["authentication"]["current_context"] = active_context[
+                            "name"
+                        ]
+                        result["environment"]["current_context"] = active_context[
+                            "name"
+                        ]
                 except Exception:
                     # If we can't load the config, kubeconfig might be invalid
                     pass
