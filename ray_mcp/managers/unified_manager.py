@@ -25,7 +25,7 @@ class RayUnifiedManager:
     def __init__(self):
         # Initialize core components
         self._state_manager = RayStateManager()
-        self._port_manager = RayPortManager()
+        self._port_manager = RayPortManager(self._state_manager)
 
         # Initialize specialized managers with dependencies
         self._cluster_manager = RayClusterManager(

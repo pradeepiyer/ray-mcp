@@ -494,8 +494,12 @@ class CloudProviderManager(Protocol):
         ...
 
 
-class RayComponent(ABC):
-    """Base class for Ray MCP components."""
+class ManagedComponent(ABC):
+    """Unified base class for all MCP components with configurable validation.
+
+    This replaces the former RayComponent, KubernetesComponent, KubeRayComponent,
+    and CloudProviderComponent classes with a single, more maintainable base class.
+    """
 
     def __init__(self, state_manager: StateManager):
         self._state_manager = state_manager
@@ -505,24 +509,12 @@ class RayComponent(ABC):
         """Get the state manager."""
         return self._state_manager
 
-    def _ensure_initialized(self) -> None:
+    def _ensure_ray_initialized(self) -> None:
         """Ensure Ray is initialized."""
         if not self._state_manager.is_initialized():
             raise RuntimeError("Ray is not initialized. Please start Ray first.")
 
-
-class KubernetesComponent(ABC):
-    """Base class for Kubernetes MCP components."""
-
-    def __init__(self, state_manager: StateManager):
-        self._state_manager = state_manager
-
-    @property
-    def state_manager(self) -> StateManager:
-        """Get the state manager."""
-        return self._state_manager
-
-    def _ensure_connected(self) -> None:
+    def _ensure_kubernetes_connected(self) -> None:
         """Ensure Kubernetes is connected."""
         state = self._state_manager.get_state()
         if not state.get("kubernetes_connected", False):
@@ -530,40 +522,10 @@ class KubernetesComponent(ABC):
                 "Kubernetes is not connected. Please connect to a cluster first."
             )
 
-
-class KubeRayComponent(ABC):
-    """Base class for KubeRay MCP components."""
-
-    def __init__(self, state_manager: StateManager):
-        self._state_manager = state_manager
-
-    @property
-    def state_manager(self) -> StateManager:
-        """Get the state manager."""
-        return self._state_manager
-
     def _ensure_kuberay_ready(self) -> None:
         """Ensure Kubernetes is connected and KubeRay is available."""
-        state = self._state_manager.get_state()
-        if not state.get("kubernetes_connected", False):
-            raise RuntimeError(
-                "Kubernetes is not connected. Please connect to a cluster first."
-            )
-
-        # Could add additional checks for KubeRay CRDs being installed
-        # This would be expanded in a real implementation
-
-
-class CloudProviderComponent(ABC):
-    """Base class for cloud provider MCP components."""
-
-    def __init__(self, state_manager: StateManager):
-        self._state_manager = state_manager
-
-    @property
-    def state_manager(self) -> StateManager:
-        """Get the state manager."""
-        return self._state_manager
+        self._ensure_kubernetes_connected()
+        # Additional KubeRay-specific checks could be added here
 
     def _ensure_cloud_authenticated(self, provider: CloudProvider) -> None:
         """Ensure cloud provider is authenticated."""

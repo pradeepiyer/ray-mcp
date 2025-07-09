@@ -27,35 +27,10 @@ def get_logging_utils() -> Dict[str, Any]:
                 "ResponseFormatter": ResponseFormatter,
             }
         except ImportError:
-            # Create mock classes for testing
-            class MockLoggingUtility:
-                @staticmethod
-                def log_info(operation: str, message: str):
-                    pass
+            # Use centralized mock classes for testing
+            from .test_mocks import get_mock_logging_utils
 
-                @staticmethod
-                def log_warning(operation: str, message: str):
-                    pass
-
-                @staticmethod
-                def log_error(operation: str, error: Exception):
-                    pass
-
-            class MockResponseFormatter:
-                def format_success_response(self, **kwargs):
-                    return {"status": "success", **kwargs}
-
-                def format_error_response(self, operation: str, error: Exception):
-                    return {
-                        "status": "error",
-                        "operation": operation,
-                        "message": str(error),
-                    }
-
-            return {
-                "LoggingUtility": MockLoggingUtility,
-                "ResponseFormatter": MockResponseFormatter,
-            }
+            return get_mock_logging_utils()
 
 
 def get_ray_imports() -> Dict[str, Any]:
@@ -100,11 +75,20 @@ def get_kubernetes_imports() -> Dict[str, Any]:
 def get_google_cloud_imports() -> Dict[str, Any]:
     """Get Google Cloud imports with availability checking."""
     try:
+        import importlib
+
         from google.auth import default
         from google.auth.exceptions import DefaultCredentialsError
         import google.auth.transport.requests
-        from google.cloud import container_v1
         from google.oauth2 import service_account
+
+        # Try to import container_v1 using importlib to avoid pyright issues
+        container_v1 = None
+        try:
+            container_v1 = importlib.import_module("google.cloud.container_v1")
+        except ImportError:
+            # Container API might not be available even if other google.cloud modules are
+            pass
 
         return {
             "default": default,
@@ -112,7 +96,7 @@ def get_google_cloud_imports() -> Dict[str, Any]:
             "container_v1": container_v1,
             "service_account": service_account,
             "google_auth_transport": google.auth.transport.requests,
-            "GOOGLE_CLOUD_AVAILABLE": True,
+            "GOOGLE_CLOUD_AVAILABLE": container_v1 is not None,
             "GOOGLE_AUTH_AVAILABLE": True,
         }
     except ImportError:

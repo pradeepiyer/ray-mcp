@@ -1,6 +1,7 @@
 """Centralized cluster management for Ray."""
 
 import asyncio
+import json
 import os
 import re
 import subprocess
@@ -10,16 +11,6 @@ from urllib.parse import urlparse
 from ..foundation.base_managers import ResourceManager
 from ..foundation.interfaces import ClusterManager, PortManager, StateManager
 
-try:
-    from .worker_manager import WorkerManager
-except ImportError:
-    # Fallback for direct execution
-    import os
-    import sys
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from worker_manager import WorkerManager
-
 
 class RayClusterManager(ResourceManager, ClusterManager):
     """Manages Ray cluster lifecycle operations with clean separation of concerns."""
@@ -28,14 +19,15 @@ class RayClusterManager(ResourceManager, ClusterManager):
         self,
         state_manager,
         port_manager: PortManager,
-        worker_manager: Optional[WorkerManager] = None,
     ):
         super().__init__(
             state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
         )
         self._port_manager = port_manager
-        self._worker_manager = worker_manager or WorkerManager()
         self._head_node_process: Optional[subprocess.Popen] = None
+        # Simple worker tracking (replacing WorkerManager)
+        self._worker_processes: List[subprocess.Popen] = []
+        self._worker_configs: List[Dict[str, Any]] = []
 
     async def init_cluster(
         self,
@@ -160,10 +152,10 @@ class RayClusterManager(ResourceManager, ClusterManager):
         """Stop locally-started Ray cluster and clean up all resources."""
         cleanup_results = []
 
-        # Stop worker nodes first
-        if self._worker_manager.worker_processes:
+        # Stop worker nodes first using simplified method
+        if self._worker_processes:
             self._LoggingUtility.log_info("cluster_cleanup", "Stopping worker nodes...")
-            worker_results = await self._worker_manager.stop_all_workers()
+            worker_results = await self._stop_all_workers()
             cleanup_results.extend(worker_results)
 
         # Clean up head node process reference
@@ -387,13 +379,13 @@ class RayClusterManager(ResourceManager, ClusterManager):
             worker_results = []
             worker_nodes = kwargs.get("worker_nodes")
             if worker_nodes is not None and len(worker_nodes) > 0:
-                worker_results = await self._worker_manager.start_worker_nodes(
+                worker_results = await self._start_worker_nodes(
                     worker_nodes, cluster_address
                 )
             elif worker_nodes is None:
                 # Default: start 2 worker nodes
                 default_workers = self._get_default_worker_config()
-                worker_results = await self._worker_manager.start_worker_nodes(
+                worker_results = await self._start_worker_nodes(
                     default_workers, cluster_address
                 )
 
@@ -592,3 +584,196 @@ class RayClusterManager(ResourceManager, ClusterManager):
         except Exception as e:
             self._LoggingUtility.log_error("get_gcs_address", e)
             return None
+
+    # Simplified worker management methods (replacing WorkerManager)
+    async def _start_worker_nodes(
+        self, worker_configs: List[Dict[str, Any]], head_node_address: str
+    ) -> List[Dict[str, Any]]:
+        """Start multiple worker nodes with simplified management."""
+        worker_results = []
+
+        for i, config in enumerate(worker_configs):
+            try:
+                node_name = config.get("node_name", f"worker-{i+1}")
+                worker_result = await self._start_single_worker(
+                    config, head_node_address, node_name
+                )
+                worker_results.append(worker_result)
+
+                # Small delay between worker starts
+                if i < len(worker_configs) - 1:
+                    await asyncio.sleep(0.5)
+
+            except Exception as e:
+                self._LoggingUtility.log_error(f"start worker node {i+1}", e)
+                worker_results.append(
+                    {
+                        "status": "error",
+                        "node_name": config.get("node_name", f"worker-{i+1}"),
+                        "message": f"Failed to start worker node: {str(e)}",
+                    }
+                )
+
+        return worker_results
+
+    async def _start_single_worker(
+        self, config: Dict[str, Any], head_node_address: str, node_name: str
+    ) -> Dict[str, Any]:
+        """Start a single worker node with simplified process management."""
+        try:
+            # Build worker command
+            cmd = self._build_worker_command(config, head_node_address)
+
+            # Start worker process
+            process = await self._spawn_worker_process(cmd, node_name)
+
+            if process:
+                self._worker_processes.append(process)
+                self._worker_configs.append(config)
+
+                return {
+                    "status": "started",
+                    "node_name": node_name,
+                    "message": f"Worker node '{node_name}' started successfully",
+                    "process_id": process.pid,
+                    "config": config,
+                }
+            else:
+                return {
+                    "status": "error",
+                    "node_name": node_name,
+                    "message": "Failed to spawn worker process",
+                }
+
+        except Exception as e:
+            self._LoggingUtility.log_error(f"start worker process for {node_name}", e)
+            return {
+                "status": "error",
+                "node_name": node_name,
+                "message": f"Failed to start worker process: {str(e)}",
+            }
+
+    def _build_worker_command(
+        self, config: Dict[str, Any], head_node_address: str
+    ) -> List[str]:
+        """Build command to start a Ray worker node."""
+        cmd = ["ray", "start", "--address", head_node_address]
+
+        # Add resource specifications
+        if "num_cpus" in config:
+            cmd.extend(["--num-cpus", str(config["num_cpus"])])
+        if "num_gpus" in config:
+            cmd.extend(["--num-gpus", str(config["num_gpus"])])
+        if "object_store_memory" in config:
+            # Ensure minimum 75MB
+            min_memory_bytes = 75 * 1024 * 1024
+            memory_bytes = max(min_memory_bytes, config["object_store_memory"])
+            cmd.extend(["--object-store-memory", str(memory_bytes)])
+        if "resources" in config and isinstance(config["resources"], dict):
+            resources_json = json.dumps(config["resources"])
+            cmd.extend(["--resources", resources_json])
+        if "node_name" in config:
+            cmd.extend(["--node-name", config["node_name"]])
+
+        cmd.extend(["--block", "--disable-usage-stats"])
+        return cmd
+
+    async def _spawn_worker_process(
+        self, cmd: List[str], node_name: str
+    ) -> Optional[subprocess.Popen]:
+        """Spawn a worker node process with simplified error handling."""
+        try:
+            self._LoggingUtility.log_info(
+                "worker_start", f"Starting worker '{node_name}': {' '.join(cmd)}"
+            )
+
+            # Set up environment
+            env = os.environ.copy()
+            env["RAY_DISABLE_USAGE_STATS"] = "1"
+            env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
+
+            # Start process
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                text=True,
+            )
+
+            # Brief startup check
+            await asyncio.sleep(0.2)
+
+            if process.poll() is None:
+                self._LoggingUtility.log_info(
+                    "worker_start", f"Worker '{node_name}' started (PID: {process.pid})"
+                )
+                return process
+            else:
+                self._LoggingUtility.log_error(
+                    "worker_start",
+                    Exception(f"Worker '{node_name}' failed to start"),
+                )
+                return None
+
+        except Exception as e:
+            self._LoggingUtility.log_error("spawn worker process", e)
+            return None
+
+    async def _stop_all_workers(self) -> List[Dict[str, Any]]:
+        """Stop all worker nodes with simplified cleanup."""
+        results = []
+
+        for i, process in enumerate(self._worker_processes):
+            try:
+                node_name = self._worker_configs[i].get("node_name", f"worker-{i+1}")
+
+                # Terminate process
+                process.terminate()
+
+                # Wait for graceful shutdown
+                try:
+                    loop = asyncio.get_running_loop()
+                    await asyncio.wait_for(
+                        loop.run_in_executor(None, process.wait), timeout=5
+                    )
+                    status = "stopped"
+                    message = f"Worker '{node_name}' stopped gracefully"
+                except asyncio.TimeoutError:
+                    # Force kill
+                    process.kill()
+                    try:
+                        await asyncio.wait_for(
+                            loop.run_in_executor(None, process.wait), timeout=3
+                        )
+                        status = "force_stopped"
+                        message = f"Worker '{node_name}' force stopped"
+                    except asyncio.TimeoutError:
+                        status = "force_stopped"
+                        message = (
+                            f"Worker '{node_name}' force stopped (may still be running)"
+                        )
+
+                results.append(
+                    {
+                        "status": status,
+                        "node_name": node_name,
+                        "message": message,
+                        "process_id": process.pid,
+                    }
+                )
+
+            except Exception as e:
+                results.append(
+                    {
+                        "status": "error",
+                        "node_name": f"worker-{i+1}",
+                        "message": f"Error stopping worker: {str(e)}",
+                    }
+                )
+
+        # Clear worker tracking
+        self._worker_processes.clear()
+        self._worker_configs.clear()
+
+        return results

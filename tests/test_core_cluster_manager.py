@@ -128,28 +128,50 @@ class TestRayClusterManagerConnectionType:
 
         # Test 2: New cluster - should do full cleanup
         mock_ray.reset_mock()
-        mock_worker_manager = Mock()
-        mock_worker_manager.worker_processes = [Mock()]
-        mock_worker_manager.stop_all_workers = AsyncMock(
-            return_value=[{"status": "stopped"}]
-        )
-        cluster_manager._worker_manager = mock_worker_manager
+
+        # Set up worker processes directly in cluster manager (new integrated approach)
+        mock_worker_process = Mock()
+        mock_worker_process.pid = 12345
+        mock_worker_process.terminate = Mock()
+        mock_worker_process.kill = Mock()
+        mock_worker_process.poll.return_value = None  # Process terminated successfully
+
+        cluster_manager._worker_processes = [mock_worker_process]
+        cluster_manager._worker_configs = [{"node_name": "test-worker"}]
         cluster_manager._head_node_process = Mock()
 
-        cluster_manager.state_manager.update_state(connection_type="new")
-        result = await cluster_manager.stop_cluster()
+        # Mock the asyncio.wait_for to simulate successful termination
+        with patch("asyncio.wait_for") as mock_wait_for:
+            mock_wait_for.return_value = None  # Simulate successful termination
+
+            cluster_manager.state_manager.update_state(connection_type="new")
+            result = await cluster_manager.stop_cluster()
+
         assert result["status"] == "success"
         assert result["action"] == "stopped"
-        mock_worker_manager.stop_all_workers.assert_called_once()
+        # Verify worker process was terminated
+        mock_worker_process.terminate.assert_called_once()
         mock_ray.shutdown.assert_called_once()
         assert cluster_manager._head_node_process is None
+        # Worker processes should be cleared after cleanup
+        assert len(cluster_manager._worker_processes) == 0
 
         # Test 3: No connection type (backward compatibility) - should default to local cleanup
         mock_ray.reset_mock()
-        mock_worker_manager.reset_mock()
-        cluster_manager.state_manager.update_state(connection_type=None)
-        await cluster_manager.stop_cluster()
-        mock_worker_manager.stop_all_workers.assert_called_once()
+
+        # Set up worker processes again for the third test
+        cluster_manager._worker_processes = [mock_worker_process]
+        cluster_manager._worker_configs = [{"node_name": "test-worker"}]
+        mock_worker_process.reset_mock()
+
+        with patch("asyncio.wait_for") as mock_wait_for:
+            mock_wait_for.return_value = None
+
+            cluster_manager.state_manager.update_state(connection_type=None)
+            await cluster_manager.stop_cluster()
+
+        # Should still call worker cleanup in backward compatibility mode
+        mock_worker_process.terminate.assert_called_once()
 
     async def test_connection_type_tracking_during_init(self, cluster_manager):
         """Test that connection type is tracked correctly during cluster initialization."""

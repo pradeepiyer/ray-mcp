@@ -19,7 +19,7 @@ class TestRayPortManagerCore:
         """Test that port manager can be instantiated."""
         manager = RayPortManager()
         assert manager is not None
-        # Port manager doesn't inherit from base managers as it's a utility class
+        # Port manager now inherits from BaseManager
         assert hasattr(manager, "find_free_port")
         assert hasattr(manager, "cleanup_port_lock")
 
@@ -243,9 +243,8 @@ class TestRayPortManagerCleanup:
     @patch("ray_mcp.managers.port_manager.os.path.exists")
     @patch("ray_mcp.managers.port_manager.os.unlink")
     @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
-    @patch("ray_mcp.managers.port_manager.LoggingUtility")
     def test_cleanup_port_lock_error_handling(
-        self, mock_logging, mock_tempdir, mock_unlink, mock_exists
+        self, mock_tempdir, mock_unlink, mock_exists
     ):
         """Test error handling during lock file cleanup."""
         mock_tempdir.return_value = "/tmp"
@@ -253,9 +252,10 @@ class TestRayPortManagerCleanup:
         mock_unlink.side_effect = OSError("Permission denied")
 
         manager = RayPortManager()
-        manager.cleanup_port_lock(10001)
-
-        mock_logging.log_warning.assert_called()
+        # Mock the _log_warning method since it's now inherited
+        with patch.object(manager, "_log_warning") as mock_log:
+            manager.cleanup_port_lock(10001)
+            mock_log.assert_called()
 
     @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
     def test_temp_dir_fallback(self, mock_tempdir):
@@ -299,8 +299,7 @@ class TestRayPortManagerErrorScenarios:
     """Test error handling and edge cases."""
 
     @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
-    @patch("ray_mcp.managers.port_manager.LoggingUtility")
-    def test_temp_dir_error_handling(self, mock_logging, mock_tempdir):
+    def test_temp_dir_error_handling(self, mock_tempdir):
         """Test handling of temp directory errors."""
         mock_tempdir.side_effect = OSError("Temp dir error")
 
@@ -311,19 +310,18 @@ class TestRayPortManagerErrorScenarios:
         assert temp_dir == "."
 
     @patch("ray_mcp.managers.port_manager.os.listdir")
-    @patch("ray_mcp.managers.port_manager.LoggingUtility")
-    def test_cleanup_stale_files_error_handling(self, mock_logging, mock_listdir):
+    def test_cleanup_stale_files_error_handling(self, mock_listdir):
         """Test error handling during stale file cleanup."""
         mock_listdir.side_effect = OSError("Permission denied")
 
         manager = RayPortManager()
-        manager._cleanup_stale_lock_files()
-
-        mock_logging.log_warning.assert_called()
+        # Mock the _log_warning method since it's now inherited
+        with patch.object(manager, "_log_warning") as mock_log:
+            manager._cleanup_stale_lock_files()
+            mock_log.assert_called()
 
     @patch("ray_mcp.managers.port_manager.socket.socket")
-    @patch("ray_mcp.managers.port_manager.LoggingUtility")
-    async def test_socket_error_handling(self, mock_logging, mock_socket):
+    async def test_socket_error_handling(self, mock_socket):
         """Test handling of socket operation errors."""
         mock_socket.side_effect = OSError("Socket error")
 

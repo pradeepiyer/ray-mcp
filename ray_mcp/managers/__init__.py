@@ -10,7 +10,6 @@ from .log_manager import RayLogManager
 from .port_manager import RayPortManager
 from .state_manager import RayStateManager
 from .unified_manager import RayUnifiedManager
-from .worker_manager import WorkerManager
 
 __all__ = [
     "RayClusterManager",
@@ -19,5 +18,4 @@ __all__ = [
     "RayStateManager",
     "RayPortManager",
     "RayUnifiedManager",
-    "WorkerManager",
 ]

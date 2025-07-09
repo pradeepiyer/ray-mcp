@@ -8,12 +8,20 @@ import tempfile
 import time
 from typing import Optional
 
+from ..foundation.base_managers import BaseManager
 from ..foundation.interfaces import PortManager
-from ..foundation.logging_utils import LoggingUtility
 
 
-class RayPortManager(PortManager):
+class RayPortManager(BaseManager, PortManager):
     """Manages port allocation with atomic reservation to prevent race conditions."""
+
+    def __init__(self, state_manager=None):
+        # Use a dummy state manager if none provided for backward compatibility
+        if state_manager is None:
+            from ..foundation.test_mocks import MockStateManager
+
+            state_manager = MockStateManager()
+        super().__init__(state_manager)
 
     async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:
         """Find a free port with atomic reservation.
@@ -39,9 +47,7 @@ class RayPortManager(PortManager):
 
         for attempt in range(max_tries):
             if await self._try_allocate_port(port, temp_dir):
-                LoggingUtility.log_info(
-                    "port_allocation", f"Successfully allocated port {port}"
-                )
+                self._log_info("port_allocation", f"Successfully allocated port {port}")
                 return port
             port += 1
 
@@ -56,11 +62,11 @@ class RayPortManager(PortManager):
             lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
             if os.path.exists(lock_file_path):
                 os.unlink(lock_file_path)
-                LoggingUtility.log_info(
+                self._log_info(
                     "port_allocation", f"Cleaned up lock file for port {port}"
                 )
         except (OSError, IOError) as e:
-            LoggingUtility.log_warning(
+            self._log_warning(
                 "port_allocation", f"Could not clean up lock file for port {port}: {e}"
             )
 
@@ -149,11 +155,11 @@ class RayPortManager(PortManager):
                     lock_file_path = os.path.join(temp_dir, filename)
                     if not self._is_lock_file_active(lock_file_path):
                         self._remove_stale_lock(lock_file_path)
-                        LoggingUtility.log_info(
+                        self._log_info(
                             "port_allocation", f"Cleaned up stale lock file {filename}"
                         )
         except (OSError, IOError) as e:
-            LoggingUtility.log_warning(
+            self._log_warning(
                 "port_allocation", f"Error cleaning up stale lock files: {e}"
             )
 

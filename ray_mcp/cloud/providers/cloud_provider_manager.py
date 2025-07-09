@@ -487,11 +487,14 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
 
         # Check Python SDK
         try:
-            from google.auth import default
-            from google.cloud import container_v1
+            from ...foundation.import_utils import get_google_cloud_imports
 
-            result["dependencies"]["python_sdk"] = True
-            result["environment"]["google_cloud_sdk"] = "installed"
+            gcp_imports = get_google_cloud_imports()
+            if gcp_imports["GOOGLE_CLOUD_AVAILABLE"]:
+                result["dependencies"]["python_sdk"] = True
+                result["environment"]["google_cloud_sdk"] = "installed"
+            else:
+                raise ImportError("Google Cloud SDK not available")
         except ImportError:
             result["environment"]["google_cloud_sdk"] = "not_installed"
             result["recommendations"].append(
@@ -504,12 +507,15 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         # Check authentication
         if result["dependencies"]["python_sdk"]:
             try:
-                from google.auth import default
+                from ...foundation.import_utils import get_google_cloud_imports
 
-                credentials, project_id = await asyncio.to_thread(default)
-                if credentials and project_id:
-                    result["authentication"]["ambient"] = True
-                    result["environment"]["default_project"] = project_id
+                gcp_imports = get_google_cloud_imports()
+                if gcp_imports["GOOGLE_AUTH_AVAILABLE"] and gcp_imports["default"]:
+                    default_func = gcp_imports["default"]
+                    credentials, project_id = await asyncio.to_thread(default_func)
+                    if credentials and project_id:
+                        result["authentication"]["ambient"] = True
+                        result["environment"]["default_project"] = project_id
             except Exception:
                 pass
 

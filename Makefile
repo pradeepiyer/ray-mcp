@@ -108,6 +108,11 @@ uv-check:
 	@uv tree
 	@uv pip check
 
+# Update dependencies to latest compatible versions
+update-deps:
+	@echo "🔄 Running dependency update helper..."
+	@python scripts/update_dependencies.py
+
 # Create virtual environment with uv
 venv:
 	@echo "🐍 Creating virtual environment with uv..."
@@ -212,6 +217,7 @@ help:
 	@echo "  sync             Sync dependencies"
 	@echo "  uv-lock          Update lock file"
 	@echo "  uv-check         Check dependency consistency"
+	@echo "  update-deps      Update dependencies to latest compatible versions"
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test             Run complete test suite including E2E (default)"

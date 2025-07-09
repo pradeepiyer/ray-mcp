@@ -4,10 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray_mcp.foundation.base_managers import (
-    BaseManager,
-    ResourceManager,
-)
+from ray_mcp.foundation.base_managers import BaseManager, ResourceManager
 from ray_mcp.foundation.import_utils import (
     get_logging_utils,
     get_ray_imports,
