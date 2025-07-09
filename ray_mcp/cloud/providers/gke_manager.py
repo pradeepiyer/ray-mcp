@@ -457,9 +457,8 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 # Store the file path for later cleanup
                 self._ca_cert_file = ca_cert_file.name
 
-                # Set SSL CA certificate path - handle potential type mismatch
-                # Skip direct assignment to ssl_ca_cert to avoid type errors
-                # The CA cert file exists and verify_ssl=True will handle validation
+                # Set SSL CA certificate path to use the CA certificate file
+                configuration.ssl_ca_cert = self._ca_cert_file
                 configuration.verify_ssl = True
             else:
                 # For Autopilot clusters or clusters without explicit CA certs
