@@ -16,7 +16,7 @@ from mcp.types import Tool
 
 from .foundation.logging_utils import ResponseFormatter
 from .managers.unified_manager import RayUnifiedManager
-from .tools.schemas import cloud_tools, cluster_tools, job_tools, log_tools
+from .tools import cloud_tools, cluster_tools, job_tools, log_tools
 
 logger = logging.getLogger(__name__)
 
