@@ -2,24 +2,13 @@
 
 from typing import Any, Dict, List, Optional
 
-from ...foundation.base_managers import (
-    AsyncOperationMixin,
-    KubernetesBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ...foundation.base_managers import ResourceManager
 from ...foundation.interfaces import KubernetesManager
 from ..config.kubernetes_client import KubernetesApiClient
 from ..config.kubernetes_config import KubernetesConfigManager
 
 
-class KubernetesClusterManager(
-    KubernetesBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    KubernetesManager,
-):
+class KubernetesClusterManager(ResourceManager, KubernetesManager):
     """Manages Kubernetes cluster operations with clean separation of concerns."""
 
     def __init__(
@@ -28,7 +17,9 @@ class KubernetesClusterManager(
         config_manager: Optional[KubernetesConfigManager] = None,
         client: Optional[KubernetesApiClient] = None,
     ):
-        super().__init__(state_manager)
+        super().__init__(
+            state_manager, enable_ray=False, enable_kubernetes=True, enable_cloud=False
+        )
         self._config_manager = config_manager or KubernetesConfigManager()
         self._client = client or KubernetesApiClient(self._config_manager)
 

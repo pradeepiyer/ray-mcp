@@ -2,24 +2,13 @@
 
 from typing import Any, Dict, Optional
 
-from ...foundation.base_managers import (
-    AsyncOperationMixin,
-    KubeRayBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ...foundation.base_managers import ResourceManager
 from ...foundation.interfaces import KubeRayJobManager
 from ..crds.crd_operations import CRDOperationsClient
 from ..crds.ray_job_crd import RayJobCRDManager
 
 
-class KubeRayJobManagerImpl(
-    KubeRayBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    KubeRayJobManager,
-):
+class KubeRayJobManagerImpl(ResourceManager, KubeRayJobManager):
     """Manages Ray job lifecycle using KubeRay Custom Resources."""
 
     def __init__(
@@ -28,7 +17,9 @@ class KubeRayJobManagerImpl(
         crd_operations: Optional[CRDOperationsClient] = None,
         job_crd: Optional[RayJobCRDManager] = None,
     ):
-        super().__init__(state_manager)
+        super().__init__(
+            state_manager, enable_ray=True, enable_kubernetes=True, enable_cloud=False
+        )
         self._crd_operations = crd_operations or CRDOperationsClient()
         self._job_crd = job_crd or RayJobCRDManager()
 

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.unified_manager import RayUnifiedManager
+from ray_mcp.managers.unified_manager import RayUnifiedManager
 from ray_mcp.tool_registry import ToolRegistry
 
 
@@ -163,7 +163,7 @@ class TestMCPWorkflow:
         """Test error handling in MCP workflow with proper mock."""
         # Mock the manager to simulate Ray not available
         with patch(
-            "ray_mcp.core.managers.unified_manager.RayUnifiedManager"
+            "ray_mcp.managers.unified_manager.RayUnifiedManager"
         ) as mock_manager_class:
             mock_manager = Mock()
             mock_manager._cluster_manager._RAY_AVAILABLE = False

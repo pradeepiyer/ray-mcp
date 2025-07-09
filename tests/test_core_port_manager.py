@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, mock_open, patch
 
 import pytest
 
-from ray_mcp.core.managers.port_manager import RayPortManager
+from ray_mcp.managers.port_manager import RayPortManager
 
 
 @pytest.mark.fast
@@ -23,9 +23,9 @@ class TestRayPortManagerCore:
         assert hasattr(manager, "find_free_port")
         assert hasattr(manager, "cleanup_port_lock")
 
-    @patch("ray_mcp.core.managers.port_manager.socket.socket")
+    @patch("ray_mcp.managers.port_manager.socket.socket")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("ray_mcp.core.managers.port_manager.fcntl.flock")
+    @patch("ray_mcp.managers.port_manager.fcntl.flock")
     async def test_find_free_port_success(self, mock_flock, mock_file, mock_socket):
         """Test successful port allocation."""
         # Mock empty lock file content (no existing lock)
@@ -42,9 +42,9 @@ class TestRayPortManagerCore:
         mock_socket.assert_called()
         mock_sock_instance.bind.assert_called_with(("", 10001))
 
-    @patch("ray_mcp.core.managers.port_manager.socket.socket")
+    @patch("ray_mcp.managers.port_manager.socket.socket")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("ray_mcp.core.managers.port_manager.fcntl.flock")
+    @patch("ray_mcp.managers.port_manager.fcntl.flock")
     async def test_find_free_port_multiple_attempts(
         self, mock_flock, mock_file, mock_socket
     ):
@@ -66,9 +66,9 @@ class TestRayPortManagerCore:
 
         assert port == 10003  # Should succeed on third attempt
 
-    @patch("ray_mcp.core.managers.port_manager.socket.socket")
+    @patch("ray_mcp.managers.port_manager.socket.socket")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("ray_mcp.core.managers.port_manager.fcntl.flock")
+    @patch("ray_mcp.managers.port_manager.fcntl.flock")
     async def test_find_free_port_exhausted_attempts(
         self, mock_flock, mock_file, mock_socket
     ):
@@ -94,7 +94,7 @@ class TestRayPortManagerCore:
             (50000, 2, "50000-50001"),
         ],
     )
-    @patch("ray_mcp.core.managers.port_manager.socket.socket")
+    @patch("ray_mcp.managers.port_manager.socket.socket")
     async def test_find_free_port_range_parameters(
         self, mock_socket, start_port, max_tries, expected_range
     ):
@@ -116,7 +116,7 @@ class TestRayPortManagerCore:
 class TestRayPortManagerLockHandling:
     """Test file locking mechanisms for port allocation."""
 
-    @patch("ray_mcp.core.managers.port_manager.os.kill")
+    @patch("ray_mcp.managers.port_manager.os.kill")
     @patch("builtins.open", new_callable=mock_open)
     async def test_stale_lock_file_removal(self, mock_file, mock_kill):
         """Test that stale lock files are handled correctly during allocation."""
@@ -129,8 +129,8 @@ class TestRayPortManagerLockHandling:
         manager = RayPortManager()
 
         # This should detect stale lock content and proceed with allocation
-        with patch("ray_mcp.core.managers.port_manager.socket.socket") as mock_socket:
-            with patch("ray_mcp.core.managers.port_manager.fcntl.flock"):
+        with patch("ray_mcp.managers.port_manager.socket.socket") as mock_socket:
+            with patch("ray_mcp.managers.port_manager.fcntl.flock"):
                 mock_sock_instance = Mock()
                 mock_socket.return_value.__enter__.return_value = mock_sock_instance
 
@@ -141,7 +141,7 @@ class TestRayPortManagerLockHandling:
         # Verify we attempted to bind to the port
         mock_sock_instance.bind.assert_called_with(("", 10001))
 
-    @patch("ray_mcp.core.managers.port_manager.fcntl.flock")
+    @patch("ray_mcp.managers.port_manager.fcntl.flock")
     @patch("builtins.open", new_callable=mock_open)
     async def test_lock_acquisition_failure(self, mock_file, mock_flock):
         """Test handling when lock acquisition fails."""
@@ -154,11 +154,11 @@ class TestRayPortManagerLockHandling:
         with pytest.raises(RuntimeError):
             await manager.find_free_port(start_port=10001, max_tries=1)
 
-    @patch("ray_mcp.core.managers.port_manager.os.kill")
-    @patch("ray_mcp.core.managers.port_manager.os.getpid")
-    @patch("ray_mcp.core.managers.port_manager.time.time")
+    @patch("ray_mcp.managers.port_manager.os.kill")
+    @patch("ray_mcp.managers.port_manager.os.getpid")
+    @patch("ray_mcp.managers.port_manager.time.time")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("ray_mcp.core.managers.port_manager.fcntl.flock")
+    @patch("ray_mcp.managers.port_manager.fcntl.flock")
     async def test_race_condition_active_lock_respected(
         self, mock_flock, mock_file, mock_time, mock_getpid, mock_kill
     ):
@@ -173,7 +173,7 @@ class TestRayPortManagerLockHandling:
         manager = RayPortManager()
 
         # Should detect active lock and move to next port
-        with patch("ray_mcp.core.managers.port_manager.socket.socket") as mock_socket:
+        with patch("ray_mcp.managers.port_manager.socket.socket") as mock_socket:
             mock_sock_instance = Mock()
             mock_socket.return_value.__enter__.return_value = mock_sock_instance
 
@@ -183,9 +183,9 @@ class TestRayPortManagerLockHandling:
             port = await manager.find_free_port(start_port=10001, max_tries=2)
             assert port == 10002
 
-    @patch("ray_mcp.core.managers.port_manager.os.getpid")
+    @patch("ray_mcp.managers.port_manager.os.getpid")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("ray_mcp.core.managers.port_manager.fcntl.flock")
+    @patch("ray_mcp.managers.port_manager.fcntl.flock")
     async def test_race_condition_own_process_ignored(
         self, mock_flock, mock_file, mock_getpid
     ):
@@ -199,7 +199,7 @@ class TestRayPortManagerLockHandling:
         manager = RayPortManager()
 
         # Should ignore our own lock and proceed
-        with patch("ray_mcp.core.managers.port_manager.socket.socket") as mock_socket:
+        with patch("ray_mcp.managers.port_manager.socket.socket") as mock_socket:
             mock_sock_instance = Mock()
             mock_socket.return_value.__enter__.return_value = mock_sock_instance
 
@@ -212,9 +212,9 @@ class TestRayPortManagerLockHandling:
 class TestRayPortManagerCleanup:
     """Test port cleanup functionality."""
 
-    @patch("ray_mcp.core.managers.port_manager.os.path.exists")
-    @patch("ray_mcp.core.managers.port_manager.os.unlink")
-    @patch("ray_mcp.core.managers.port_manager.tempfile.gettempdir")
+    @patch("ray_mcp.managers.port_manager.os.path.exists")
+    @patch("ray_mcp.managers.port_manager.os.unlink")
+    @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
     def test_cleanup_port_lock_success(self, mock_tempdir, mock_unlink, mock_exists):
         """Test successful cleanup of port lock file."""
         mock_tempdir.return_value = "/tmp"
@@ -225,9 +225,9 @@ class TestRayPortManagerCleanup:
 
         mock_unlink.assert_called_with("/tmp/ray_port_10001.lock")
 
-    @patch("ray_mcp.core.managers.port_manager.os.path.exists")
-    @patch("ray_mcp.core.managers.port_manager.os.unlink")
-    @patch("ray_mcp.core.managers.port_manager.tempfile.gettempdir")
+    @patch("ray_mcp.managers.port_manager.os.path.exists")
+    @patch("ray_mcp.managers.port_manager.os.unlink")
+    @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
     def test_cleanup_port_lock_file_not_exists(
         self, mock_tempdir, mock_unlink, mock_exists
     ):
@@ -240,10 +240,10 @@ class TestRayPortManagerCleanup:
 
         mock_unlink.assert_not_called()
 
-    @patch("ray_mcp.core.managers.port_manager.os.path.exists")
-    @patch("ray_mcp.core.managers.port_manager.os.unlink")
-    @patch("ray_mcp.core.managers.port_manager.tempfile.gettempdir")
-    @patch("ray_mcp.core.managers.port_manager.LoggingUtility")
+    @patch("ray_mcp.managers.port_manager.os.path.exists")
+    @patch("ray_mcp.managers.port_manager.os.unlink")
+    @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
+    @patch("ray_mcp.managers.port_manager.LoggingUtility")
     def test_cleanup_port_lock_error_handling(
         self, mock_logging, mock_tempdir, mock_unlink, mock_exists
     ):
@@ -257,7 +257,7 @@ class TestRayPortManagerCleanup:
 
         mock_logging.log_warning.assert_called()
 
-    @patch("ray_mcp.core.managers.port_manager.tempfile.gettempdir")
+    @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
     def test_temp_dir_fallback(self, mock_tempdir):
         """Test fallback when temp directory is not accessible."""
         mock_tempdir.side_effect = OSError("Temp dir not accessible")
@@ -267,9 +267,9 @@ class TestRayPortManagerCleanup:
 
         assert temp_dir == "."
 
-    @patch("ray_mcp.core.managers.port_manager.os.listdir")
-    @patch("ray_mcp.core.managers.port_manager.os.kill")
-    @patch("ray_mcp.core.managers.port_manager.os.unlink")
+    @patch("ray_mcp.managers.port_manager.os.listdir")
+    @patch("ray_mcp.managers.port_manager.os.kill")
+    @patch("ray_mcp.managers.port_manager.os.unlink")
     @patch("builtins.open", new_callable=mock_open)
     def test_cleanup_stale_lock_files(
         self, mock_file, mock_unlink, mock_kill, mock_listdir
@@ -298,8 +298,8 @@ class TestRayPortManagerCleanup:
 class TestRayPortManagerErrorScenarios:
     """Test error handling and edge cases."""
 
-    @patch("ray_mcp.core.managers.port_manager.tempfile.gettempdir")
-    @patch("ray_mcp.core.managers.port_manager.LoggingUtility")
+    @patch("ray_mcp.managers.port_manager.tempfile.gettempdir")
+    @patch("ray_mcp.managers.port_manager.LoggingUtility")
     def test_temp_dir_error_handling(self, mock_logging, mock_tempdir):
         """Test handling of temp directory errors."""
         mock_tempdir.side_effect = OSError("Temp dir error")
@@ -310,8 +310,8 @@ class TestRayPortManagerErrorScenarios:
         temp_dir = manager._get_temp_dir()
         assert temp_dir == "."
 
-    @patch("ray_mcp.core.managers.port_manager.os.listdir")
-    @patch("ray_mcp.core.managers.port_manager.LoggingUtility")
+    @patch("ray_mcp.managers.port_manager.os.listdir")
+    @patch("ray_mcp.managers.port_manager.LoggingUtility")
     def test_cleanup_stale_files_error_handling(self, mock_logging, mock_listdir):
         """Test error handling during stale file cleanup."""
         mock_listdir.side_effect = OSError("Permission denied")
@@ -321,8 +321,8 @@ class TestRayPortManagerErrorScenarios:
 
         mock_logging.log_warning.assert_called()
 
-    @patch("ray_mcp.core.managers.port_manager.socket.socket")
-    @patch("ray_mcp.core.managers.port_manager.LoggingUtility")
+    @patch("ray_mcp.managers.port_manager.socket.socket")
+    @patch("ray_mcp.managers.port_manager.LoggingUtility")
     async def test_socket_error_handling(self, mock_logging, mock_socket):
         """Test handling of socket operation errors."""
         mock_socket.side_effect = OSError("Socket error")

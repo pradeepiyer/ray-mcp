@@ -35,7 +35,7 @@ test-smoke:
 	@uv run python -c "\
 import asyncio; \
 from ray_mcp.main import ray_manager; \
-from ray_mcp.core.unified_manager import RayUnifiedManager; \
+from ray_mcp.managers.unified_manager import RayUnifiedManager; \
 print('🔧 Testing System Architecture Integration'); \
 print('=' * 60); \
 print('✅ Architecture Validation:'); \

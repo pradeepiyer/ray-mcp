@@ -4,14 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray_mcp.core.foundation.base_managers import (
-    AsyncOperationMixin,
+from ray_mcp.foundation.base_managers import (
     BaseManager,
-    RayBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
+    ResourceManager,
 )
-from ray_mcp.core.foundation.import_utils import (
+from ray_mcp.foundation.import_utils import (
     get_logging_utils,
     get_ray_imports,
     is_google_cloud_available,
@@ -94,17 +91,19 @@ class TestBaseManager:
 
 
 @pytest.mark.fast
-class TestRayBaseManager:
-    """Test Ray base manager functionality."""
+class TestResourceManager:
+    """Test Resource manager functionality."""
 
-    def test_ray_base_manager_initialization(self):
-        """Test RayBaseManager initialization."""
+    def test_resource_manager_initialization(self):
+        """Test ResourceManager initialization."""
         state_manager = Mock()
 
-        class TestRayManager(RayBaseManager):
+        class TestResourceManager(ResourceManager):
             pass
 
-        manager = TestRayManager(state_manager)
+        manager = TestResourceManager(
+            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        )
         assert manager.state_manager == state_manager
         assert hasattr(manager, "_ray")
         assert hasattr(manager, "_JobSubmissionClient")
@@ -116,10 +115,12 @@ class TestRayBaseManager:
         """Test Ray availability checking."""
         state_manager = Mock()
 
-        class TestRayManager(RayBaseManager):
+        class TestResourceManager(ResourceManager):
             pass
 
-        manager = TestRayManager(state_manager)
+        manager = TestResourceManager(
+            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        )
 
         # Mock Ray as unavailable
         with patch.object(manager, "_RAY_AVAILABLE", False):
@@ -136,23 +137,25 @@ class TestRayBaseManager:
         state_manager = Mock()
         state_manager.is_initialized.return_value = False
 
-        class TestRayManager(RayBaseManager):
+        class TestResourceManager(ResourceManager):
             pass
 
-        manager = TestRayManager(state_manager)
+        manager = TestResourceManager(
+            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        )
 
         with pytest.raises(RuntimeError, match="Ray is not initialized"):
             manager._ensure_initialized()
 
 
 @pytest.mark.fast
-class TestMixins:
-    """Test mixin functionality."""
+class TestConsolidatedFunctionality:
+    """Test consolidated functionality in BaseManager."""
 
-    def test_validation_mixin(self):
-        """Test ValidationMixin functionality."""
+    def test_validation_functionality(self):
+        """Test validation functionality built into BaseManager."""
 
-        class TestValidationManager(BaseManager, ValidationMixin):
+        class TestValidationManager(BaseManager):
             pass
 
         state_manager = Mock()
@@ -164,10 +167,10 @@ class TestMixins:
         assert error_response is not None
         assert "job_id" in error_response.get("message", "")
 
-    def test_state_management_mixin(self):
-        """Test StateManagementMixin functionality."""
+    def test_state_management_functionality(self):
+        """Test state management functionality built into BaseManager."""
 
-        class TestStateManager(BaseManager, StateManagementMixin):
+        class TestStateManager(BaseManager):
             pass
 
         state_manager = Mock()
@@ -186,10 +189,10 @@ class TestMixins:
         assert manager._is_state_initialized() is True
 
     @pytest.mark.asyncio
-    async def test_async_operation_mixin(self):
-        """Test AsyncOperationMixin functionality."""
+    async def test_async_operation_functionality(self):
+        """Test async operation functionality built into BaseManager."""
 
-        class TestAsyncManager(BaseManager, AsyncOperationMixin):
+        class TestAsyncManager(BaseManager):
             async def test_operation(self):
                 return "success"
 
@@ -208,14 +211,12 @@ class TestMixins:
 
 @pytest.mark.fast
 class TestFullManagerIntegration:
-    """Test full manager with all mixins."""
+    """Test full manager with consolidated functionality."""
 
     def test_comprehensive_manager(self):
-        """Test a manager that uses all base classes and mixins."""
+        """Test a manager that uses ResourceManager with all capabilities."""
 
-        class ComprehensiveManager(
-            RayBaseManager, ValidationMixin, StateManagementMixin, AsyncOperationMixin
-        ):
+        class ComprehensiveManager(ResourceManager):
             async def test_operation(self, job_id: str):
                 # Validate input
                 validation_error = self._validate_job_id(job_id, "test")
@@ -232,7 +233,9 @@ class TestFullManagerIntegration:
         state_manager = Mock()
         state_manager.is_initialized.return_value = True
 
-        manager = ComprehensiveManager(state_manager)
+        manager = ComprehensiveManager(
+            state_manager, enable_ray=True, enable_kubernetes=True, enable_cloud=True
+        )
 
         # Test that all functionality is available
         assert hasattr(manager, "_validate_job_id")

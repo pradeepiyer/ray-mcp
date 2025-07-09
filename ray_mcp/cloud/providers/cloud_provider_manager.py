@@ -3,25 +3,14 @@
 import asyncio
 from typing import Any, Dict, Optional
 
-from ...foundation.base_managers import (
-    AsyncOperationMixin,
-    CloudProviderBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ...foundation.base_managers import ResourceManager
 from ...foundation.interfaces import CloudProvider, CloudProviderManager
 from ..config.cloud_provider_config import CloudProviderConfigManager
 from ..config.cloud_provider_detector import CloudProviderDetector
 from .gke_manager import GKEClusterManager
 
 
-class UnifiedCloudProviderManager(
-    CloudProviderBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    CloudProviderManager,
-):
+class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
     """Unified manager for all cloud provider operations."""
 
     def __init__(
@@ -31,7 +20,9 @@ class UnifiedCloudProviderManager(
         config_manager: Optional[CloudProviderConfigManager] = None,
         gke_manager: Optional[GKEClusterManager] = None,
     ):
-        super().__init__(state_manager)
+        super().__init__(
+            state_manager, enable_ray=False, enable_kubernetes=True, enable_cloud=True
+        )
         self._detector = detector or CloudProviderDetector(state_manager)
         self._config_manager = config_manager or CloudProviderConfigManager(
             state_manager

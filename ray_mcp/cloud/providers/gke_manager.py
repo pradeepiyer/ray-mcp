@@ -7,12 +7,7 @@ import os
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from ...foundation.base_managers import (
-    AsyncOperationMixin,
-    CloudProviderBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ...foundation.base_managers import ResourceManager
 from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
 from ...foundation.interfaces import CloudProvider, GKEManager
 from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
@@ -27,13 +22,7 @@ except ImportError:
     pass
 
 
-class GKEClusterManager(
-    CloudProviderBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    GKEManager,
-):
+class GKEClusterManager(ResourceManager, GKEManager):
     """Manages GKE clusters with authentication and discovery capabilities."""
 
     def __init__(
@@ -43,12 +32,9 @@ class GKEClusterManager(
         config_manager: Optional[CloudProviderConfigManager] = None,
         kubernetes_config: Optional[KubernetesConfigManager] = None,
     ):
-        super().__init__(state_manager)
-
-        # Get Kubernetes imports for this manager as well
-        k8s_imports = get_kubernetes_imports()
-        self._client = k8s_imports["client"]
-        self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
+        super().__init__(
+            state_manager, enable_ray=False, enable_kubernetes=True, enable_cloud=True
+        )
 
         self._detector = detector or CloudProviderDetector(state_manager)
         self._config_manager = config_manager or CloudProviderConfigManager(

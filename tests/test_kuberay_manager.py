@@ -8,13 +8,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.kubernetes.crds.ray_cluster_crd import RayClusterCRDManager
-from ray_mcp.core.kubernetes.crds.ray_job_crd import RayJobCRDManager
-from ray_mcp.core.kubernetes.managers.kuberay_cluster_manager import (
+from ray_mcp.kubernetes.crds.ray_cluster_crd import RayClusterCRDManager
+from ray_mcp.kubernetes.crds.ray_job_crd import RayJobCRDManager
+from ray_mcp.kubernetes.managers.kuberay_cluster_manager import (
     KubeRayClusterManagerImpl,
 )
-from ray_mcp.core.kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
-from ray_mcp.core.managers.state_manager import RayStateManager
+from ray_mcp.kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
+from ray_mcp.managers.state_manager import RayStateManager
 
 
 class TestRayClusterCRD:
@@ -100,7 +100,7 @@ class TestRayClusterCRD:
         assert result.get("valid") is False
         assert len(result.get("errors", [])) > 0
 
-    @patch("ray_mcp.core.kubernetes.crds.ray_cluster_crd.YAML_AVAILABLE", True)
+    @patch("ray_mcp.kubernetes.crds.ray_cluster_crd.YAML_AVAILABLE", True)
     def test_to_yaml(self):
         """Test YAML serialization."""
         spec = {"test": "data"}
@@ -432,7 +432,7 @@ class TestKubeRayUnifiedManagerIntegration:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from ray_mcp.core.managers.unified_manager import RayUnifiedManager
+        from ray_mcp.managers.unified_manager import RayUnifiedManager
 
         self.unified_manager = RayUnifiedManager()
 

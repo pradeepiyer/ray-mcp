@@ -48,8 +48,8 @@ class TestRayMCPServer:
         print("\n🔧 Testing system architecture and component integration...")
 
         # Verify unified manager architecture
-        from ray_mcp.core.managers.unified_manager import RayUnifiedManager
         from ray_mcp.main import ray_manager
+        from ray_mcp.managers.unified_manager import RayUnifiedManager
 
         assert isinstance(
             ray_manager, RayUnifiedManager

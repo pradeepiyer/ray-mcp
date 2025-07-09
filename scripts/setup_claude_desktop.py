@@ -23,7 +23,7 @@ async def check_environment():
         print(f"✅ ray-mcp is installed at: {ray_mcp.__file__}")
         
         # Get the environment check
-        from ray_mcp.core.unified_manager import RayUnifiedManager
+        from ray_mcp.managers.unified_manager import RayUnifiedManager
         unified_manager = RayUnifiedManager()
         env_result = await unified_manager.check_environment()
         

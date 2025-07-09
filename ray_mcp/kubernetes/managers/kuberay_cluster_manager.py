@@ -3,24 +3,13 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from ...foundation.base_managers import (
-    AsyncOperationMixin,
-    KubeRayBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ...foundation.base_managers import ResourceManager
 from ...foundation.interfaces import KubeRayClusterManager
 from ..crds.crd_operations import CRDOperationsClient
 from ..crds.ray_cluster_crd import RayClusterCRDManager
 
 
-class KubeRayClusterManagerImpl(
-    KubeRayBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    KubeRayClusterManager,
-):
+class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
     """Manages Ray cluster lifecycle using KubeRay Custom Resources."""
 
     def __init__(
@@ -29,7 +18,9 @@ class KubeRayClusterManagerImpl(
         crd_operations: Optional[CRDOperationsClient] = None,
         cluster_crd: Optional[RayClusterCRDManager] = None,
     ):
-        super().__init__(state_manager)
+        super().__init__(
+            state_manager, enable_ray=True, enable_kubernetes=True, enable_cloud=False
+        )
         self._crd_operations = crd_operations or CRDOperationsClient()
         self._cluster_crd = cluster_crd or RayClusterCRDManager()
         self._core_v1_api = None

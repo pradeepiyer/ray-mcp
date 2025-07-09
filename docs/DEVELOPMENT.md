@@ -171,8 +171,8 @@ logger.setLevel(logging.DEBUG)
 
 ```python
 # Test individual components directly
-from ray_mcp.core.state_manager import RayStateManager
-from ray_mcp.core.cluster_manager import RayClusterManager
+from ray_mcp.managers.state_manager import RayStateManager
+from ray_mcp.managers.cluster_manager import RayClusterManager
 
 state_mgr = RayStateManager()
 cluster_mgr = RayClusterManager(state_mgr, port_mgr)

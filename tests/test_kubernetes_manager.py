@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.kubernetes.managers.kubernetes_manager import KubernetesClusterManager
-from ray_mcp.core.managers.state_manager import RayStateManager
+from ray_mcp.kubernetes.managers.kubernetes_manager import KubernetesClusterManager
+from ray_mcp.managers.state_manager import RayStateManager
 
 
 class TestKubernetesManager:
@@ -106,7 +106,7 @@ class TestKubernetesManagerIntegration:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from ray_mcp.core.managers.unified_manager import RayUnifiedManager
+        from ray_mcp.managers.unified_manager import RayUnifiedManager
 
         self.unified_manager = RayUnifiedManager()
 

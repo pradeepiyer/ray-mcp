@@ -7,12 +7,7 @@ import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from ..foundation.base_managers import (
-    AsyncOperationMixin,
-    RayBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ..foundation.base_managers import ResourceManager
 from ..foundation.interfaces import ClusterManager, PortManager, StateManager
 
 try:
@@ -26,13 +21,7 @@ except ImportError:
     from worker_manager import WorkerManager
 
 
-class RayClusterManager(
-    RayBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    ClusterManager,
-):
+class RayClusterManager(ResourceManager, ClusterManager):
     """Manages Ray cluster lifecycle operations with clean separation of concerns."""
 
     def __init__(
@@ -41,7 +30,9 @@ class RayClusterManager(
         port_manager: PortManager,
         worker_manager: Optional[WorkerManager] = None,
     ):
-        super().__init__(state_manager)
+        super().__init__(
+            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        )
         self._port_manager = port_manager
         self._worker_manager = worker_manager or WorkerManager()
         self._head_node_process: Optional[subprocess.Popen] = None

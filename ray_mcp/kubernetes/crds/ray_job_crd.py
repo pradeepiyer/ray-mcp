@@ -1,30 +1,14 @@
 """Ray Job Custom Resource Definition management."""
 
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 import uuid
 
-try:
-    import yaml
-
-    YAML_AVAILABLE = True
-except ImportError:
-    YAML_AVAILABLE = False
-    yaml = None
-
-from ...foundation.import_utils import get_logging_utils
 from ...foundation.interfaces import RayJobCRD
+from .base_crd_manager import BaseCRDManager
 
 
-class RayJobCRDManager(RayJobCRD):
+class RayJobCRDManager(BaseCRDManager, RayJobCRD):
     """Manager for RayJob Custom Resource Definitions."""
-
-    def __init__(self):
-        """Initialize the RayJob CRD manager."""
-        # Get utilities from import system
-        logging_utils = get_logging_utils()
-        self._LoggingUtility = logging_utils["LoggingUtility"]
-        self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
     def create_spec(
         self,
@@ -32,16 +16,12 @@ class RayJobCRDManager(RayJobCRD):
         runtime_env: Optional[Dict[str, Any]] = None,
         job_name: Optional[str] = None,
         namespace: str = "default",
-        cluster_selector: Optional[
-            str
-        ] = None,  # Fixed: Accept string (cluster name) or dict (label selector)
+        cluster_selector: Optional[str] = None,
         suspend: bool = False,
         ttl_seconds_after_finished: Optional[int] = 86400,  # 24 hours
         active_deadline_seconds: Optional[int] = None,
         backoff_limit: int = 0,
-        shutdown_after_job_finishes: Optional[
-            bool
-        ] = None,  # Changed to Optional for intelligent defaults
+        shutdown_after_job_finishes: Optional[bool] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Create RayJob specification with validation."""
@@ -109,15 +89,7 @@ class RayJobCRDManager(RayJobCRD):
         ray_job_spec = {
             "apiVersion": "ray.io/v1",
             "kind": "RayJob",
-            "metadata": {
-                "name": job_name,
-                "namespace": namespace,
-                "labels": {
-                    "app.kubernetes.io/name": "rayjob",
-                    "app.kubernetes.io/component": "ray-job",
-                    "app.kubernetes.io/managed-by": "ray-mcp",
-                },
-            },
+            "metadata": self._build_base_metadata(job_name, namespace, "job", **kwargs),
             "spec": {
                 "entrypoint": entrypoint,
                 "runtimeEnvYAML": (
@@ -156,42 +128,16 @@ class RayJobCRDManager(RayJobCRD):
         if active_deadline_seconds:
             ray_job_spec["spec"]["activeDeadlineSeconds"] = active_deadline_seconds
 
-        # Add any additional kwargs to metadata labels
-        if kwargs:
-            ray_job_spec["metadata"]["labels"].update(
-                {
-                    f"ray-mcp.{k}": str(v)
-                    for k, v in kwargs.items()
-                    if isinstance(v, (str, int, bool))
-                }
-            )
-
         return self._ResponseFormatter.format_success_response(
             job_spec=ray_job_spec, job_name=job_name
         )
 
     def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """Validate RayJob specification."""
-        errors = []
-
-        # Check required top-level fields
         required_fields = ["apiVersion", "kind", "metadata", "spec"]
-        for field in required_fields:
-            if field not in spec:
-                errors.append(f"Missing required field: {field}")
-
-        if spec.get("apiVersion") != "ray.io/v1":
-            errors.append(
-                f"Invalid apiVersion: expected 'ray.io/v1', got '{spec.get('apiVersion')}'"
-            )
-
-        if spec.get("kind") != "RayJob":
-            errors.append(f"Invalid kind: expected 'RayJob', got '{spec.get('kind')}'")
-
-        # Validate metadata
-        metadata = spec.get("metadata", {})
-        if not metadata.get("name"):
-            errors.append("Missing metadata.name")
+        errors = self._validate_required_fields(
+            spec, required_fields, "ray.io/v1", "RayJob"
+        )
 
         # Validate spec
         ray_spec = spec.get("spec", {})
@@ -208,10 +154,10 @@ class RayJobCRDManager(RayJobCRD):
         shutdown_after_job_finishes = ray_spec.get("shutdownAfterJobFinishes", True)
 
         if ttl is not None:
-            if not isinstance(ttl, int) or ttl < 0:
-                errors.append(
-                    "spec.ttlSecondsAfterFinished must be a non-negative integer"
-                )
+            if error := self._validate_positive_integer(
+                ttl, "spec.ttlSecondsAfterFinished", allow_zero=True
+            ):
+                errors.append(error)
 
             # Validate TTL compatibility with shutdown setting
             if not shutdown_after_job_finishes:
@@ -226,15 +172,17 @@ class RayJobCRDManager(RayJobCRD):
 
         # Validate backoff limit if present
         backoff_limit = ray_spec.get("backoffLimit")
-        if backoff_limit is not None:
-            if not isinstance(backoff_limit, int) or backoff_limit < 0:
-                errors.append("spec.backoffLimit must be a non-negative integer")
+        if error := self._validate_positive_integer(
+            backoff_limit, "spec.backoffLimit", allow_zero=True
+        ):
+            errors.append(error)
 
         # Validate active deadline if present
         deadline = ray_spec.get("activeDeadlineSeconds")
-        if deadline is not None:
-            if not isinstance(deadline, int) or deadline <= 0:
-                errors.append("spec.activeDeadlineSeconds must be a positive integer")
+        if error := self._validate_positive_integer(
+            deadline, "spec.activeDeadlineSeconds"
+        ):
+            errors.append(error)
 
         # Validate cluster selector if present
         selector = ray_spec.get("clusterSelector")
@@ -252,19 +200,6 @@ class RayJobCRDManager(RayJobCRD):
             valid=len(errors) == 0, errors=errors
         )
 
-    def to_yaml(self, spec: Dict[str, Any]) -> str:
-        """Convert specification to YAML."""
-        if not YAML_AVAILABLE:
-            raise RuntimeError(
-                "PyYAML is not available. Please install pyyaml package."
-            )
-
-        return yaml.dump(spec, default_flow_style=False, sort_keys=False)
-
-    def to_json(self, spec: Dict[str, Any]) -> str:
-        """Convert specification to JSON."""
-        return json.dumps(spec, indent=2)
-
     def _validate_runtime_env(self, runtime_env: Dict[str, Any]) -> Dict[str, Any]:
         """Validate runtime environment specification."""
         errors = []
@@ -274,9 +209,10 @@ class RayJobCRDManager(RayJobCRD):
 
         # Validate working directory
         working_dir = runtime_env.get("working_dir")
-        if working_dir is not None:
-            if not isinstance(working_dir, str):
-                errors.append("runtime_env.working_dir must be a string")
+        if error := self._validate_non_empty_string(
+            working_dir, "runtime_env.working_dir"
+        ):
+            errors.append(error)
 
         # Validate pip packages
         pip = runtime_env.get("pip")
@@ -322,11 +258,15 @@ class RayJobCRDManager(RayJobCRD):
 
     def _format_runtime_env(self, runtime_env: Dict[str, Any]) -> str:
         """Format runtime environment as YAML string."""
-        if not YAML_AVAILABLE:
-            # Fallback to JSON if YAML not available
-            return json.dumps(runtime_env)
+        try:
+            import yaml
 
-        return yaml.dump(runtime_env, default_flow_style=False)
+            return yaml.dump(runtime_env, default_flow_style=False)
+        except ImportError:
+            # Fallback to JSON if YAML not available
+            import json
+
+            return json.dumps(runtime_env)
 
     def _build_default_cluster_spec(self) -> Dict[str, Any]:
         """Build default RayCluster specification for the job."""

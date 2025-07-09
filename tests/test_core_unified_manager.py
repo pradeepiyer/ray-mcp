@@ -8,18 +8,18 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.unified_manager import RayUnifiedManager
+from ray_mcp.managers.unified_manager import RayUnifiedManager
 
 
 @pytest.mark.fast
 class TestRayUnifiedManagerCore:
     """Test core unified manager functionality."""
 
-    @patch("ray_mcp.core.managers.unified_manager.RayStateManager")
-    @patch("ray_mcp.core.managers.unified_manager.RayPortManager")
-    @patch("ray_mcp.core.managers.unified_manager.RayClusterManager")
-    @patch("ray_mcp.core.managers.unified_manager.RayJobManager")
-    @patch("ray_mcp.core.managers.unified_manager.RayLogManager")
+    @patch("ray_mcp.managers.unified_manager.RayStateManager")
+    @patch("ray_mcp.managers.unified_manager.RayPortManager")
+    @patch("ray_mcp.managers.unified_manager.RayClusterManager")
+    @patch("ray_mcp.managers.unified_manager.RayJobManager")
+    @patch("ray_mcp.managers.unified_manager.RayLogManager")
     def test_manager_instantiation_creates_all_components(
         self,
         mock_log_mgr,
@@ -89,9 +89,9 @@ class TestRayUnifiedManagerCore:
         manager = RayUnifiedManager()
 
         # Import concrete types to access private attributes
-        from ray_mcp.core.managers.cluster_manager import RayClusterManager
-        from ray_mcp.core.managers.job_manager import RayJobManager
-        from ray_mcp.core.managers.log_manager import RayLogManager
+        from ray_mcp.managers.cluster_manager import RayClusterManager
+        from ray_mcp.managers.job_manager import RayJobManager
+        from ray_mcp.managers.log_manager import RayLogManager
 
         cluster_mgr = manager._cluster_manager
         job_mgr = manager._job_manager
@@ -431,9 +431,9 @@ class TestRayUnifiedManagerStateConsistency:
 
         # All components should share the same state manager instance
         # Cast to concrete types to access state_manager property
-        from ray_mcp.core.managers.cluster_manager import RayClusterManager
-        from ray_mcp.core.managers.job_manager import RayJobManager
-        from ray_mcp.core.managers.log_manager import RayLogManager
+        from ray_mcp.managers.cluster_manager import RayClusterManager
+        from ray_mcp.managers.job_manager import RayJobManager
+        from ray_mcp.managers.log_manager import RayLogManager
 
         cluster_mgr = manager._cluster_manager
         job_mgr = manager._job_manager

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.state_manager import RayStateManager
+from ray_mcp.managers.state_manager import RayStateManager
 
 
 @pytest.mark.fast
@@ -177,8 +177,8 @@ class TestRayStateManagerThreadSafety:
 class TestRayStateManagerValidation:
     """Test state validation functionality."""
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
     def test_validation_with_ray_not_initialized(self, mock_ray):
         """Test validation when Ray is not initialized."""
         mock_ray.is_initialized.return_value = False
@@ -193,8 +193,8 @@ class TestRayStateManagerValidation:
         assert not state["initialized"]
         mock_ray.is_initialized.assert_called()
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
     def test_validation_with_ray_initialized_and_valid_cluster(self, mock_ray):
         """Test validation when Ray is initialized with valid cluster."""
         mock_ray.is_initialized.return_value = True
@@ -213,7 +213,7 @@ class TestRayStateManagerValidation:
         mock_ray.is_initialized.assert_called()
         mock_ray.get_runtime_context.assert_called()
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", False)
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", False)
     def test_validation_with_ray_unavailable(self):
         """Test validation when Ray is not available."""
         manager = RayStateManager(validation_interval=0.01)
@@ -225,8 +225,8 @@ class TestRayStateManagerValidation:
 
         assert not state["initialized"]
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
     def test_validation_clears_invalid_state(self, mock_ray):
         """Test that validation clears invalid state when Ray fails validation."""
         mock_ray.is_initialized.return_value = False
@@ -249,8 +249,8 @@ class TestRayStateManagerValidation:
 
     def test_validation_interval_prevents_excessive_validation(self):
         """Test that validation interval prevents excessive validation calls."""
-        with patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True):
-            with patch("ray_mcp.core.managers.state_manager.ray") as mock_ray:
+        with patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True):
+            with patch("ray_mcp.managers.state_manager.ray") as mock_ray:
                 mock_ray.is_initialized.return_value = True
 
                 manager = RayStateManager(validation_interval=1.0)  # 1 second interval
@@ -268,9 +268,9 @@ class TestRayStateManagerValidation:
 class TestRayStateManagerErrorHandling:
     """Test error handling in state validation."""
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
-    @patch("ray_mcp.core.managers.state_manager.LoggingUtility")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.LoggingUtility")
     def test_validation_error_handling(self, mock_logging, mock_ray):
         """Test that validation errors are properly handled and logged."""
         mock_ray.is_initialized.side_effect = Exception("Ray validation error")
@@ -285,8 +285,8 @@ class TestRayStateManagerErrorHandling:
         assert not state["initialized"]
         mock_logging.log_error.assert_called()
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
     def test_runtime_context_error_handling(self, mock_ray):
         """Test handling of runtime context errors during validation."""
         mock_ray.is_initialized.return_value = True
@@ -301,8 +301,8 @@ class TestRayStateManagerErrorHandling:
 
         assert not state["initialized"]
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
     def test_node_id_error_handling(self, mock_ray):
         """Test handling of node ID errors during validation."""
         mock_ray.is_initialized.return_value = True
@@ -319,8 +319,8 @@ class TestRayStateManagerErrorHandling:
 
         assert not state["initialized"]
 
-    @patch("ray_mcp.core.managers.state_manager.RAY_AVAILABLE", True)
-    @patch("ray_mcp.core.managers.state_manager.ray")
+    @patch("ray_mcp.managers.state_manager.RAY_AVAILABLE", True)
+    @patch("ray_mcp.managers.state_manager.ray")
     def test_validation_exception_recovery_race_condition_fix(self, mock_ray):
         """Test that validation can recover from exceptions without race condition.
 

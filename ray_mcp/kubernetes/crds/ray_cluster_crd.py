@@ -1,30 +1,17 @@
 """Ray Cluster Custom Resource Definition management."""
 
-import json
 from typing import Any, Dict, List, Optional
 import uuid
 
-try:
-    import yaml
-
-    YAML_AVAILABLE = True
-except ImportError:
-    YAML_AVAILABLE = False
-    yaml = None
-
-from ...foundation.import_utils import get_logging_utils
 from ...foundation.interfaces import RayClusterCRD
+from .base_crd_manager import YAML_AVAILABLE, BaseCRDManager
+
+# Re-export YAML_AVAILABLE for backward compatibility with tests
+__all__ = ["RayClusterCRDManager", "YAML_AVAILABLE"]
 
 
-class RayClusterCRDManager(RayClusterCRD):
+class RayClusterCRDManager(BaseCRDManager, RayClusterCRD):
     """Manager for RayCluster Custom Resource Definitions."""
-
-    def __init__(self):
-        """Initialize the RayCluster CRD manager."""
-        # Get utilities from import system
-        logging_utils = get_logging_utils()
-        self._LoggingUtility = logging_utils["LoggingUtility"]
-        self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
     def create_spec(
         self,
@@ -66,15 +53,9 @@ class RayClusterCRDManager(RayClusterCRD):
         ray_cluster_spec = {
             "apiVersion": "ray.io/v1",
             "kind": "RayCluster",
-            "metadata": {
-                "name": cluster_name,
-                "namespace": namespace,
-                "labels": {
-                    "app.kubernetes.io/name": "raycluster",
-                    "app.kubernetes.io/component": "ray-cluster",
-                    "app.kubernetes.io/managed-by": "ray-mcp",
-                },
-            },
+            "metadata": self._build_base_metadata(
+                cluster_name, namespace, "cluster", **kwargs
+            ),
             "spec": {
                 "rayVersion": ray_version,
                 "enableInClusterService": True,
@@ -95,44 +76,16 @@ class RayClusterCRDManager(RayClusterCRD):
         if suspend:
             ray_cluster_spec["spec"]["suspend"] = True
 
-        # Add any additional kwargs to metadata labels
-        if kwargs:
-            ray_cluster_spec["metadata"]["labels"].update(
-                {
-                    f"ray-mcp.{k}": str(v)
-                    for k, v in kwargs.items()
-                    if isinstance(v, (str, int, bool))
-                }
-            )
-
         return self._ResponseFormatter.format_success_response(
             cluster_spec=ray_cluster_spec, cluster_name=cluster_name
         )
 
     def validate_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         """Validate RayCluster specification."""
-        errors = []
-
-        # Check required top-level fields
         required_fields = ["apiVersion", "kind", "metadata", "spec"]
-        for field in required_fields:
-            if field not in spec:
-                errors.append(f"Missing required field: {field}")
-
-        if spec.get("apiVersion") != "ray.io/v1":
-            errors.append(
-                f"Invalid apiVersion: expected 'ray.io/v1', got '{spec.get('apiVersion')}'"
-            )
-
-        if spec.get("kind") != "RayCluster":
-            errors.append(
-                f"Invalid kind: expected 'RayCluster', got '{spec.get('kind')}'"
-            )
-
-        # Validate metadata
-        metadata = spec.get("metadata", {})
-        if not metadata.get("name"):
-            errors.append("Missing metadata.name")
+        errors = self._validate_required_fields(
+            spec, required_fields, "ray.io/v1", "RayCluster"
+        )
 
         # Validate spec
         ray_spec = spec.get("spec", {})
@@ -164,19 +117,6 @@ class RayClusterCRDManager(RayClusterCRD):
         return self._ResponseFormatter.format_success_response(
             valid=len(errors) == 0, errors=errors
         )
-
-    def to_yaml(self, spec: Dict[str, Any]) -> str:
-        """Convert specification to YAML."""
-        if not YAML_AVAILABLE:
-            raise RuntimeError(
-                "PyYAML is not available. Please install pyyaml package."
-            )
-
-        return yaml.dump(spec, default_flow_style=False, sort_keys=False)
-
-    def to_json(self, spec: Dict[str, Any]) -> str:
-        """Convert specification to JSON."""
-        return json.dumps(spec, indent=2)
 
     def _build_head_group_spec(self, head_spec: Dict[str, Any]) -> Dict[str, Any]:
         """Build head group specification."""
@@ -327,24 +267,23 @@ class RayClusterCRDManager(RayClusterCRD):
 
         # Validate GPU requirements
         num_gpus = node_spec.get("num_gpus")
-        if num_gpus is not None:
-            if not isinstance(num_gpus, int) or num_gpus < 0:
-                errors.append(f"{node_type}: num_gpus must be a non-negative integer")
+        if error := self._validate_positive_integer(
+            num_gpus, f"{node_type}: num_gpus", allow_zero=True
+        ):
+            errors.append(error)
 
         # Validate replica count for workers
         if node_type.startswith("worker"):
             replicas = node_spec.get("replicas")
-            if replicas is not None:
-                if not isinstance(replicas, int) or replicas < 0:
-                    errors.append(
-                        f"{node_type}: replicas must be a non-negative integer"
-                    )
+            if error := self._validate_positive_integer(
+                replicas, f"{node_type}: replicas", allow_zero=True
+            ):
+                errors.append(error)
 
         # Validate image format
         image = node_spec.get("image")
-        if image is not None:
-            if not isinstance(image, str) or not image.strip():
-                errors.append(f"{node_type}: image must be a non-empty string")
+        if error := self._validate_non_empty_string(image, f"{node_type}: image"):
+            errors.append(error)
 
         return {"valid": len(errors) == 0, "errors": errors}
 

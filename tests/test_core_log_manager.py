@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.log_manager import RayLogManager
+from ray_mcp.managers.log_manager import RayLogManager
 
 
 @pytest.mark.fast
@@ -305,7 +305,7 @@ class TestLogProcessorMemoryEfficiency:
 
     def test_stream_logs_with_limits_memory_efficient_processing(self):
         """Test that large logs are processed memory-efficiently."""
-        from ray_mcp.core.foundation.logging_utils import LogProcessor
+        from ray_mcp.foundation.logging_utils import LogProcessor
 
         # Create a large log string (5MB)
         large_log = "INFO: Processing data\n" * 100000
@@ -323,7 +323,7 @@ class TestLogProcessorMemoryEfficiency:
 
     def test_stream_logs_with_limits_per_line_size_protection(self):
         """Test protection against individual large lines."""
-        from ray_mcp.core.foundation.logging_utils import LogProcessor
+        from ray_mcp.foundation.logging_utils import LogProcessor
 
         # Create log with one very large line
         large_line = "ERROR: " + "A" * 50000  # 50KB line
@@ -342,7 +342,7 @@ class TestLogProcessorMemoryEfficiency:
 
     async def test_stream_logs_with_pagination_large_logs_estimation(self):
         """Test that pagination handles large logs efficiently with estimation."""
-        from ray_mcp.core.foundation.logging_utils import LogProcessor
+        from ray_mcp.foundation.logging_utils import LogProcessor
 
         # Create a large log string (15MB)
         large_log = "INFO: Processing data\n" * 300000

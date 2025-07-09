@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.unified_manager import RayUnifiedManager
+from ray_mcp.managers.unified_manager import RayUnifiedManager
 
 
 @pytest.mark.fast
@@ -102,9 +102,9 @@ class TestRayClusterManagerConnectionType:
     @pytest.fixture
     def cluster_manager(self):
         """Create a RayClusterManager instance for testing."""
-        from ray_mcp.core.managers.cluster_manager import RayClusterManager
-        from ray_mcp.core.managers.port_manager import RayPortManager
-        from ray_mcp.core.managers.state_manager import RayStateManager
+        from ray_mcp.managers.cluster_manager import RayClusterManager
+        from ray_mcp.managers.port_manager import RayPortManager
+        from ray_mcp.managers.state_manager import RayStateManager
 
         state_manager = RayStateManager()
         port_manager = RayPortManager()
@@ -165,9 +165,7 @@ class TestRayClusterManagerConnectionType:
         cluster_manager._port_manager.find_free_port = AsyncMock(return_value=8265)
 
         # Mock subprocess for head node - configure the Mock properly
-        with patch(
-            "ray_mcp.core.managers.cluster_manager.subprocess"
-        ) as mock_subprocess:
+        with patch("ray_mcp.managers.cluster_manager.subprocess") as mock_subprocess:
             mock_process = Mock()
             mock_process.communicate.return_value = (
                 "stdout output",
@@ -216,9 +214,9 @@ class TestRayClusterManagerAddressParsing:
     @pytest.fixture
     def cluster_manager(self):
         """Create a RayClusterManager instance for testing."""
-        from ray_mcp.core.managers.cluster_manager import RayClusterManager
-        from ray_mcp.core.managers.port_manager import RayPortManager
-        from ray_mcp.core.managers.state_manager import RayStateManager
+        from ray_mcp.managers.cluster_manager import RayClusterManager
+        from ray_mcp.managers.port_manager import RayPortManager
+        from ray_mcp.managers.state_manager import RayStateManager
 
         state_manager = RayStateManager()
         port_manager = RayPortManager()

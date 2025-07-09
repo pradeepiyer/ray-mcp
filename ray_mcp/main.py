@@ -21,9 +21,9 @@ from mcp.types import (
 )
 
 from . import __version__
-from .core.foundation.import_utils import is_ray_available
-from .core.foundation.logging_utils import LoggingUtility
-from .core.managers.unified_manager import RayUnifiedManager
+from .foundation.import_utils import is_ray_available
+from .foundation.logging_utils import LoggingUtility
+from .managers.unified_manager import RayUnifiedManager
 from .tool_registry import ToolRegistry
 
 # Check Ray availability

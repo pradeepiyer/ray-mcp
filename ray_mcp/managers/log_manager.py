@@ -2,27 +2,18 @@
 
 from typing import Any, Dict, Optional
 
-from ..foundation.base_managers import (
-    AsyncOperationMixin,
-    RayBaseManager,
-    StateManagementMixin,
-    ValidationMixin,
-)
+from ..foundation.base_managers import ResourceManager
 from ..foundation.interfaces import LogManager
 from ..foundation.logging_utils import LogProcessor
 
 
-class RayLogManager(
-    RayBaseManager,
-    ValidationMixin,
-    StateManagementMixin,
-    AsyncOperationMixin,
-    LogManager,
-):
+class RayLogManager(ResourceManager, LogManager):
     """Manages log retrieval operations with unified patterns and memory protection."""
 
     def __init__(self, state_manager):
-        super().__init__(state_manager)
+        super().__init__(
+            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        )
         self._log_processor = LogProcessor()
 
     async def retrieve_logs(

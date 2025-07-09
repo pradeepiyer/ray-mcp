@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.job_manager import RayJobManager
+from ray_mcp.managers.job_manager import RayJobManager
 
 
 @pytest.mark.fast
@@ -483,9 +483,7 @@ class TestRayJobManagerErrorHandling:
         mock_job_client.submit_job.return_value = "job_filtered"
 
         # Mock inspect.signature to return specific parameters
-        with patch(
-            "ray_mcp.core.managers.job_manager.inspect.signature"
-        ) as mock_signature:
+        with patch("ray_mcp.managers.job_manager.inspect.signature") as mock_signature:
             mock_sig = Mock()
             mock_sig.parameters.keys.return_value = [
                 "entrypoint",

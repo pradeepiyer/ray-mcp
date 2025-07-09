@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.core.managers.unified_manager import RayUnifiedManager
+from ray_mcp.managers.unified_manager import RayUnifiedManager
 from ray_mcp.tool_registry import ToolRegistry
 
 
