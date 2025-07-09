@@ -118,7 +118,9 @@ class KubernetesConfigManager(KubernetesConfig):
                     ),
                 )
 
-            contexts, active_context = await asyncio.to_thread(self._config.list_kube_config_contexts)
+            contexts, active_context = await asyncio.to_thread(
+                self._config.list_kube_config_contexts
+            )
             context_list = []
 
             for ctx in contexts:

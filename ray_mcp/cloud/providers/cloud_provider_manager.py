@@ -294,7 +294,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
 
             k8s_config = KubernetesConfigManager()
-            return k8s_config.list_contexts()
+            return await k8s_config.list_contexts()
 
         except Exception as e:
             return self._response_formatter.format_error_response(

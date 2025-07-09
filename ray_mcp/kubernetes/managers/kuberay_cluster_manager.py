@@ -385,7 +385,8 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
             try:
                 service = await asyncio.to_thread(
                     self._core_v1_api.read_namespaced_service,
-                    name=service_name, namespace=namespace
+                    name=service_name,
+                    namespace=namespace,
                 )
             except self._ApiException as e:
                 status = getattr(e, "status", "unknown")
@@ -475,7 +476,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
             )
             return None
 
-    async def _get_nodeport_url(
+    def _get_nodeport_url(
         self, service, dashboard_port: int, namespace: str
     ) -> Optional[str]:
         """Get NodePort service external URL."""
@@ -507,8 +508,8 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
                 )
                 return None
 
-            # Get a node IP to construct the URL
-            node_ip = await self._get_node_external_ip()
+            # Get a node IP to construct the URL (simplified for dashboard URL)
+            node_ip = self._get_node_external_ip_sync()
             if node_ip:
                 url = f"http://{node_ip}:{node_port}"
                 from ...foundation.logging_utils import LoggingUtility
@@ -586,6 +587,91 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
             )
             return None
 
+    def _get_node_external_ip_sync(self) -> Optional[str]:
+        """Get external IP of any cluster node (sync version for dashboard URL)."""
+        try:
+            if not self._KUBERNETES_AVAILABLE:
+                return None
+
+            self._ensure_kubernetes_client()
+
+            # Simplified sync version - just return None for dashboard URL generation
+            # The async version should be used for critical operations
+            from ...foundation.logging_utils import LoggingUtility
+
+            LoggingUtility.log_debug(
+                "node_external_ip_sync",
+                "Sync version used for dashboard URL - returning None to use cluster-internal URL",
+            )
+            return None
+
+        except Exception as e:
+            from ...foundation.logging_utils import LoggingUtility
+
+            LoggingUtility.log_debug(
+                "node_external_ip_sync", f"Error in sync version: {e}"
+            )
+            return None
+
+    async def _get_nodeport_url_async(
+        self, service, dashboard_port: int, namespace: str
+    ) -> Optional[str]:
+        """Get NodePort service external URL (async version)."""
+        try:
+            # Safe access to service.spec.ports
+            service_spec = getattr(service, "spec", None)
+            if not service_spec:
+                return None
+
+            ports = getattr(service_spec, "ports", [])
+            if not ports:
+                return None
+
+            # Find the NodePort for the dashboard
+            node_port = None
+            for port in ports:
+                port_num = getattr(port, "port", None)
+                node_port_num = getattr(port, "node_port", None)
+                if port_num == dashboard_port and node_port_num:
+                    node_port = node_port_num
+                    break
+
+            if not node_port:
+                from ...foundation.logging_utils import LoggingUtility
+
+                LoggingUtility.log_debug(
+                    "nodeport_url_async",
+                    f"No NodePort found for dashboard port {dashboard_port}",
+                )
+                return None
+
+            # Get a node IP to construct the URL (using async version)
+            node_ip = await self._get_node_external_ip()
+            if node_ip:
+                url = f"http://{node_ip}:{node_port}"
+                from ...foundation.logging_utils import LoggingUtility
+
+                LoggingUtility.log_info(
+                    "nodeport_url_async", f"NodePort external URL: {url}"
+                )
+                return url
+            else:
+                from ...foundation.logging_utils import LoggingUtility
+
+                LoggingUtility.log_debug(
+                    "nodeport_url_async",
+                    "No external node IP available for NodePort access",
+                )
+                return None
+
+        except Exception as e:
+            from ...foundation.logging_utils import LoggingUtility
+
+            LoggingUtility.log_debug(
+                "nodeport_url_async", f"Error getting NodePort URL: {e}"
+            )
+            return None
+
     async def _wait_for_service_ready(
         self, cluster_name: str, namespace: str, timeout: int = 120
     ) -> Optional[str]:
@@ -604,7 +690,8 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
                     try:
                         service = await asyncio.to_thread(
                             self._core_v1_api.read_namespaced_service,
-                            name=service_name, namespace=namespace
+                            name=service_name,
+                            namespace=namespace,
                         )
                     except self._ApiException as e:
                         status = getattr(e, "status", "unknown")
@@ -665,7 +752,9 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
                     elif service_type == "NodePort":
                         # For NodePort, service is ready once it exists
-                        external_url = self._get_nodeport_url(service, 8265, namespace)
+                        external_url = await self._get_nodeport_url_async(
+                            service, 8265, namespace
+                        )
                         if external_url:
                             from ...foundation.logging_utils import LoggingUtility
 

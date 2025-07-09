@@ -251,7 +251,9 @@ class GKEClusterManager(ResourceManager, GKEManager):
             raise ValueError("Project ID is required for cluster discovery")
 
         parent = f"projects/{project_id}/locations/-"
-        clusters_response = await asyncio.to_thread(self._gke_client.list_clusters, parent=parent)
+        clusters_response = await asyncio.to_thread(
+            self._gke_client.list_clusters, parent=parent
+        )
 
         discovered_clusters = []
         for cluster in clusters_response.clusters:
@@ -362,7 +364,9 @@ class GKEClusterManager(ResourceManager, GKEManager):
             cluster_path = (
                 f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
             )
-            cluster = await asyncio.to_thread(self._gke_client.get_cluster, name=cluster_path)
+            cluster = await asyncio.to_thread(
+                self._gke_client.get_cluster, name=cluster_path
+            )
 
             # Establish actual Kubernetes connection using API
             k8s_connection_result = await self._establish_kubernetes_connection(
@@ -580,7 +584,8 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
             operation = await asyncio.to_thread(
                 self._gke_client.create_cluster,
-                parent=parent, cluster=cluster_config_typed
+                parent=parent,
+                cluster=cluster_config_typed,
             )
 
             return self._response_formatter.format_success_response(
@@ -626,7 +631,9 @@ class GKEClusterManager(ResourceManager, GKEManager):
             cluster_path = (
                 f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
             )
-            cluster = await asyncio.to_thread(self._gke_client.get_cluster, name=cluster_path)
+            cluster = await asyncio.to_thread(
+                self._gke_client.get_cluster, name=cluster_path
+            )
 
             # Format detailed cluster information
             cluster_info = {
