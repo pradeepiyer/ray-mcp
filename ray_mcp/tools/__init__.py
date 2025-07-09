@@ -1,4 +1,4 @@
-"""Ray MCP tools package with modular schemas and handlers."""
+"""Ray MCP tools package with modular schemas."""
 
 from .schemas import cloud_tools, cluster_tools, job_tools, log_tools
 
