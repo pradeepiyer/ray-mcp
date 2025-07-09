@@ -155,13 +155,13 @@ class GKEClusterManager(ResourceManager, GKEManager):
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a GKE cluster."""
-        return self.create_cluster(cluster_spec, project_id)
+        return await self.create_cluster(cluster_spec, project_id)
 
     async def get_gke_cluster_info(
         self, cluster_name: str, zone: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get information about a GKE cluster."""
-        return self.get_cluster_info(cluster_name, zone, project_id)
+        return await self.get_cluster_info(cluster_name, zone, project_id)
 
     def authenticate(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
         """Authenticate with Google Cloud Platform."""
@@ -362,7 +362,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             cluster_path = (
                 f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
             )
-            cluster = self._gke_client.get_cluster(name=cluster_path)
+            cluster = await asyncio.to_thread(self._gke_client.get_cluster, name=cluster_path)
 
             # Establish actual Kubernetes connection using API
             k8s_connection_result = await self._establish_kubernetes_connection(
@@ -426,7 +426,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
             # Get fresh access token from Google Cloud credentials
             request = self._google_auth_transport.Request()
-            self._credentials.refresh(request)
+            await asyncio.to_thread(self._credentials.refresh, request)
 
             # Set up bearer token authentication
             configuration.api_key_prefix["authorization"] = "Bearer"
@@ -540,7 +540,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
         except Exception as e:
             return self._response_formatter.format_error_response("gke disconnect", e)
 
-    def create_cluster(
+    async def create_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a GKE cluster."""
@@ -578,7 +578,8 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
             cluster_config_typed = cast(Any, cluster_config_dict)
 
-            operation = self._gke_client.create_cluster(
+            operation = await asyncio.to_thread(
+                self._gke_client.create_cluster,
                 parent=parent, cluster=cluster_config_typed
             )
 
@@ -595,7 +596,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 "gke cluster creation", e
             )
 
-    def get_cluster_info(
+    async def get_cluster_info(
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get information about a GKE cluster."""
@@ -625,7 +626,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             cluster_path = (
                 f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
             )
-            cluster = self._gke_client.get_cluster(name=cluster_path)
+            cluster = await asyncio.to_thread(self._gke_client.get_cluster, name=cluster_path)
 
             # Format detailed cluster information
             cluster_info = {
