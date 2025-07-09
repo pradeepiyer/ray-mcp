@@ -77,7 +77,7 @@ def get_submit_ray_job_schema() -> Dict[str, Any]:
             },
             "image": {
                 "type": "string",
-                "description": "Container image for the job (Kubernetes only, defaults to ray:2.47.0)",
+                "description": "Container image for the job (Kubernetes only, defaults to rayproject/ray:2.47.0)",
             },
             "resources": {
                 "type": "object",

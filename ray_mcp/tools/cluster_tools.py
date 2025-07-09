@@ -41,7 +41,7 @@ def get_init_ray_cluster_schema() -> Dict[str, Any]:
                         "Name for the Ray cluster (auto-generated if not provided)"
                     ),
                     "image": get_string_property(
-                        "Container image for Ray pods (defaults to ray:2.47.0)"
+                        "Container image for Ray pods (defaults to rayproject/ray:2.47.0)"
                     ),
                     "service_account": get_string_property(
                         "Kubernetes service account for Ray pods"
