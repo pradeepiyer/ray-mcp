@@ -1,5 +1,6 @@
 """Kubernetes configuration management."""
 
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
@@ -77,7 +78,7 @@ class KubernetesConfigManager(KubernetesConfig):
                 "load kubernetes config", e
             )
 
-    def validate_config(self) -> Dict[str, Any]:
+    async def validate_config(self) -> Dict[str, Any]:
         """Validate the loaded Kubernetes configuration."""
         try:
             if not self._KUBERNETES_AVAILABLE:
@@ -91,7 +92,7 @@ class KubernetesConfigManager(KubernetesConfig):
             version_api = self._client.VersionApi()
 
             # Test connection by getting server version
-            version_info = version_api.get_code()
+            version_info = await asyncio.to_thread(version_api.get_code)
 
             # Safe access to git_version attribute
             git_version = getattr(version_info, "git_version", "unknown")
@@ -106,7 +107,7 @@ class KubernetesConfigManager(KubernetesConfig):
                 "validate kubernetes config", e
             )
 
-    def list_contexts(self) -> Dict[str, Any]:
+    async def list_contexts(self) -> Dict[str, Any]:
         """List available Kubernetes contexts."""
         try:
             if not self._KUBERNETES_AVAILABLE:
@@ -117,7 +118,7 @@ class KubernetesConfigManager(KubernetesConfig):
                     ),
                 )
 
-            contexts, active_context = self._config.list_kube_config_contexts()
+            contexts, active_context = await asyncio.to_thread(self._config.list_kube_config_contexts)
             context_list = []
 
             for ctx in contexts:

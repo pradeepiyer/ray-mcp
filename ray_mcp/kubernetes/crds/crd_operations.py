@@ -75,7 +75,7 @@ class CRDOperationsClient(CRDOperations):
             "Successfully reset CRD operations client configuration",
         )
 
-    def _ensure_client(self) -> None:
+    async def _ensure_client(self) -> None:
         """Ensure custom objects API client is initialized."""
         if not self._KUBERNETES_AVAILABLE:
             raise RuntimeError("Kubernetes client library is not available")
@@ -110,7 +110,7 @@ class CRDOperationsClient(CRDOperations):
                     )
                 except Exception:
                     try:
-                        self._config.load_kube_config()
+                        await asyncio.to_thread(self._config.load_kube_config)
                         self._LoggingUtility.log_info(
                             "crd_operations_ensure_client",
                             "Loaded kubeconfig configuration",
@@ -152,7 +152,7 @@ class CRDOperationsClient(CRDOperations):
             # Retry loop for handling transient failures
             for attempt in range(self._retry_attempts):
                 try:
-                    self._ensure_client()
+                    await self._ensure_client()
 
                     # Create the resource
                     result = await asyncio.to_thread(
@@ -218,7 +218,7 @@ class CRDOperationsClient(CRDOperations):
         resource_info = self._get_resource_info(resource_type)
 
         try:
-            self._ensure_client()
+            await self._ensure_client()
 
             result = await asyncio.to_thread(
                 self._custom_objects_api.get_namespaced_custom_object,
@@ -283,7 +283,7 @@ class CRDOperationsClient(CRDOperations):
                 "crd_operations_list_resources",
                 f"Listing {resource_type} resources in namespace {namespace} - k8s config available: {self._kubernetes_config is not None}",
             )
-            self._ensure_client()
+            await self._ensure_client()
 
             result = await asyncio.to_thread(
                 self._custom_objects_api.list_namespaced_custom_object,
@@ -367,7 +367,7 @@ class CRDOperationsClient(CRDOperations):
         # Retry loop for handling conflicts
         for attempt in range(self._retry_attempts):
             try:
-                self._ensure_client()
+                await self._ensure_client()
 
                 # First get the current resource to get the resourceVersion
                 current = await asyncio.to_thread(
@@ -463,7 +463,7 @@ class CRDOperationsClient(CRDOperations):
         resource_info = self._get_resource_info(resource_type)
 
         try:
-            self._ensure_client()
+            await self._ensure_client()
 
             # Delete the resource
             result = await asyncio.to_thread(
@@ -518,7 +518,7 @@ class CRDOperationsClient(CRDOperations):
         resource_info = self._get_resource_info(resource_type)
 
         try:
-            self._ensure_client()
+            await self._ensure_client()
 
             # For now, just return the current list of resources
             # A full implementation would stream events

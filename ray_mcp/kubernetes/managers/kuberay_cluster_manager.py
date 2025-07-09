@@ -366,24 +366,11 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
     def _get_dashboard_url(self, cluster_name: str, namespace: str) -> str:
         """Get the dashboard URL for a Ray cluster."""
-        # Try to get actual service details and return appropriate URL
-        try:
-            # For cloud deployments, attempt to get LoadBalancer or NodePort URL
-            external_url = self._get_external_dashboard_url(cluster_name, namespace)
-            if external_url:
-                return external_url
-        except Exception as e:
-            from ...foundation.logging_utils import LoggingUtility
-
-            LoggingUtility.log_debug(
-                "dashboard_url_external",
-                f"Could not get external URL for {cluster_name}: {e}",
-            )
-
-        # Fall back to cluster-internal URL
+        # Return cluster-internal URL for now (external URL detection would require async)
+        # External URL detection can be added later with proper async handling
         return f"http://{cluster_name}-head-svc.{namespace}.svc.cluster.local:8265"
 
-    def _get_external_dashboard_url(
+    async def _get_external_dashboard_url(
         self, cluster_name: str, namespace: str
     ) -> Optional[str]:
         """Get external dashboard URL for LoadBalancer or NodePort services."""
@@ -396,7 +383,8 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
             # Get the service from Kubernetes API
             try:
-                service = self._core_v1_api.read_namespaced_service(
+                service = await asyncio.to_thread(
+                    self._core_v1_api.read_namespaced_service,
                     name=service_name, namespace=namespace
                 )
             except self._ApiException as e:
@@ -487,7 +475,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
             )
             return None
 
-    def _get_nodeport_url(
+    async def _get_nodeport_url(
         self, service, dashboard_port: int, namespace: str
     ) -> Optional[str]:
         """Get NodePort service external URL."""
@@ -520,7 +508,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
                 return None
 
             # Get a node IP to construct the URL
-            node_ip = self._get_node_external_ip()
+            node_ip = await self._get_node_external_ip()
             if node_ip:
                 url = f"http://{node_ip}:{node_port}"
                 from ...foundation.logging_utils import LoggingUtility
@@ -560,13 +548,13 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         except Exception:
             return None
 
-    def _get_node_external_ip(self) -> Optional[str]:
+    async def _get_node_external_ip(self) -> Optional[str]:
         """Get external IP of any cluster node."""
         try:
             self._ensure_kubernetes_client()
 
             # List all nodes
-            nodes = self._core_v1_api.list_node()
+            nodes = await asyncio.to_thread(self._core_v1_api.list_node)
 
             # Look for a node with external IP
             for node in nodes.items:
@@ -614,7 +602,8 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
                     # Check if service exists
                     try:
-                        service = self._core_v1_api.read_namespaced_service(
+                        service = await asyncio.to_thread(
+                            self._core_v1_api.read_namespaced_service,
                             name=service_name, namespace=namespace
                         )
                     except self._ApiException as e:
