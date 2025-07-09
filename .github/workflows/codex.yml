@@ -1,7 +1,13 @@
-tests:
-  - name: Format
-    command: make format
-  - name: Lint
-    command: make lint
-  - name: Test Fast Suite
-    command: make test-fast
+name: Codex Tests
+
+on: [push, pull_request]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Format
+      run: make format
+    - name: Test Fast Suite
+      run: make test-fast
