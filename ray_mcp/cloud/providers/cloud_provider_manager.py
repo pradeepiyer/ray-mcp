@@ -535,47 +535,13 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
     async def _check_local_environment(self) -> Dict[str, Any]:
         """Check local Kubernetes environment setup."""
         import os
-        import subprocess
 
         result = {
-            "dependencies": {"kubectl": False, "kubernetes_python": False},
+            "dependencies": {"kubernetes_python": False},
             "authentication": {"kubeconfig": False, "current_context": None},
             "environment": {},
             "recommendations": [],
         }
-
-        # Check kubectl
-        try:
-            proc = await asyncio.to_thread(
-                subprocess.run,
-                ["kubectl", "version", "--client"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if proc.returncode == 0:
-                result["dependencies"]["kubectl"] = True
-                # Extract version info
-                version_line = next(
-                    (
-                        line
-                        for line in proc.stdout.split("\n")
-                        if "Client Version" in line
-                    ),
-                    "",
-                )
-                result["environment"]["kubectl_version"] = (
-                    version_line.strip() if version_line else "installed"
-                )
-            else:
-                result["dependencies"]["kubectl"] = False
-                result["environment"]["kubectl"] = "not_working"
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            result["dependencies"]["kubectl"] = False
-            result["environment"]["kubectl"] = "not_installed"
-            result["recommendations"].append(
-                "Install kubectl: https://kubernetes.io/docs/tasks/tools/install-kubectl/"
-            )
 
         # Check Kubernetes Python client
         try:
@@ -594,21 +560,18 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         if os.path.exists(kubeconfig_path):
             result["environment"]["kubeconfig_path"] = kubeconfig_path
 
-            # Try to get current context
-            try:
-                proc = await asyncio.to_thread(
-                    subprocess.run,
-                    ["kubectl", "config", "current-context"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if proc.returncode == 0:
-                    result["authentication"]["kubeconfig"] = True
-                    result["authentication"]["current_context"] = proc.stdout.strip()
-                    result["environment"]["current_context"] = proc.stdout.strip()
-            except subprocess.TimeoutExpired:
-                pass
+            # Try to get current context using Kubernetes Python client
+            if result["dependencies"]["kubernetes_python"]:
+                try:
+                    from kubernetes import config
+                    contexts, active_context = config.list_kube_config_contexts()
+                    if active_context:
+                        result["authentication"]["kubeconfig"] = True
+                        result["authentication"]["current_context"] = active_context["name"]
+                        result["environment"]["current_context"] = active_context["name"]
+                except Exception:
+                    # If we can't load the config, kubeconfig might be invalid
+                    pass
         else:
             result["environment"]["kubeconfig_path"] = "not_found"
             result["recommendations"].append(

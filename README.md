@@ -175,7 +175,7 @@ export AWS_DEFAULT_REGION="us-west-2"
 # Ensure kubeconfig exists and is properly configured
 ls ~/.kube/config
 
-# Test with kubernetes Python client (not kubectl)
+# Test with kubernetes Python client
 python -c "from kubernetes import client, config; config.load_kube_config(); print('Success')"
 ```
 
