@@ -644,10 +644,30 @@ class ToolRegistry:
             await self._ensure_gke_coordination()
             kubernetes_config = kwargs.get("kubernetes_config", {})
             namespace = kubernetes_config.get("namespace", "default")
+            
+            # Build job spec (this will auto-detect existing clusters if needed)
             job_spec = await self._build_kuberay_job_spec(**kwargs)
-            return await self.ray_manager.create_kuberay_job(
+            
+            # Log whether we're using existing cluster or creating new one
+            if job_spec.get("cluster_selector"):
+                logger.info(f"Submitting RayJob to existing cluster: {job_spec['cluster_selector']}")
+            else:
+                logger.info("Submitting RayJob with new ephemeral cluster creation")
+            
+            result = await self.ray_manager.create_kuberay_job(
                 job_spec=job_spec, namespace=namespace
             )
+            
+            # Enhance result with cluster usage information
+            if result.get("status") == "success" and job_spec.get("cluster_selector"):
+                result["cluster_usage"] = "existing"
+                result["cluster_name"] = job_spec["cluster_selector"]
+                result["message"] = result.get("message", "") + f" (using existing cluster: {job_spec['cluster_selector']})"
+            elif result.get("status") == "success":
+                result["cluster_usage"] = "new"
+                result["message"] = result.get("message", "") + " (creating new ephemeral cluster)"
+            
+            return result
         except Exception as e:
             return ResponseFormatter.format_error_response("create kuberay job", e)
 
@@ -722,13 +742,35 @@ class ToolRegistry:
     async def _build_kuberay_job_spec(self, **kwargs) -> Dict[str, Any]:
         """Build KubeRay job specification from submit_job parameters."""
         kubernetes_config = kwargs.get("kubernetes_config", {})
+        namespace = kubernetes_config.get("namespace", "default")
+        
+        # Auto-detect existing cluster if no cluster_selector provided
+        cluster_selector = kubernetes_config.get("cluster_selector")
+        if not cluster_selector:
+            try:
+                # Try to find existing RayCluster resources
+                clusters_result = await self.ray_manager.list_ray_clusters(namespace=namespace)
+                if clusters_result.get("status") == "success":
+                    clusters = clusters_result.get("clusters", [])
+                    # Look for ready clusters first, then any available cluster
+                    ready_clusters = [c for c in clusters if c.get("status") == "ready"]
+                    if ready_clusters:
+                        cluster_selector = ready_clusters[0].get("name")
+                        logger.info(f"Auto-detected ready RayCluster: {cluster_selector}")
+                    elif clusters:
+                        # Use the first available cluster even if not ready yet
+                        cluster_selector = clusters[0].get("name")
+                        logger.info(f"Auto-detected RayCluster (initializing): {cluster_selector}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-detect existing clusters: {e}")
+                # Continue without cluster_selector - will create new cluster
 
         return {
             "entrypoint": kwargs["entrypoint"],
             "runtime_env": kwargs.get("runtime_env"),
             "job_name": kubernetes_config.get("job_name"),
-            "namespace": kubernetes_config.get("namespace", "default"),
-            "cluster_selector": kubernetes_config.get("cluster_selector"),
+            "namespace": namespace,
+            "cluster_selector": cluster_selector,
             "suspend": kubernetes_config.get("suspend", False),
             "ttl_seconds_after_finished": kubernetes_config.get(
                 "ttl_seconds_after_finished", 86400
