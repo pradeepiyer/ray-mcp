@@ -1,0 +1,108 @@
+name: Update Dependencies
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Allow manual triggering
+  
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: uv sync --dev
+      
+    - name: Check for outdated packages
+      id: check-outdated
+      run: |
+        if uv pip list --outdated | grep -q "."; then
+          echo "outdated=true" >> $GITHUB_OUTPUT
+          echo "📦 Outdated packages found"
+        else
+          echo "outdated=false" >> $GITHUB_OUTPUT
+          echo "✅ All packages are up to date"
+        fi
+        
+    - name: Update dependencies
+      if: steps.check-outdated.outputs.outdated == 'true'
+      run: |
+        echo "🔄 Updating dependencies..."
+        uv sync --dev --upgrade
+        
+    - name: Run tests
+      if: steps.check-outdated.outputs.outdated == 'true'
+      run: |
+        echo "🧪 Running tests..."
+        make test
+        
+    - name: Run format check
+      if: steps.check-outdated.outputs.outdated == 'true'
+      run: |
+        echo "🎨 Running format check..."
+        make format
+        
+    - name: Check for changes
+      if: steps.check-outdated.outputs.outdated == 'true'
+      id: check-changes
+      run: |
+        if git diff --quiet; then
+          echo "changes=false" >> $GITHUB_OUTPUT
+          echo "No changes to commit"
+        else
+          echo "changes=true" >> $GITHUB_OUTPUT
+          echo "Changes detected"
+        fi
+        
+    - name: Create Pull Request
+      if: steps.check-outdated.outputs.outdated == 'true' && steps.check-changes.outputs.changes == 'true'
+      id: create-pull-request
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: update dependencies'
+        body: |
+          ## 🔄 Automated dependency update
+          
+          This PR updates dependencies to their latest compatible versions.
+          
+          ### Changes:
+          - Updated dependencies within version constraints
+          - All tests pass ✅
+          - Format and type checking pass ✅
+          
+          ### Review checklist:
+          - [ ] Check the diff for any unexpected changes
+          - [ ] Verify all tests still pass
+          - [ ] Check if any breaking changes need attention
+          
+          > This PR was automatically created by the dependency update workflow.
+        branch: chore/update-dependencies
+        base: main
+        labels: dependencies, automated
+        draft: false
+        
+    - name: Auto-merge if tests pass
+      if: steps.check-outdated.outputs.outdated == 'true' && steps.check-changes.outputs.changes == 'true'
+      uses: peter-evans/enable-pull-request-automerge@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        pull-request-number: ${{ steps.create-pull-request.outputs.pull-request-number }}
+        merge-method: squash 

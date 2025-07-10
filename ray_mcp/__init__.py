@@ -39,5 +39,5 @@ except PackageNotFoundError:
     # Fallback when package not installed (e.g., development mode)
     __version__ = "dev"
 
-__author__ = "claude 4 sonnet"
+__author__ = "ray-mcp authors"
 __email__ = "ray-mcp@example.com"

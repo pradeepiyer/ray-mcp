@@ -1,33 +1,33 @@
-#!/usr/bin/env python3
-"""Main entry point for the Ray MCP server."""
+"""Ray MCP Server - Main entry point for the Ray Model Context Protocol server."""
 
+import argparse
 import asyncio
 import json
 import logging
 import sys
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Union
 
-# Import MCP types
+from mcp import stdio_server
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
-from mcp.server.stdio import stdio_server
-from mcp.types import ServerCapabilities, TextContent, Tool
-
-# Import Ray modules with proper error handling
-try:
-    import ray
-    from ray import job_submission
-
-    RAY_AVAILABLE = True
-except ImportError:
-    RAY_AVAILABLE = False
-    ray = None
-    job_submission = None
+from mcp.types import (
+    CallToolRequest,
+    CallToolResult,
+    ListToolsRequest,
+    ListToolsResult,
+    ServerCapabilities,
+    TextContent,
+    Tool,
+)
 
 from . import __version__
-from .core.unified_manager import RayUnifiedManager
-from .logging_utils import LoggingUtility
+from .foundation.import_utils import is_ray_available
+from .foundation.logging_utils import LoggingUtility
+from .managers.unified_manager import RayUnifiedManager
 from .tool_registry import ToolRegistry
+
+# Check Ray availability
+RAY_AVAILABLE = is_ray_available()
 
 # Initialize server and ray manager
 server = Server("ray-mcp")

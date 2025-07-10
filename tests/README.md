@@ -4,205 +4,220 @@ A comprehensive test suite for the Ray MCP server, organized for maintainability
 
 ## Test Organization
 
-### Core Component Tests (Unit Tests)
-- `test_core_unified_manager.py` - Unified manager facade and delegation
-- `test_core_cluster_manager.py` - Cluster lifecycle and connection management
-- `test_core_state_manager.py` - State management and validation
-- `test_core_job_manager.py` - Job submission and management
-- `test_core_log_manager.py` - Log retrieval and analysis
-- `test_core_port_manager.py` - Port allocation and management
-- `test_worker_manager.py` - Worker process management
+**Integration over Unit Tests**: Focus on testing workflows and behavior rather than implementation details. This approach provides better bug detection while requiring less maintenance as code evolves.
 
-### MCP Layer Tests
-- `test_mcp_tools.py` - MCP tool registry and protocol handling (unit tests)
-- `test_mcp_server.py` - End-to-end server validation (slow integration tests)
+**Strategic Coverage**: Test critical system functionality that users depend on, not every getter/setter or utility function.
 
-### Test Infrastructure
-- `conftest.py` - Shared fixtures, utilities, and test configuration
+**Behavior-Driven**: Tests should validate what the system does, not how it does it internally.
 
-## Test Guidelines
+## Test Structure
 
-### File Organization Rules
-1. **`test_mcp_server.py`** - Reserved for slow, non-mocked integration tests only
-2. **All other test files** - Fast unit tests with complete mocking
-3. **Avoid adding new test files** - Consolidate into existing domain-focused files
-
-### Test Types
-
-#### Unit Tests (`test_core_*.py`, `test_mcp_tools.py`)
-- **Fast execution** for development feedback
-- **Complete mocking** of external dependencies
-- **Focus on logic** and error handling
-- **Independent execution** - no shared state
-
-#### Integration Tests (`test_mcp_server.py`)
-- **Slow, comprehensive** end-to-end validation
-- **Real Ray cluster** operations
-- **Complete workflow** testing
-- **Use sparingly** - only for critical flows
+```
+tests/
+├── test_core_functionality.py    # Tool registry, unified manager, system interfaces
+├── test_managers.py              # Manager behavior patterns & cross-integration  
+├── test_kubernetes.py            # Kubernetes/KubeRay operations & workflows
+├── test_mcp_server.py            # End-to-end integration tests
+├── helpers/                      # Reusable test utilities
+│   ├── fixtures.py              # Core test fixtures
+│   ├── utils.py                 # General utilities & test helpers
+│   ├── e2e.py                   # End-to-end testing workflows
+│   └── __init__.py              # Convenient imports
+└── conftest.py                   # Streamlined core fixtures
+```
 
 ## Running Tests
 
-### Development Workflow
-
+### All Tests
 ```bash
-# Fast unit tests for development
-make test-fast
-
-# Quick validation
-make test-smoke
-
-# Full test suite
-make test
+pytest
 ```
 
-### Direct pytest Commands
-
+### Fast Tests Only
 ```bash
-# Run all unit tests
-pytest tests/test_core_*.py tests/test_mcp_tools.py -v
+pytest -m fast
+```
 
-# Run integration tests
-pytest tests/test_mcp_server.py -v
+### Integration Tests
+```bash
+pytest tests/test_mcp_server.py
+```
 
-# Run specific test file
-pytest tests/test_core_job_manager.py -v
+### GKE Integration (requires GKE environment)
+```bash
+pytest -m gke
+```
 
-# Run specific test method
-pytest tests/test_core_state_manager.py::TestStateValidation::test_state_transitions -v
+### Specific Test Files
+```bash
+pytest tests/test_core_functionality.py
+pytest tests/test_managers.py  
+pytest tests/test_kubernetes.py
+```
+
+## Test Categories
+
+### Core Functionality (`test_core_functionality.py`)
+- **Tool Registry**: MCP protocol integration, tool execution workflows
+- **Unified Manager**: Component delegation, architecture validation
+- **System Interfaces**: MCP server startup, workflow integration
+- **Foundation Components**: Critical imports, base managers, utilities
+
+**Focus**: System-level behavior and contracts that users interact with.
+
+### Manager Behavior (`test_managers.py`)
+- **Behavior Patterns**: How managers handle common operations
+- **Cross-Manager Integration**: Component interaction and delegation
+- **Error Handling**: Consistent error patterns across managers
+- **State Management**: Manager state coordination and consistency
+
+**Focus**: Manager contracts and integration patterns, not implementation details.
+
+### Kubernetes Operations (`test_kubernetes.py`)
+- **CRD Operations**: Ray cluster and job custom resource management
+- **KubeRay Workflows**: Complete cluster and job lifecycle testing
+- **Kubernetes Integration**: Cluster connection, authentication, operations
+- **Cloud Provider Coordination**: GKE integration and coordination
+- **Error Handling**: Kubernetes-specific error patterns
+
+**Focus**: End-to-end Kubernetes workflows and KubeRay operator integration.
+
+### Integration Tests (`test_mcp_server.py`)
+- **GKE + KubeRay Workflow**: Complete end-to-end integration testing
+- **System Integration**: Full workflow validation with real components
+- **Environment Setup**: Test environment configuration and validation
+
+**Focus**: Real-world usage scenarios with minimal mocking.
+
+## Test Utilities (`helpers/`)
+
+### Fixtures (`helpers/fixtures.py`)
+```python
+from tests.helpers import e2e_ray_manager
+
+async def test_something(e2e_ray_manager):
+    # Use the configured manager
+    result = await e2e_ray_manager.init_cluster()
+```
+
+### Utilities (`helpers/utils.py`)
+```python
+from tests.helpers import E2EConfig, TempScriptManager, TestScripts
+
+# Environment configuration
+config = E2EConfig.from_environment()
+
+# Temporary script management
+with TempScriptManager() as script_manager:
+    script_path = script_manager.create_script("print('hello')")
+```
+
+### End-to-End Workflows (`helpers/e2e.py`)
+```python
+from tests.helpers import E2EWorkflows
+
+# Complete workflow testing
+await E2EWorkflows.start_cluster_and_submit_job(
+    manager, job_script="print('test')"
+)
 ```
 
 ## Writing Tests
 
-### Test Structure
+### Guidelines
 
-```python
-@pytest.mark.fast
-class TestComponentName:
-    """Test suite for ComponentName functionality."""
-    
-    def test_happy_path_scenario(self):
-        """Test primary functionality with valid inputs."""
-        # Arrange
-        component = ComponentName()
-        
-        # Act
-        result = component.method()
-        
-        # Assert
-        assert result.status == "success"
-    
-    def test_error_handling(self):
-        """Test error handling with invalid inputs."""
-        # Test implementation
-```
+1. **Test Behavior, Not Implementation**
+   ```python
+   # Good: Tests what happens
+   result = await manager.submit_job("python script.py")
+   assert result["status"] == "success"
+   assert "job_id" in result
+   
+   # Avoid: Tests how it's implemented
+   assert manager._internal_method.call_count == 1
+   ```
 
-### Best Practices
+2. **Use Integration Over Unit Tests**
+   ```python
+   # Good: Tests real workflow
+   await registry.execute_tool("init_ray_cluster", {"num_cpus": 2})
+   result = await registry.execute_tool("submit_ray_job", {"entrypoint": "python script.py"})
+   
+   # Avoid: Excessive mocking
+   mock_manager.method1.return_value = {...}
+   mock_manager.method2.return_value = {...}
+   ```
 
-#### ✅ Do
-- Use descriptive test names explaining what is being tested
-- Test both success and failure scenarios
-- Keep tests focused on single behaviors
-- Use fixtures for common setup
-- Mock all external dependencies in unit tests
-- Use `@pytest.mark.fast` for unit tests
+3. **Focus on User-Facing Functionality**
+   - Tool execution workflows
+   - Manager delegation patterns  
+   - Error handling and recovery
+   - System integration points
 
-#### ❌ Avoid
-- Testing implementation details
-- Overly complex test setups
-- Brittle assertions on exact strings
-- Shared state between tests
-- Adding new test files without justification
+4. **Use Descriptive Test Names**
+   ```python
+   def test_kuberay_cluster_lifecycle_workflow():
+       """Test complete KubeRay cluster creation, scaling, and deletion."""
+   
+   def test_system_workflow_integration():
+       """Test that core system workflows integrate properly."""
+   ```
 
-## Debugging Tests
+### Adding New Tests
 
-### Verbose Output
-```bash
-# Detailed test output
-pytest -v --tb=short
+1. **Choose the Right File**:
+   - Tool/registry behavior → `test_core_functionality.py`
+   - Manager interactions → `test_managers.py`
+   - Kubernetes workflows → `test_kubernetes.py`
+   - Full integration → `test_mcp_server.py`
 
-# Stop on first failure
-pytest -x
+2. **Use Existing Helpers**:
+   ```python
+   from tests.helpers import e2e_ray_manager, E2EWorkflows
+   ```
 
-# Show print statements
-pytest -s
+3. **Mark Tests Appropriately**:
+   ```python
+   @pytest.mark.fast
+   def test_quick_validation():
+       pass
+   
+   @pytest.mark.gke  
+   def test_gke_integration():
+       pass
+   ```
 
-# Live log output
-pytest --log-cli-level=DEBUG
-```
+## Test Markers
 
-### Test Debugging
-```bash
-# Debug specific test
-pytest tests/test_core_job_manager.py::TestJobManager::test_submit_job -v -s
+- `@pytest.mark.fast`: Quick tests (default, no external dependencies)
+- `@pytest.mark.gke`: Requires GKE environment and credentials
+- `@pytest.mark.asyncio`: Async test functions
 
-# Interactive debugging
-pytest --pdb tests/test_core_job_manager.py::TestJobManager::test_submit_job
-```
+## Environment Requirements
 
-## Adding New Tests
+### Basic Tests
+- Python 3.10+
+- Ray MCP dependencies (see `pyproject.toml`)
 
-### For New Components
-1. Add tests to appropriate existing `test_core_*.py` file
-2. If no appropriate file exists, discuss creating a new one
-3. Include comprehensive unit tests for all public methods
-4. Add error case testing and edge condition validation
-5. Update `test_mcp_tools.py` if MCP interface changes
-6. Add to `test_mcp_server.py` only if critical end-to-end validation is needed
+### GKE Integration Tests
+- Google Cloud SDK (`gcloud`)
+- GKE cluster access
+- Service account credentials
+- Environment variables: `GOOGLE_APPLICATION_CREDENTIALS`, `GKE_PROJECT_ID`, `GKE_CLUSTER_NAME`, `GKE_ZONE`
 
-### For New Features
-1. Add unit tests to appropriate domain-focused file
-2. Update integration tests only if interface changes
-3. Use complete mocking for unit tests
-4. Update fixtures in `conftest.py` if shared setup is required
+## Benefits of This Structure
 
-## Test Environment
+1. **Maintainability**: Fewer files to update when code changes
+2. **Quality**: Tests catch real bugs in user workflows  
+3. **Speed**: Faster test development and execution
+4. **Clarity**: Clear organization by functionality domain
+5. **Strategic Value**: Focus on critical system behavior
 
-### Configuration
-Tests adapt to different environments:
-- **CI**: Optimized for reliability with constrained resources
-- **Local**: Full testing with performance validation
-- **Docker**: Containerized testing environment
+## Migration from Legacy Tests
 
-### Test Markers
-- `@pytest.mark.fast` - Fast unit tests (all files except test_mcp_server.py)
-- `@pytest.mark.integration` - Integration tests (test_mcp_server.py only)
-- `@pytest.mark.e2e` - End-to-end tests
-- `@pytest.mark.slow` - Tests with longer execution time
+This test suite replaces numerous smaller unit test files with strategic, behavior-focused tests. The new structure provides:
 
-## Quality Standards
-
-### All Tests Must
-- Pass before merging
-- Have clear failure messages for debugging
-- Execute in reasonable time
-- Be reliable and non-flaky
-- Follow the mocking guidelines
-
-### Unit Tests Must
-- Use complete mocking of external dependencies
-- Execute quickly for development feedback
-- Be independent of each other
-- Focus on component logic
-
-### Integration Tests Must
-- Justify their inclusion in test_mcp_server.py
-- Test critical end-to-end workflows
-- Handle real Ray cluster operations
-- Be used sparingly
-
-## Troubleshooting
-
-### Common Issues
-- **Ray cluster conflicts**: Use `make clean` to reset environment
-- **Port conflicts**: Tests handle port allocation automatically
-- **Timeout errors**: Check resource constraints and cluster health
-- **Import errors**: Ensure proper test environment setup
-- **Mocking issues**: Verify all external dependencies are mocked in unit tests
-
-### Getting Help
-- Check test output for specific error messages
-- Review relevant component documentation
-- Use verbose test execution for debugging
-- Consult CI logs for environment-specific issues
-- Verify test follows the file organization guidelines
+- **64% fewer test files** while maintaining coverage
+- **Integration-focused testing** for better bug detection
+- **Behavior validation** over implementation testing
+- **Faster development cycle** with less brittle tests

@@ -1,7 +1,0 @@
-tests:
-  - name: Format
-    command: make format
-  - name: Lint
-    command: make lint
-  - name: Test Fast Suite
-    command: make test-fast

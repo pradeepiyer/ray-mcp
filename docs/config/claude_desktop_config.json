@@ -7,7 +7,8 @@
       "env": {
         "RAY_ADDRESS": "",
         "RAY_DASHBOARD_HOST": "0.0.0.0",
-        "RAY_MCP_ENHANCED_OUTPUT": "true"
+        "RAY_MCP_ENHANCED_OUTPUT": "true",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/your/service-account-key.json"
       }
     }
   }

@@ -1,24 +1,26 @@
 # Development Guide
 
-Setup and development instructions for Ray MCP contributors.
+Comprehensive development guide for Ray MCP contributors covering local Ray clusters, KubeRay integration, and cloud provider support.
 
 ## Development Setup
 
 ### Prerequisites
 
-- Python ≥ 3.10
-- [uv](https://docs.astral.sh/uv/) package manager (recommended)
-- Git
+- **Python** ≥ 3.10
+- **uv** package manager (recommended) - [Installation Guide](https://docs.astral.sh/uv/)
+- **Git** for version control
+- **Docker** (optional, for Kubernetes development)
+- **kubectl** (for KubeRay development)
 
-### Local Development
+### Local Development Environment
 
 ```bash
 # Clone repository
 git clone https://github.com/pradeepiyer/ray-mcp.git
 cd ray-mcp
 
-# Install with development dependencies
-uv sync
+# Install with all dependencies including cloud providers
+uv sync --extra all
 
 # Activate virtual environment
 source .venv/bin/activate  # Linux/macOS
@@ -26,62 +28,148 @@ source .venv/bin/activate  # Linux/macOS
 .venv\Scripts\activate     # Windows
 
 # Verify installation
-ray-mcp --help
+python -c "import ray_mcp; print('Ray MCP installed successfully')"
 ```
 
-### Alternative Setup (pip)
+### Development Dependencies
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
+# Install development tools
+uv sync --extra dev
 
-# Install in development mode
-pip install -e ".[dev]"
+# Verify development setup
+uv run pytest --version
+uv run black --version
+uv run pyright --version
+```
+
+### Cloud Provider Setup for Development
+
+#### Google Cloud (GKE) Development
+
+```bash
+# Install GKE dependencies
+uv sync --extra gke
+
+# Set up service account for testing
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/test-service-account.json"
+export GOOGLE_CLOUD_PROJECT="your-test-project"
+
+# Verify GKE setup
+python -c "from google.cloud import container_v1; print('GKE client available')"
+```
+
+#### Local Kubernetes Development
+
+```bash
+# Install minikube for local testing
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+# Start test cluster
+minikube start --cpus=4 --memory=8192
+
+# Install KubeRay operator
+kubectl create namespace kuberay-system
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0.8/deploy/kuberay-operator.yaml
+
+# Verify setup
+kubectl get pods -n kuberay-system
 ```
 
 ## Architecture Overview
 
-Ray MCP uses a modular Domain-Driven Design architecture with focused components:
+Ray MCP uses a modular, layered architecture supporting both local Ray clusters and Kubernetes-based deployments.
+
+### Directory Structure
 
 ```
 ray_mcp/
-├── core/                    # Core business logic layer
-│   ├── interfaces.py        # Protocol definitions and contracts
-│   ├── state_manager.py     # Thread-safe cluster state management
-│   ├── port_manager.py      # Port allocation with race condition prevention
-│   ├── cluster_manager.py   # Pure cluster lifecycle operations
-│   ├── job_manager.py       # Job operations and lifecycle management
-│   ├── log_manager.py       # Centralized log retrieval with memory protection
-│   └── unified_manager.py   # Backward compatibility facade
-├── main.py                  # MCP server entry point
-├── tool_registry.py         # Tool definitions and handlers
-├── worker_manager.py        # Worker node management
-└── logging_utils.py         # Logging and response formatting
+├── main.py                     # MCP server entry point
+├── tool_registry.py            # Centralized tool definitions and routing
+├── __init__.py                 # Package initialization
+├── foundation/                 # Core foundation layer
+│   ├── base_managers.py        # Base classes and resource management
+│   ├── interfaces.py           # Protocols and type definitions
+│   ├── import_utils.py         # Dynamic import utilities
+│   ├── logging_utils.py        # Logging and response formatting
+│   └── test_mocks.py          # Testing utilities and mocks
+├── managers/                   # Business logic managers
+│   ├── unified_manager.py      # Main orchestration layer
+│   ├── cluster_manager.py      # Local Ray cluster operations
+│   ├── job_manager.py          # Local Ray job management
+│   ├── log_manager.py          # Log retrieval and analysis
+│   ├── port_manager.py         # Port allocation and management
+│   └── state_manager.py        # Cluster state management
+├── kubernetes/                 # Kubernetes and KubeRay integration
+│   ├── config/                 # Kubernetes configuration
+│   │   ├── kubernetes_client.py
+│   │   └── kubernetes_config.py
+│   ├── crds/                   # Custom Resource Definitions
+│   │   ├── base_crd_manager.py
+│   │   ├── ray_cluster_crd.py
+│   │   └── ray_job_crd.py
+│   └── managers/               # Kubernetes-specific managers
+│       ├── kubernetes_manager.py
+│       ├── kuberay_cluster_manager.py
+│       └── kuberay_job_manager.py
+├── cloud/                      # Cloud provider integration
+│   ├── config/                 # Cloud configuration
+│   │   ├── cloud_provider_config.py
+│   │   └── cloud_provider_detector.py
+│   └── providers/              # Cloud provider implementations
+│       ├── cloud_provider_manager.py
+│       └── gke_manager.py
+└── tools/                      # Tool schemas and utilities
+    ├── cluster_tools.py        # Cluster management tool schemas
+    ├── job_tools.py            # Job management tool schemas
+    ├── cloud_tools.py          # Cloud provider tool schemas
+    ├── log_tools.py            # Log management tool schemas
+    └── schema_utils.py         # Shared schema utilities
 ```
 
-### Core Components
+### Core Architecture Layers
 
-- **StateManager**: Thread-safe cluster state management with validation
-- **PortManager**: Port allocation with file locking and cleanup
-- **ClusterManager**: Pure cluster lifecycle operations without side effects
-- **JobManager**: Job operations with client management and inspection
-- **LogManager**: Centralized log retrieval with memory protection and error analysis
-- **UnifiedManager**: Facade providing backward compatibility
+#### 1. Foundation Layer (`foundation/`)
+- **Base Managers** - Abstract base classes with common functionality
+- **Interfaces** - Protocol definitions for type safety and contracts
+- **Import Utils** - Dynamic imports for optional dependencies
+- **Logging Utils** - Standardized logging and response formatting
+
+#### 2. Manager Layer (`managers/`)
+- **Unified Manager** - Main orchestration coordinating all subsystems
+- **Cluster Manager** - Local Ray cluster lifecycle management
+- **Job Manager** - Local Ray job operations and monitoring
+- **State Manager** - Thread-safe cluster state tracking
+- **Port Manager** - Port allocation with conflict resolution
+
+#### 3. Kubernetes Layer (`kubernetes/`)
+- **CRD Managers** - RayCluster and RayJob custom resource management
+- **Kubernetes Manager** - Cluster discovery and connection
+- **KubeRay Managers** - KubeRay-specific cluster and job operations
+
+#### 4. Cloud Layer (`cloud/`)
+- **Provider Managers** - Cloud-specific cluster operations (GKE, etc.)
+- **Configuration** - Cloud provider detection and setup
+- **Authentication** - Service account and credential management
+
+#### 5. Tools Layer (`tools/`)
+- **Schema Definitions** - JSON schemas for all MCP tools
+- **Validation** - Parameter validation and type checking
+- **Documentation** - Schema-driven tool documentation
 
 ### Design Principles
 
-- **Dependency Injection**: Components receive dependencies through constructors
-- **Single Responsibility**: Each component has one clear purpose
-- **Protocol-Based Contracts**: Runtime-checkable protocols define interfaces
-- **Thread Safety**: State management handles concurrent access properly
-- **Error Handling**: Comprehensive exception handling with structured responses
+- **Modular Architecture** - Clear separation of concerns with focused components
+- **Protocol-Driven** - Type-safe interfaces using Python protocols
+- **Unified Interface** - Single API supporting local and Kubernetes environments
+- **Cloud Agnostic** - Pluggable cloud provider support
+- **Comprehensive Testing** - Unit, integration, and end-to-end test coverage
+- **Graceful Degradation** - Features work even with missing optional dependencies
 
 ## Development Workflow
 
-### Code Style
-
-The project uses automated formatting and linting:
+### Code Quality
 
 ```bash
 # Format code
@@ -90,201 +178,528 @@ make format
 # Run linting
 make lint
 
-# Enhanced linting with tool function checks
+# Enhanced linting with tool function signature validation
 make lint-enhanced
+
+# Type checking
+uv run pyright
+
+# Complete quality check
+make lint && make format && uv run pyright
 ```
 
-### Running the Server
+### Running the Development Server
 
 ```bash
-# Run server directly
+# Basic server
 uv run ray-mcp
 
-# Run with enhanced output
+# With enhanced LLM output
 RAY_MCP_ENHANCED_OUTPUT=true uv run ray-mcp
 
-# Run with debug logging
+# With debug logging
 RAY_MCP_LOG_LEVEL=DEBUG uv run ray-mcp
+
+# With all cloud features enabled
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+RAY_MCP_ENHANCED_OUTPUT=true \
+uv run ray-mcp
 ```
 
-## Testing
+### Interactive Development
 
-The project uses a comprehensive test suite with focused targets:
+```python
+# Test components directly
+from ray_mcp.managers.unified_manager import RayUnifiedManager
 
-### Test Structure
+# Initialize manager
+manager = RayUnifiedManager()
+
+# Test local cluster operations
+result = await manager.init_ray_cluster()
+print(result)
+
+# Test KubeRay operations
+result = await manager.init_ray_cluster(
+    cluster_type="kubernetes",
+    cluster_name="test-cluster"
+)
+print(result)
+```
+
+## Testing Strategy
+
+### Test Architecture
+
+The project uses a comprehensive testing strategy covering multiple environments:
 
 ```
 tests/
-├── conftest.py                    # Shared fixtures and utilities
-├── test_core_state_manager.py     # State management unit tests
-├── test_core_port_manager.py      # Port allocation unit tests  
-├── test_core_cluster_manager.py   # Cluster lifecycle unit tests
-├── test_core_job_manager.py       # Job management unit tests
-├── test_core_log_manager.py       # Log management unit tests
-├── test_core_unified_manager.py   # Unified manager unit tests
-├── test_mcp_integration.py        # MCP integration layer tests
-├── test_e2e_smoke.py              # Fast critical functionality validation
-└── test_e2e_system.py             # System integration tests
+├── conftest.py                 # Core test configuration and fixtures
+├── helpers/                    # Reusable test utilities
+│   ├── fixtures.py            # Common test fixtures
+│   ├── utils.py               # Test helper functions
+│   ├── e2e.py                 # End-to-end test utilities
+│   └── __init__.py            # Test helper imports
+├── test_core_functionality.py # Tool registry and core system tests
+├── test_managers.py           # Manager behavior and integration tests
+├── test_kubernetes.py         # KubeRay and Kubernetes functionality
+└── test_mcp_server.py         # End-to-end MCP integration tests
 ```
 
 ### Running Tests
 
 ```bash
-# Fast unit tests for development
+# Fast development tests (unit tests only)
 make test-fast
 
 # Critical functionality validation
-make test-smoke  
+make test-smoke
 
 # Complete test suite including E2E
 make test
 
-# Individual component tests
-uv run pytest tests/test_core_job_manager.py
-uv run pytest tests/test_core_state_manager.py
+# Kubernetes/KubeRay tests (requires local cluster)
+uv run pytest tests/test_kubernetes.py
 
-# With coverage
+# GKE integration tests (requires GKE setup)
+uv run pytest -m gke
+
+# Coverage reporting
 uv run pytest --cov=ray_mcp --cov-report=html
 ```
 
 ### Test Categories
 
-- **Unit Tests** (`test_core_*.py`) - Component testing with full mocking
-- **Integration Tests** (`test_mcp_integration.py`) - MCP layer integration
-- **Smoke Tests** (`test_e2e_smoke.py`) - Fast critical path validation
-- **System Tests** (`test_e2e_system.py`) - End-to-end system integration
+#### Unit Tests
+- **Fast** - Complete in seconds with full mocking
+- **Isolated** - Test individual components in isolation
+- **Deterministic** - No external dependencies
 
-## Debugging
+#### Integration Tests
+- **Manager Integration** - Test component interactions
+- **MCP Protocol** - Test tool registry and protocol handling
+- **Local Ray** - Test local cluster operations
 
-### Logging Configuration
+#### End-to-End Tests
+- **System Tests** - Complete workflows from tool call to result
+- **Kubernetes Tests** - KubeRay cluster and job lifecycle
+- **Cloud Tests** - GKE integration with real clusters
 
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('ray_mcp')
-logger.setLevel(logging.DEBUG)
-```
+### Writing Tests
 
-### Common Debug Scenarios
-
-#### Component Testing
-
-```python
-# Test individual components directly
-from ray_mcp.core.state_manager import RayStateManager
-from ray_mcp.core.cluster_manager import RayClusterManager
-
-state_mgr = RayStateManager()
-cluster_mgr = RayClusterManager(state_mgr, port_mgr)
-result = await cluster_mgr.init_cluster()
-```
-
-#### MCP Protocol Issues
-
-```bash
-# Enable MCP debug logging
-export MCP_LOG_LEVEL=debug
-uv run ray-mcp
-```
-
-#### Ray Cluster Issues
-
-```bash
-# Enable Ray debug output
-export RAY_DISABLE_USAGE_STATS=1
-export RAY_LOG_LEVEL=debug
-uv run ray-mcp
-```
-
-## Adding New Tools
-
-### 1. Define Tool Schema
-
-In `tool_registry.py`:
+#### Unit Test Example
 
 ```python
-self._register_tool(
-    name="my_new_tool",
-    description="Description of what the tool does",
-    schema={
-        "type": "object",
-        "properties": {
-            "param1": {"type": "string", "description": "Parameter description"},
-            "param2": {"type": "integer", "minimum": 1}
-        },
-        "required": ["param1"]
-    },
-    handler=self._my_new_tool_handler
-)
+# tests/test_managers.py
+import pytest
+from unittest.mock import AsyncMock, Mock
+
+from ray_mcp.managers.cluster_manager import RayClusterManager
+
+@pytest.mark.asyncio
+async def test_init_cluster_success():
+    # Setup mocks
+    state_manager = Mock()
+    port_manager = Mock()
+    port_manager.get_available_port.return_value = 10001
+    
+    # Create manager
+    manager = RayClusterManager(state_manager, port_manager)
+    
+    # Test operation
+    result = await manager.init_ray_cluster(num_cpus=4)
+    
+    # Assertions
+    assert result["status"] == "success"
+    assert "cluster_info" in result["data"]
 ```
 
-### 2. Implement Handler
+#### Integration Test Example
 
 ```python
-async def _my_new_tool_handler(self, **kwargs) -> Dict[str, Any]:
-    """Handler for my_new_tool."""
-    return await self.unified_manager.my_new_operation(**kwargs)
-```
-
-### 3. Add Core Component Method
-
-Choose the appropriate core component (e.g., `JobManager` for job operations):
-
-```python
-@ResponseFormatter.handle_exceptions("my operation")
-async def my_new_operation(self, param1: str, param2: int = 1) -> Dict[str, Any]:
-    """Implement the new operation."""
-    # Implementation here
-    return self._response_formatter.format_success_response(
-        message="Operation completed",
-        data={"result": "value"}
+# tests/test_kubernetes.py
+@pytest.mark.asyncio
+async def test_kuberay_cluster_lifecycle():
+    manager = RayUnifiedManager()
+    
+    # Create cluster
+    create_result = await manager.init_ray_cluster(
+        cluster_type="kubernetes",
+        cluster_name="test-cluster",
+        namespace="test-ns"
+    )
+    assert create_result["status"] == "success"
+    
+    # Verify cluster exists
+    inspect_result = await manager.inspect_ray_cluster(
+        cluster_name="test-cluster",
+        namespace="test-ns"
+    )
+    assert inspect_result["status"] == "success"
+    
+    # Cleanup
+    await manager.stop_ray_cluster(
+        cluster_name="test-cluster",
+        namespace="test-ns"
     )
 ```
 
-### 4. Add Tests
+## Adding New Features
+
+### Adding a New Tool
+
+#### 1. Define Tool Schema
+
+Create schema in appropriate tools file:
 
 ```python
-# tests/test_core_my_component.py
-async def test_my_new_operation():
-    manager = MyComponentManager(mock_dependencies)
-    result = await manager.my_new_operation(param1="test")
-    assert result["status"] == "success"
+# ray_mcp/tools/cluster_tools.py
+def get_my_new_tool_schema() -> Dict[str, Any]:
+    """Schema for my_new_tool."""
+    return {
+        "type": "object",
+        "properties": {
+            "cluster_name": get_string_property("Name of the cluster"),
+            "config": {
+                "type": "object",
+                "description": "Configuration options"
+            }
+        },
+        "required": ["cluster_name"]
+    }
 ```
 
-## Contributing
+#### 2. Register Tool
+
+Add to tool registry:
+
+```python
+# ray_mcp/tool_registry.py
+self._register_tool(
+    name="my_new_tool",
+    description="Description of what the tool does",
+    schema=cluster_tools.get_my_new_tool_schema(),
+    handler=self._my_new_tool_handler,
+)
+```
+
+#### 3. Implement Handler
+
+```python
+# ray_mcp/tool_registry.py
+async def _my_new_tool_handler(self, **kwargs) -> Dict[str, Any]:
+    """Handler for my_new_tool."""
+    return await self.ray_manager.my_new_operation(**kwargs)
+```
+
+#### 4. Add Manager Method
+
+```python
+# ray_mcp/managers/unified_manager.py
+async def my_new_operation(
+    self, 
+    cluster_name: str, 
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Implement new operation with proper error handling."""
+    try:
+        # Implementation logic here
+        result = await self._perform_operation(cluster_name, config)
+        
+        return self._response_formatter.format_success_response(
+            message="Operation completed successfully",
+            data=result
+        )
+    except Exception as e:
+        return self._response_formatter.format_error_response(
+            "my new operation", e
+        )
+```
+
+#### 5. Add Tests
+
+```python
+# tests/test_managers.py
+@pytest.mark.asyncio
+async def test_my_new_operation():
+    manager = RayUnifiedManager()
+    
+    result = await manager.my_new_operation(
+        cluster_name="test-cluster",
+        config={"setting": "value"}
+    )
+    
+    assert result["status"] == "success"
+    assert "data" in result
+```
+
+### Adding Cloud Provider Support
+
+#### 1. Create Provider Manager
+
+```python
+# ray_mcp/cloud/providers/new_provider_manager.py
+from ...foundation.base_managers import ResourceManager
+
+class NewProviderManager(ResourceManager):
+    """Manager for new cloud provider operations."""
+    
+    def __init__(self, state_manager, detector, config_manager):
+        super().__init__(state_manager, enable_cloud=True)
+        self._detector = detector
+        self._config_manager = config_manager
+    
+    async def create_cluster(self, cluster_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Create cluster on new provider."""
+        # Implementation
+        pass
+```
+
+#### 2. Add to Unified Cloud Manager
+
+```python
+# ray_mcp/cloud/providers/cloud_provider_manager.py
+from .new_provider_manager import NewProviderManager
+
+class UnifiedCloudProviderManager:
+    def __init__(self, state_manager):
+        # ... existing code ...
+        self._new_provider_manager = NewProviderManager(
+            state_manager, self._detector, self._config_manager
+        )
+```
+
+#### 3. Update Tool Schemas
+
+```python
+# ray_mcp/tools/cloud_tools.py
+def get_cloud_provider_property(include_all: bool = False) -> Dict[str, Any]:
+    """Update to include new provider."""
+    enum_values = ["gke", "local", "new_provider"]  # Add new provider
+    # ... rest of implementation
+```
+
+### Adding KubeRay Features
+
+#### 1. Extend CRD Manager
+
+```python
+# ray_mcp/kubernetes/crds/ray_cluster_crd.py
+def create_spec(self, **kwargs) -> Dict[str, Any]:
+    """Add new KubeRay cluster features."""
+    # Extend existing CRD spec generation
+    pass
+```
+
+#### 2. Add to KubeRay Managers
+
+```python
+# ray_mcp/kubernetes/managers/kuberay_cluster_manager.py
+async def new_kuberay_operation(self, **kwargs) -> Dict[str, Any]:
+    """Add new KubeRay-specific operation."""
+    # Implementation
+    pass
+```
+
+## Debugging and Troubleshooting
+
+### Development Debugging
+
+#### Component-Level Debugging
+
+```python
+# Debug individual components
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+from ray_mcp.managers.unified_manager import RayUnifiedManager
+
+# Enable debug logging for specific components
+logging.getLogger('ray_mcp.managers').setLevel(logging.DEBUG)
+logging.getLogger('ray_mcp.kubernetes').setLevel(logging.DEBUG)
+
+manager = RayUnifiedManager()
+result = await manager.init_ray_cluster(cluster_type="kubernetes")
+```
+
+#### MCP Protocol Debugging
+
+```bash
+# Enable MCP debug logging
+export MCP_LOG_LEVEL=DEBUG
+export RAY_MCP_LOG_LEVEL=DEBUG
+uv run ray-mcp
+```
+
+#### Kubernetes Debugging
+
+```bash
+# Debug KubeRay operator
+kubectl logs -n kuberay-system deployment/kuberay-operator -f
+
+# Debug Ray clusters
+kubectl get rayclusters -A
+kubectl describe rayc CLUSTER_NAME -n NAMESPACE
+
+# Debug Ray jobs
+kubectl get rayjobs -A
+kubectl describe rayjob JOB_NAME -n NAMESPACE
+```
+
+### Common Development Issues
+
+#### Import Errors
+
+```python
+# Test optional dependencies
+try:
+    from google.cloud import container_v1
+    print("GKE client available")
+except ImportError:
+    print("Install with: uv sync --extra gke")
+
+try:
+    from kubernetes import client
+    print("Kubernetes client available")
+except ImportError:
+    print("Install with: uv sync --extra all")
+```
+
+#### Kubernetes Connection Issues
+
+```bash
+# Verify kubectl configuration
+kubectl cluster-info
+
+# Test Python client
+python -c "
+from kubernetes import client, config
+config.load_kube_config()
+v1 = client.CoreV1Api()
+print('Kubernetes connection successful')
+"
+```
+
+## Contributing Guidelines
 
 ### Pull Request Process
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/my-feature`
-3. Make changes with tests
-4. Verify all tests pass: `make test`
-5. Submit pull request
+1. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/my-feature
+   git checkout -b bugfix/fix-issue
+   ```
+
+2. **Development Workflow**
+   ```bash
+   # Make changes
+   # Add comprehensive tests
+   make test-fast  # Quick validation
+   make lint       # Code quality
+   make test       # Full test suite
+   ```
+
+3. **Documentation Updates**
+   - Update relevant documentation in `docs/`
+   - Add examples for new features
+   - Update tool schemas and descriptions
+
+4. **Submit Pull Request**
+   - Clear description of changes
+   - Link to related issues
+   - Include test coverage information
 
 ### Code Review Guidelines
 
-- All new code must have unit tests
-- Follow existing architectural patterns
-- Update documentation for user-facing changes
-- Ensure backward compatibility
-- Add type hints for new functions
-- Components should follow dependency injection pattern
+#### Required for All PRs
+- **Tests** - Unit tests for all new functionality
+- **Documentation** - User-facing documentation updates
+- **Type Hints** - Complete type annotations
+- **Error Handling** - Comprehensive exception handling
+- **Backward Compatibility** - Maintain existing API contracts
+
+#### Architecture Guidelines
+- **Single Responsibility** - Components should have focused purposes
+- **Dependency Injection** - Use constructor injection for dependencies
+- **Protocol Compliance** - Implement defined interfaces correctly
+- **Error Propagation** - Use structured error responses
+- **Resource Cleanup** - Proper cleanup in finally blocks
 
 ### Issue Reporting
 
 Include in bug reports:
-- Ray version and OS
-- MCP client configuration
-- Full error logs with component context
-- Minimal reproduction case
-- Which component(s) are involved
+- **Environment Details** - Python version, Ray version, OS
+- **Configuration** - MCP client config, environment variables
+- **Full Error Logs** - Complete stack traces with debug logging
+- **Reproduction Steps** - Minimal example to reproduce
+- **Expected vs Actual** - Clear description of the problem
 
-### Architecture Guidelines
+### Testing Requirements
 
-When contributing:
-- Keep components focused on single responsibilities  
-- Use dependency injection for component relationships
-- Follow protocol-based contracts defined in `interfaces.py`
-- Add comprehensive error handling with structured responses
-- Maintain thread safety for shared state
-- Write tests that verify behavior, not implementation details 
+#### For New Features
+- **Unit Tests** - Test component behavior in isolation
+- **Integration Tests** - Test component interactions
+- **End-to-End Tests** - Test complete user workflows
+- **Documentation Tests** - Verify examples work correctly
+
+#### For Bug Fixes
+- **Regression Tests** - Prevent the bug from recurring
+- **Edge Case Tests** - Test boundary conditions
+- **Error Handling Tests** - Verify proper error responses
+
+### Release Process
+
+1. **Version Bump** - Update version in `pyproject.toml`
+2. **Changelog** - Document all changes
+3. **Tag Release** - Create Git tag
+4. **Documentation** - Ensure docs are current
+5. **Testing** - Full test suite on multiple environments
+
+## Advanced Development Topics
+
+### Performance Optimization
+
+#### Async Best Practices
+```python
+# Use async context managers
+async with self._get_client() as client:
+    result = await client.operation()
+
+# Batch operations when possible
+tasks = [self._process_item(item) for item in items]
+results = await asyncio.gather(*tasks)
+```
+
+#### Resource Management
+```python
+# Proper cleanup patterns
+try:
+    resource = await self._acquire_resource()
+    return await self._use_resource(resource)
+finally:
+    await self._release_resource(resource)
+```
+
+### Security Considerations
+
+#### Credential Handling
+```python
+# Never log sensitive data
+self._logger.debug(f"Authenticating with project: {project_id}")
+# NOT: self._logger.debug(f"Using key: {service_account_key}")
+
+# Use environment variables for secrets
+credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+```
+
+#### Input Validation
+```python
+# Validate all external inputs
+def validate_cluster_name(name: str) -> str:
+    if not re.match(r'^[a-z0-9-]+$', name):
+        raise ValueError("Invalid cluster name format")
+    return name
+```
+
+This development guide provides comprehensive coverage of the current Ray MCP architecture with KubeRay integration, cloud provider support, and modern development practices. It serves as both a getting-started guide for new contributors and a reference for advanced development scenarios. 

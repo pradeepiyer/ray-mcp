@@ -5,7 +5,8 @@
       "args": ["-m", "ray_mcp.main"],
       "env": {
         "RAY_ADDRESS": "127.0.0.1:10001",
-        "RAY_MCP_ENHANCED_OUTPUT": "false"
+        "RAY_MCP_ENHANCED_OUTPUT": "false",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/your/service-account-key.json"
       }
     }
   },
@@ -41,6 +42,11 @@
       }
     },
     "environment_variables": {
+      "GOOGLE_APPLICATION_CREDENTIALS": {
+        "description": "Path to Google Cloud service account JSON key file for GKE authentication",
+        "example": "/path/to/your/service-account-key.json",
+        "note": "Required for Google Kubernetes Engine (GKE) functionality"
+      },
       "RAY_ADDRESS": {
         "description": "Default Ray cluster address (leave empty to use tool parameters)",
         "example": "ray://cluster.example.com:10001"
