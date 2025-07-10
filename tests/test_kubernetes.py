@@ -17,7 +17,9 @@ import pytest
 
 from ray_mcp.kubernetes.crds.ray_cluster_crd import RayClusterCRDManager
 from ray_mcp.kubernetes.crds.ray_job_crd import RayJobCRDManager
-from ray_mcp.kubernetes.managers.kuberay_cluster_manager import KubeRayClusterManagerImpl
+from ray_mcp.kubernetes.managers.kuberay_cluster_manager import (
+    KubeRayClusterManagerImpl,
+)
 from ray_mcp.kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
 from ray_mcp.kubernetes.managers.kubernetes_manager import KubernetesClusterManager
 from ray_mcp.managers.state_manager import RayStateManager
@@ -127,7 +129,7 @@ class TestKubernetesCRDOperations:
     def test_crd_serialization_formats(self):
         """Test CRD serialization to different formats."""
         spec = {"test": "data", "nested": {"key": "value"}}
-        
+
         # Test JSON serialization
         json_output = self.cluster_crd.to_json(spec)
         assert isinstance(json_output, str)
@@ -245,13 +247,13 @@ class TestKubeRayClusterOperations:
         # Create a disconnected state manager and cluster manager
         disconnected_state_manager = RayStateManager()
         disconnected_state_manager.reset_state()  # Ensure kubernetes_connected=False
-        
+
         disconnected_cluster_manager = KubeRayClusterManagerImpl(
             disconnected_state_manager,
             crd_operations=self.mock_crd_operations,
             cluster_crd=self.mock_cluster_crd,
         )
-        
+
         # Test not connected to Kubernetes - should raise RuntimeError
         with pytest.raises(RuntimeError, match="not connected"):
             disconnected_cluster_manager._ensure_kuberay_ready()
@@ -264,7 +266,7 @@ class TestKubeRayClusterOperations:
             crd_operations=self.mock_crd_operations,
             cluster_crd=self.mock_cluster_crd,
         )
-        
+
         with pytest.raises(RuntimeError, match="not connected"):
             another_disconnected_cluster_manager._ensure_kuberay_ready()
 
@@ -280,7 +282,7 @@ class TestKubeRayClusterOperations:
         # Test CRD creation failure
         self.mock_cluster_crd.create_spec.return_value = {
             "status": "error",
-            "message": "CRD validation failed"
+            "message": "CRD validation failed",
         }
         valid_spec = {
             "head_node_spec": {"num_cpus": 4},
@@ -460,7 +462,7 @@ class TestKubeRayJobOperations:
         # Test CRD creation failure
         self.mock_job_crd.create_spec.return_value = {
             "status": "error",
-            "message": "Invalid job specification"
+            "message": "Invalid job specification",
         }
         valid_spec = {"entrypoint": "python script.py"}
         result = await self.job_manager.create_ray_job(valid_spec)
@@ -518,11 +520,7 @@ class TestKubernetesClusterManager:
         assert "not connected" in result["message"].lower()
 
         # Test operations that raise exceptions when not connected
-        operations_requiring_connection = [
-            "get_namespaces",
-            "get_nodes", 
-            "get_pods"
-        ]
+        operations_requiring_connection = ["get_namespaces", "get_nodes", "get_pods"]
 
         for operation in operations_requiring_connection:
             with pytest.raises(RuntimeError, match="not connected"):
@@ -578,7 +576,7 @@ class TestKubernetesUnifiedIntegration:
         """Test integrated Kubernetes workflow through unified manager."""
         methods_to_test = [
             "connect_kubernetes_cluster",
-            "disconnect_kubernetes_cluster", 
+            "disconnect_kubernetes_cluster",
             "inspect_kubernetes_cluster",
             "kubernetes_health_check",
             "list_kubernetes_contexts",
@@ -605,7 +603,7 @@ class TestKubernetesUnifiedIntegration:
             "create_kuberay_cluster",
             "get_kuberay_cluster",
             "list_ray_clusters",
-            "update_kuberay_cluster", 
+            "update_kuberay_cluster",
             "delete_kuberay_cluster",
             "scale_ray_cluster",
             "create_kuberay_job",
@@ -662,6 +660,7 @@ class TestKubernetesErrorHandlingPatterns:
             assert "kubernetes" in result["message"].lower()
 
         import asyncio
+
         asyncio.run(test_connect())
 
     def test_kuberay_connection_requirement_patterns(self):
@@ -698,7 +697,7 @@ class TestKubernetesErrorHandlingPatterns:
         # Test CRD creation failure
         mock_cluster_crd.create_spec.return_value = {
             "status": "error",
-            "message": "Validation failed"
+            "message": "Validation failed",
         }
 
         cluster_spec = {
@@ -727,4 +726,4 @@ class TestKubernetesErrorHandlingPatterns:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"]) 
+    pytest.main([__file__, "-v"])

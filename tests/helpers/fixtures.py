@@ -12,6 +12,7 @@ def e2e_ray_manager():
     # Ensure Ray is not already running
     try:
         import ray
+
         if ray.is_initialized():
             ray.shutdown()
     except ImportError:
@@ -22,7 +23,8 @@ def e2e_ray_manager():
     # Cleanup: Stop Ray if it's running
     try:
         import ray
+
         if ray.is_initialized():
             ray.shutdown()
     except Exception:
-        pass  # Ignore cleanup errors 
+        pass  # Ignore cleanup errors

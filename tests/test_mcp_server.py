@@ -321,23 +321,23 @@ class TestRayMCPServer:
     @pytest.mark.gke
     @pytest.mark.skipif(
         not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-        reason="GKE credentials not available - set GOOGLE_APPLICATION_CREDENTIALS"
+        reason="GKE credentials not available - set GOOGLE_APPLICATION_CREDENTIALS",
     )
     @pytest.mark.skipif(
         not os.getenv("GKE_TEST_CLUSTER"),
-        reason="GKE test cluster not specified - set GKE_TEST_CLUSTER"
+        reason="GKE test cluster not specified - set GKE_TEST_CLUSTER",
     )
     async def test_gke_kuberay_job_submission(self):
         """Test complete GKE + KubeRay integration workflow.
-        
+
         This high-value integration test validates:
         1. GKE cloud provider detection
-        2. GKE cluster connection  
+        2. GKE cluster connection
         3. KubeRay job submission to GKE
         4. Job execution monitoring
         5. Log retrieval from KubeRay
         6. Resource cleanup
-        
+
         Environment requirements:
         - GOOGLE_APPLICATION_CREDENTIALS: Path to GKE service account key
         - GKE_TEST_CLUSTER: Name of GKE cluster to use for testing
@@ -345,20 +345,20 @@ class TestRayMCPServer:
         """
         print("🚀 Starting GKE + KubeRay integration test...")
         test_start_time = time.time()
-        
+
         cluster_name = os.getenv("GKE_TEST_CLUSTER")
-        
+
         try:
             # ================================================================
             # 1. GKE ENVIRONMENT DETECTION
             # ================================================================
             print("\n🔍 Testing GKE cloud provider detection...")
-            
+
             detection_result = await call_tool("detect_cloud_provider")
             detection_data = parse_tool_result(detection_result)
-            
+
             print(f"Cloud provider detection result: {detection_data}")
-            
+
             # Allow test to proceed even if detection doesn't return GKE
             # (detection may vary based on environment)
             if detection_data.get("status") == "success":
@@ -366,95 +366,109 @@ class TestRayMCPServer:
                 if detected_provider == "gke":
                     print("✅ GKE environment detected automatically")
                 else:
-                    print(f"⚠️  Detected provider: {detected_provider}, proceeding with explicit GKE connection")
+                    print(
+                        f"⚠️  Detected provider: {detected_provider}, proceeding with explicit GKE connection"
+                    )
             else:
-                print("⚠️  Cloud provider detection inconclusive, proceeding with explicit GKE connection")
-                
+                print(
+                    "⚠️  Cloud provider detection inconclusive, proceeding with explicit GKE connection"
+                )
+
             # ================================================================
             # 2. GKE CLUSTER CONNECTION
             # ================================================================
             print(f"\n🔗 Connecting to GKE cluster: {cluster_name}")
-            
-            connection_result = await call_tool("connect_kubernetes_cluster", {
-                "provider": "gke",
-                "cluster_name": cluster_name
-            })
+
+            connection_result = await call_tool(
+                "connect_kubernetes_cluster",
+                {"provider": "gke", "cluster_name": cluster_name},
+            )
             connection_data = parse_tool_result(connection_result)
-            
+
             if connection_data["status"] != "success":
-                pytest.fail(f"Failed to connect to GKE cluster {cluster_name}: {connection_data.get('message')}")
-                
+                pytest.fail(
+                    f"Failed to connect to GKE cluster {cluster_name}: {connection_data.get('message')}"
+                )
+
             print(f"✅ Successfully connected to GKE cluster: {cluster_name}")
             print(f"Connection details: {connection_data}")
-            
+
             # Verify Kubernetes connection state
             from ray_mcp.main import ray_manager
-            assert ray_manager.is_kubernetes_connected, "Should be connected to Kubernetes after GKE connection"
+
+            assert (
+                ray_manager.is_kubernetes_connected
+            ), "Should be connected to Kubernetes after GKE connection"
             print("✅ Kubernetes connection state verified")
-            
+
             # ================================================================
             # 3. KUBERAY JOB SUBMISSION
             # ================================================================
             print("\n📋 Submitting Ray job to KubeRay on GKE...")
-            
+
             # Use a simple success script for reliable testing
             with TempScriptManager(TestScripts.LIGHTWEIGHT_SUCCESS) as script_path:
-                job_result = await call_tool("submit_ray_job", {
-                    "entrypoint": f"python {script_path}",
-                    "job_type": "kubernetes",  # Force KubeRay execution
-                    "kubernetes_config": {
-                        "namespace": "default",
-                        "image": "rayproject/ray:latest"
-                    }
-                })
-                
+                job_result = await call_tool(
+                    "submit_ray_job",
+                    {
+                        "entrypoint": f"python {script_path}",
+                        "job_type": "kubernetes",  # Force KubeRay execution
+                        "kubernetes_config": {
+                            "namespace": "default",
+                            "image": "rayproject/ray:latest",
+                        },
+                    },
+                )
+
                 job_data = parse_tool_result(job_result)
-                
+
                 if job_data["status"] != "success":
-                    pytest.fail(f"Failed to submit KubeRay job: {job_data.get('message')}")
-                    
+                    pytest.fail(
+                        f"Failed to submit KubeRay job: {job_data.get('message')}"
+                    )
+
                 job_id = job_data["job_id"]
                 print(f"✅ Successfully submitted KubeRay job: {job_id}")
                 print(f"Job submission details: {job_data}")
-                
+
             # ================================================================
             # 4. JOB EXECUTION MONITORING
             # ================================================================
             print(f"\n⏱️  Monitoring job execution: {job_id}")
-            
+
             # Wait for job completion with extended timeout for GKE
             try:
                 final_status = await wait_for_job_completion(
                     job_id,
                     max_wait=300,  # 5 minutes for GKE job (includes container startup)
-                    expected_status="SUCCEEDED"
+                    expected_status="SUCCEEDED",
                 )
-                
+
                 print(f"✅ Job completed successfully: {final_status}")
-                
+
             except AssertionError as e:
                 # Get current job status for debugging
-                status_result = await call_tool("inspect_ray_job", {
-                    "job_id": job_id,
-                    "job_type": "kubernetes"
-                })
+                status_result = await call_tool(
+                    "inspect_ray_job", {"job_id": job_id, "job_type": "kubernetes"}
+                )
                 status_data = parse_tool_result(status_result)
                 print(f"❌ Job execution details: {status_data}")
                 pytest.fail(f"Job execution failed or timed out: {e}")
-                
+
             # ================================================================
             # 5. LOG RETRIEVAL FROM KUBERAY
             # ================================================================
             print(f"\n📜 Retrieving logs from KubeRay job: {job_id}")
-            
-            logs_result = await call_tool("retrieve_logs", {
-                "identifier": job_id,
-                "log_type": "job"
-            })
+
+            logs_result = await call_tool(
+                "retrieve_logs", {"identifier": job_id, "log_type": "job"}
+            )
             logs_data = parse_tool_result(logs_result)
-            
+
             if logs_data["status"] != "success":
-                print(f"⚠️  Log retrieval failed (may be expected): {logs_data.get('message')}")
+                print(
+                    f"⚠️  Log retrieval failed (may be expected): {logs_data.get('message')}"
+                )
             else:
                 print("✅ Successfully retrieved job logs")
                 if "logs" in logs_data and logs_data["logs"]:
@@ -462,21 +476,19 @@ class TestRayMCPServer:
                     # Verify our test script output is in the logs
                     if "Success!" in logs_data["logs"]:
                         print("✅ Job execution confirmed by log content")
-                        
+
             # ================================================================
             # 6. RESOURCE VERIFICATION AND CLEANUP
             # ================================================================
             print(f"\n🧹 Verifying job status and cleanup...")
-            
+
             # List KubeRay jobs to verify our job is tracked
-            jobs_result = await call_tool("list_ray_jobs", {
-                "job_type": "kubernetes"
-            })
+            jobs_result = await call_tool("list_ray_jobs", {"job_type": "kubernetes"})
             jobs_data = parse_tool_result(jobs_result)
-            
+
             if jobs_data["status"] == "success":
                 found_job = any(
-                    job.get("job_id") == job_id or job.get("name") == job_id 
+                    job.get("job_id") == job_id or job.get("name") == job_id
                     for job in jobs_data.get("jobs", [])
                 )
                 if found_job:
@@ -485,12 +497,14 @@ class TestRayMCPServer:
                     print("⚠️  Job not found in listing (may have been cleaned up)")
             else:
                 print(f"⚠️  Job listing failed: {jobs_data.get('message')}")
-                
+
             # ================================================================
             # TEST COMPLETION AND SUMMARY
             # ================================================================
             total_time = time.time() - test_start_time
-            print(f"\n✅ GKE + KubeRay integration test passed! (Total time: {total_time:.2f}s)")
+            print(
+                f"\n✅ GKE + KubeRay integration test passed! (Total time: {total_time:.2f}s)"
+            )
             print("🎉 GKE integration functionality validated:")
             print("   - ✅ GKE cloud provider detection")
             print("   - ✅ GKE cluster connection")
@@ -499,7 +513,7 @@ class TestRayMCPServer:
             print("   - ✅ Log retrieval attempt")
             print("   - ✅ Resource verification")
             print(f"   - ⚡ Performance: Total {total_time:.2f}s")
-            
+
         except Exception as e:
             print(f"\n❌ GKE integration test encountered an error: {e}")
             print("This may indicate:")

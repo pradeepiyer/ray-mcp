@@ -31,10 +31,6 @@ def get_authenticate_cloud_provider_schema() -> Dict[str, Any]:
             "Path to service account JSON file (GKE only)"
         ),
         "project_id": get_string_property("Google Cloud project ID (GKE only)"),
-        "aws_access_key_id": get_string_property("AWS access key ID (AWS only)"),
-        "aws_secret_access_key": get_string_property(
-            "AWS secret access key (AWS only)"
-        ),
         "region": get_string_property("Cloud provider region"),
         "config_file": get_string_property("Path to configuration file"),
         "context": get_string_property("Context name for configuration"),

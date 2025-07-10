@@ -130,7 +130,7 @@ class ToolRegistry:
 
         self._register_tool(
             name="list_kubernetes_clusters",
-            description="List available Kubernetes clusters from cloud providers (GKE, EKS) or local kubeconfig contexts. Discovers existing clusters that can run Ray workloads via KubeRay operator.",
+            description="List available Kubernetes clusters from cloud providers (GKE) or local kubeconfig contexts. Discovers existing clusters that can run Ray workloads via KubeRay operator.",
             schema=cloud_tools.get_list_kubernetes_clusters_schema(),
             handler=self._list_kubernetes_clusters_handler,
         )
@@ -646,8 +646,6 @@ class ToolRegistry:
         auth_params = [
             "service_account_path",
             "project_id",
-            "aws_access_key_id",
-            "aws_secret_access_key",
             "region",
             "config_file",
             "context",

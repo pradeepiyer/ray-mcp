@@ -4,7 +4,7 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional
 
-from .utils import E2EConfig, call_tool, parse_tool_result, TempScriptManager
+from .utils import E2EConfig, TempScriptManager, call_tool, parse_tool_result
 
 
 async def wait_for_job_completion(
@@ -106,6 +106,7 @@ async def start_ray_cluster(
     # Clean up any existing Ray instances before starting
     try:
         import ray
+
         if ray.is_initialized():
             ray.shutdown()
     except:
@@ -114,6 +115,7 @@ async def start_ray_cluster(
     # Run ray stop to clean up any external processes
     try:
         import subprocess
+
         subprocess.run(["ray", "stop"], capture_output=True, check=False)
     except:
         pass
@@ -157,6 +159,7 @@ async def stop_ray_cluster() -> Dict[str, Any]:
     # Additional cleanup to ensure Ray is completely shut down
     try:
         import ray
+
         if ray.is_initialized():
             ray.shutdown()
     except:
@@ -165,6 +168,7 @@ async def stop_ray_cluster() -> Dict[str, Any]:
     # Run ray stop to clean up any remaining processes
     try:
         import subprocess
+
         subprocess.run(["ray", "stop"], capture_output=True, check=False)
     except:
         pass
@@ -245,4 +249,4 @@ async def submit_and_wait_for_job(
         final_status = await wait_for_job_completion(job_id, max_wait, expected_status)
         print(f"Job {job_id} completed with status: {expected_status}")
 
-        return job_id, final_status 
+        return job_id, final_status

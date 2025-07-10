@@ -438,7 +438,7 @@ class RayUnifiedManager:
     ) -> Dict[str, Any]:
         """List Kubernetes clusters - supports both local kubeconfig contexts and cloud provider clusters.
 
-        For cloud provider clusters: Use provider parameter (e.g., 'gke', 'eks')
+        For cloud provider clusters: Use provider parameter (e.g., 'gke')
         For local contexts: Omit provider or use provider='local'
         """
         if provider and provider != "local":

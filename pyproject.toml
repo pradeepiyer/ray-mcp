@@ -34,14 +34,6 @@ gke = [
     "google-cloud-container>=2.17.0,<3.0.0",
     "google-auth>=2.16.0,<3.0.0",
 ]
-eks = [
-    "boto3>=1.26.0,<2.0.0",
-    "botocore>=1.29.0,<2.0.0",
-]
-aws = [
-    "boto3>=1.26.0,<2.0.0", 
-    "botocore>=1.29.0,<2.0.0",
-]
 gcp = [
     "google-cloud-container>=2.17.0,<3.0.0",
     "google-auth>=2.16.0,<3.0.0",
@@ -49,14 +41,10 @@ gcp = [
 cloud = [
     "google-cloud-container>=2.17.0,<3.0.0",
     "google-auth>=2.16.0,<3.0.0",
-    "boto3>=1.26.0,<2.0.0",
-    "botocore>=1.29.0,<2.0.0",
 ]
 all = [
     "google-cloud-container>=2.17.0,<3.0.0",
     "google-auth>=2.16.0,<3.0.0", 
-    "boto3>=1.26.0,<2.0.0",
-    "botocore>=1.29.0,<2.0.0",
 ]
 
 [project.urls]
@@ -79,9 +67,6 @@ dev-dependencies = [
     "isort>=5.12.0,<6.0.0",
     "pyright>=1.1.0,<2.0.0",
 ]
-
-[tool.uv.sources]
-# Add any local or git dependencies here if needed
 
 # Coverage Configuration
 [tool.coverage.run]
