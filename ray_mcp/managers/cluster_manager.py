@@ -9,10 +9,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import ClusterManager, PortManager, StateManager
+from ..foundation.interfaces import (
+    ClusterManager,
+    ManagedComponent,
+    PortManager,
+    StateManager,
+)
 
 
-class RayClusterManager(ResourceManager, ClusterManager):
+class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
     """Manages Ray cluster lifecycle operations with clean separation of concerns."""
 
     def __init__(
@@ -20,9 +25,16 @@ class RayClusterManager(ResourceManager, ClusterManager):
         state_manager,
         port_manager: PortManager,
     ):
-        super().__init__(
-            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=True,
+            enable_kubernetes=False,
+            enable_cloud=False,
         )
+        ManagedComponent.__init__(self, state_manager)
+
         self._port_manager = port_manager
         self._head_node_process: Optional[subprocess.Popen] = None
         # Simple worker tracking (replacing WorkerManager)
@@ -115,7 +127,8 @@ class RayClusterManager(ResourceManager, ClusterManager):
 
     async def _inspect_cluster_operation(self) -> Dict[str, Any]:
         """Execute cluster inspection operation."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         cluster_info = {}
 
@@ -263,7 +276,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
         try:
             # Validate address format
             if not self._validate_cluster_address(address):
-                return self._response_formatter.format_validation_error(
+                return self._ResponseFormatter.format_validation_error(
                     f"Invalid cluster address format: {address}"
                 )
 
@@ -271,14 +284,14 @@ class RayClusterManager(ResourceManager, ClusterManager):
             try:
                 host, port = self._parse_cluster_address(address)
             except ValueError as e:
-                return self._response_formatter.format_validation_error(str(e))
+                return self._ResponseFormatter.format_validation_error(str(e))
 
             dashboard_port = 8265  # Standard Ray dashboard port
             dashboard_url = f"http://{host}:{dashboard_port}"
 
             # Test connection via dashboard API
             if not self._JobSubmissionClient:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "connect to cluster",
                     Exception(
                         "JobSubmissionClient not available - Ray not properly installed"
@@ -288,7 +301,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
             # Verify cluster connectivity via dashboard API
             job_client = await self._test_dashboard_connection(dashboard_url)
             if not job_client:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "connect to cluster",
                     Exception(f"Failed to connect to Ray dashboard at {dashboard_url}"),
                 )
@@ -311,7 +324,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
                 connection_type="existing",
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 message=f"Successfully connected to Ray cluster via dashboard API at {dashboard_url}",
                 cluster_address=address,
                 dashboard_url=dashboard_url,
@@ -320,7 +333,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
 
         except Exception as e:
             self._LoggingUtility.log_error("connect to cluster", e)
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "connect to cluster", e
             )
 
@@ -346,7 +359,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
             # Start head node process
             self._head_node_process = await self._start_head_node_process(head_cmd)
             if not self._head_node_process:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "start cluster", Exception("Failed to start head node process")
                 )
 
@@ -389,7 +402,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
                     default_workers, cluster_address
                 )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 message="Ray cluster started successfully",
                 result_type="started",
                 cluster_address=cluster_address,
@@ -411,7 +424,7 @@ class RayClusterManager(ResourceManager, ClusterManager):
                 )
                 self._head_node_process = None
             self.state_manager.reset_state()
-            return self._response_formatter.format_error_response("start cluster", e)
+            return self._ResponseFormatter.format_error_response("start cluster", e)
 
     async def _build_head_node_command(
         self, dashboard_port: int, **kwargs

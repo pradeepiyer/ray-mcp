@@ -20,7 +20,6 @@ class CloudProviderDetector:
         self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
         self._state_manager = state_manager
-        self._response_formatter = self._ResponseFormatter()
         self._detection_cache = {}
         self._cache_ttl = 300  # 5 minutes
 
@@ -56,7 +55,7 @@ class CloudProviderDetector:
         try:
             auth_type = self.get_auth_type()
             if not auth_type:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "cloud provider authentication",
                     Exception(
                         f"No authentication method available for {provider.value}"
@@ -66,13 +65,13 @@ class CloudProviderDetector:
             if provider == CloudProvider.GKE:
                 return await self._authenticate_gke(auth_config or {})
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "cloud provider authentication",
                     Exception(f"Authentication not supported for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "cloud provider authentication", e
             )
 
@@ -82,13 +81,13 @@ class CloudProviderDetector:
             if provider == CloudProvider.GKE:
                 return await self._validate_gke_auth()
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "validate cloud authentication",
                     Exception(f"Validation not supported for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate cloud authentication", e
             )
 
@@ -170,7 +169,7 @@ class CloudProviderDetector:
                 "GOOGLE_APPLICATION_CREDENTIALS"
             )
             if not service_account_path:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke authentication",
                     Exception(
                         "Service account path not provided and GOOGLE_APPLICATION_CREDENTIALS not set"
@@ -178,7 +177,7 @@ class CloudProviderDetector:
                 )
 
             if not os.path.exists(service_account_path):
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke authentication",
                     Exception(
                         f"Service account file not found: {service_account_path}"
@@ -200,7 +199,7 @@ class CloudProviderDetector:
                     }
                 )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider="gke",
                 auth_type=auth_type.value,
                 authenticated=True,
@@ -216,11 +215,11 @@ class CloudProviderDetector:
                     }
                 )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider="gke", auth_type=auth_type.value, authenticated=True
             )
 
-        return self._response_formatter.format_error_response(
+        return self._ResponseFormatter.format_error_response(
             "gke authentication",
             Exception(f"Unsupported authentication type: {auth_type}"),
         )
@@ -233,16 +232,16 @@ class CloudProviderDetector:
 
             # Check if we have credentials
             if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "validate gke authentication", Exception("No GKE credentials found")
                 )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider="gke", authenticated=True, valid=True
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate gke authentication", e
             )
 

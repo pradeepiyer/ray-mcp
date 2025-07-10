@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from ...foundation.base_managers import ResourceManager
 from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ...foundation.interfaces import CloudProvider, GKEManager
+from ...foundation.interfaces import CloudProvider, GKEManager, ManagedComponent
 from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
 from ..config.cloud_provider_config import CloudProviderConfigManager
 from ..config.cloud_provider_detector import CloudProviderDetector
@@ -22,7 +22,7 @@ except ImportError:
     pass
 
 
-class GKEClusterManager(ResourceManager, GKEManager):
+class GKEClusterManager(ResourceManager, GKEManager, ManagedComponent):
     """Manages GKE clusters with authentication and discovery capabilities."""
 
     def __init__(
@@ -32,9 +32,15 @@ class GKEClusterManager(ResourceManager, GKEManager):
         config_manager: Optional[CloudProviderConfigManager] = None,
         kubernetes_config: Optional[KubernetesConfigManager] = None,
     ):
-        super().__init__(
-            state_manager, enable_ray=False, enable_kubernetes=True, enable_cloud=True
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=False,
+            enable_kubernetes=True,
+            enable_cloud=True,
         )
+        ManagedComponent.__init__(self, state_manager)
 
         self._detector = detector or CloudProviderDetector(state_manager)
         self._config_manager = config_manager or CloudProviderConfigManager(
@@ -167,7 +173,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
         """Authenticate with Google Cloud Platform."""
         try:
             if not self._GOOGLE_CLOUD_AVAILABLE:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke authentication",
                     Exception(
                         "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
@@ -176,7 +182,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
             credentials_json = credentials.get("service_account_json")
             if not credentials_json:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke authentication",
                     ValueError(
                         "service_account_json is required for GKE authentication"
@@ -188,7 +194,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 try:
                     credentials_data = json.loads(credentials_json)
                 except json.JSONDecodeError:
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "gke authentication",
                         ValueError(
                             "Invalid JSON format for service account credentials"
@@ -208,7 +214,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             # Store project ID
             self._project_id = credentials_data.get("project_id")
             if not self._project_id:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke authentication",
                     ValueError("project_id not found in service account credentials"),
                 )
@@ -217,7 +223,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             self._ensure_clients()
             self._is_authenticated = True
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 authenticated=True,
                 project_id=self._project_id,
                 service_account_email=credentials_data.get("client_email"),
@@ -225,7 +231,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
         except Exception as e:
             self._log_error("gke authentication", e)
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke authentication", e
             )
 
@@ -243,8 +249,8 @@ class GKEClusterManager(ResourceManager, GKEManager):
         """Execute GKE cluster discovery operation."""
         self._ensure_google_cloud_available()
 
-        if not self._is_authenticated:
-            raise RuntimeError("Not authenticated with GKE. Please authenticate first.")
+        # Use ManagedComponent validation method instead of manual check
+        self._ensure_cloud_authenticated(CloudProvider.GKE)
 
         project_id = project_id or self._project_id
         if not project_id:
@@ -328,7 +334,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
     ) -> Dict[str, Any]:
         """Connect to a GKE cluster and establish Kubernetes connection."""
         if not self._GOOGLE_CLOUD_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster connection",
                 Exception(
                     "Google Cloud SDK is not available. Please install google-cloud-container: pip install google-cloud-container"
@@ -336,17 +342,19 @@ class GKEClusterManager(ResourceManager, GKEManager):
             )
 
         if not self._KUBERNETES_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster connection",
                 Exception(
                     "Kubernetes client library is not available. Please install kubernetes package: pip install kubernetes"
                 ),
             )
 
-        if not self._is_authenticated:
-            return self._response_formatter.format_error_response(
-                "gke cluster connection",
-                Exception("Not authenticated with GKE. Please authenticate first."),
+        # Use ManagedComponent validation method instead of manual check
+        try:
+            self._ensure_cloud_authenticated(CloudProvider.GKE)
+        except RuntimeError as e:
+            return self._ResponseFormatter.format_error_response(
+                "gke cluster connection", e
             )
 
         try:
@@ -355,7 +363,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
             project_id = project_id or self._project_id
             if not project_id:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke cluster connection",
                     ValueError("Project ID is required for cluster connection"),
                 )
@@ -397,7 +405,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 },
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 connected=True,
                 cluster_name=cluster_name,
                 location=location,
@@ -409,7 +417,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster connection", e
             )
 
@@ -419,7 +427,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
         """Establish Kubernetes connection using GKE cluster details and Google Cloud credentials."""
         try:
             if not self._GOOGLE_AUTH_AVAILABLE:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "kubernetes connection",
                     Exception("Google auth transport not available"),
                 )
@@ -482,7 +490,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
             # Safe access to git_version attribute
             git_version = getattr(version_info, "git_version", "unknown")
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 connected=True,
                 server_version=git_version,
                 namespaces_count=len(namespaces.items) if namespaces else 0,
@@ -497,7 +505,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 except OSError:
                     pass
 
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "establish kubernetes connection", e
             )
 
@@ -507,7 +515,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
 
     def get_connection_status(self) -> Dict[str, Any]:
         """Get GKE connection status."""
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             authenticated=self._is_authenticated,
             project_id=self._project_id,
             provider="gke",
@@ -536,19 +544,19 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 cloud_provider_auth={},
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 disconnected=True, provider="gke"
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response("gke disconnect", e)
+            return self._ResponseFormatter.format_error_response("gke disconnect", e)
 
     async def create_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a GKE cluster."""
         if not self._GOOGLE_CLOUD_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster creation",
                 Exception(
                     "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
@@ -556,7 +564,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             )
 
         if not self._is_authenticated:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster creation",
                 Exception("Not authenticated with GKE. Please authenticate first."),
             )
@@ -564,7 +572,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
         try:
             project_id = project_id or self._project_id
             if not project_id:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke cluster creation",
                     ValueError("Project ID is required for cluster creation"),
                 )
@@ -587,7 +595,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 cluster=cluster_config_typed,
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 created=True,
                 operation_name=operation.name,
                 cluster_name=cluster_spec.get("name", "ray-cluster"),
@@ -596,7 +604,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster creation", e
             )
 
@@ -605,7 +613,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
     ) -> Dict[str, Any]:
         """Get information about a GKE cluster."""
         if not self._GOOGLE_CLOUD_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster info",
                 Exception(
                     "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
@@ -613,7 +621,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
             )
 
         if not self._is_authenticated:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "gke cluster info",
                 Exception("Not authenticated with GKE. Please authenticate first."),
             )
@@ -621,7 +629,7 @@ class GKEClusterManager(ResourceManager, GKEManager):
         try:
             project_id = project_id or self._project_id
             if not project_id:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "gke cluster info",
                     ValueError("Project ID is required for cluster info"),
                 )
@@ -690,12 +698,10 @@ class GKEClusterManager(ResourceManager, GKEManager):
                 ],
             }
 
-            return self._response_formatter.format_success_response(
-                cluster=cluster_info
-            )
+            return self._ResponseFormatter.format_success_response(cluster=cluster_info)
 
         except Exception as e:
-            return self._response_formatter.format_error_response("gke cluster info", e)
+            return self._ResponseFormatter.format_error_response("gke cluster info", e)
 
     def _build_cluster_config(
         self, cluster_spec: Dict[str, Any], project_id: str

@@ -45,7 +45,6 @@ class CRDOperationsClient(CRDOperations):
 
         self._config_manager = config_manager or KubernetesConfigManager()
         self._kubernetes_config = kubernetes_config  # Pre-configured Kubernetes client
-        self._response_formatter = self._ResponseFormatter()
         self._custom_objects_api = None
         self._api_client = None  # Persistent API client
         self._retry_attempts = 3
@@ -142,7 +141,7 @@ class CRDOperationsClient(CRDOperations):
         """Create a custom resource with retry logic."""
         try:
             if not self._KUBERNETES_AVAILABLE:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "create custom resource",
                     Exception("Kubernetes client library is not available"),
                 )
@@ -164,7 +163,7 @@ class CRDOperationsClient(CRDOperations):
                         body=resource_spec,
                     )
 
-                    return self._response_formatter.format_success_response(
+                    return self._ResponseFormatter.format_success_response(
                         resource=result,
                         name=result.get("metadata", {}).get("name"),
                         namespace=namespace,
@@ -175,7 +174,7 @@ class CRDOperationsClient(CRDOperations):
                     if attempt == self._retry_attempts - 1:  # Last attempt
                         status = getattr(e, "status", "unknown")
                         reason = getattr(e, "reason", "unknown")
-                        return self._response_formatter.format_error_response(
+                        return self._ResponseFormatter.format_error_response(
                             "create custom resource",
                             Exception(f"API Error: {status} - {reason}"),
                         )
@@ -189,19 +188,19 @@ class CRDOperationsClient(CRDOperations):
 
                 except Exception as e:
                     self._LoggingUtility.log_error("create custom resource", e)
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "create custom resource", e
                     )
 
             # Fallback return in case all retries are exhausted without explicit return
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "create custom resource",
                 Exception("All retry attempts exhausted without successful completion"),
             )
 
         except Exception as e:
             self._LoggingUtility.log_error("create custom resource", e)
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "create custom resource", e
             )
 
@@ -210,7 +209,7 @@ class CRDOperationsClient(CRDOperations):
     ) -> Dict[str, Any]:
         """Get a custom resource by name."""
         if not self._KUBERNETES_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "get custom resource",
                 Exception("Kubernetes client library is not available"),
             )
@@ -237,7 +236,7 @@ class CRDOperationsClient(CRDOperations):
                 else "Unknown"
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 resource=result,
                 name=name,
                 namespace=namespace,
@@ -250,19 +249,19 @@ class CRDOperationsClient(CRDOperations):
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             if status == 404:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "get custom resource",
                     Exception(
                         f"Resource '{name}' not found in namespace '{namespace}'"
                     ),
                 )
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "get custom resource",
                     Exception(f"API Error: {status} - {reason}"),
                 )
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "get custom resource", e
             )
 
@@ -271,7 +270,7 @@ class CRDOperationsClient(CRDOperations):
     ) -> Dict[str, Any]:
         """List custom resources in a namespace."""
         if not self._KUBERNETES_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "list custom resources",
                 Exception("Kubernetes client library is not available"),
             )
@@ -329,7 +328,7 @@ class CRDOperationsClient(CRDOperations):
                 }
                 resources.append(resource_summary)
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 resources=resources,
                 total_count=len(resources),
                 namespace=namespace,
@@ -339,12 +338,12 @@ class CRDOperationsClient(CRDOperations):
         except self._ApiException as e:
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "list custom resources",
                 Exception(f"API Error: {status} - {reason}"),
             )
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "list custom resources", e
             )
 
@@ -357,7 +356,7 @@ class CRDOperationsClient(CRDOperations):
     ) -> Dict[str, Any]:
         """Update a custom resource with retry logic."""
         if not self._KUBERNETES_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "update custom resource",
                 Exception("Kubernetes client library is not available"),
             )
@@ -408,7 +407,7 @@ class CRDOperationsClient(CRDOperations):
                     body=updated_spec,
                 )
 
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     resource=result,
                     name=name,
                     namespace=namespace,
@@ -419,7 +418,7 @@ class CRDOperationsClient(CRDOperations):
                 status = getattr(e, "status", "unknown")
                 reason = getattr(e, "reason", "unknown")
                 if status == 404:
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "update custom resource",
                         Exception(
                             f"Resource '{name}' not found in namespace '{namespace}'"
@@ -435,17 +434,17 @@ class CRDOperationsClient(CRDOperations):
                     await asyncio.sleep(self._retry_delay * (attempt + 1))
                     continue
                 else:
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "update custom resource",
                         Exception(f"API Error: {status} - {reason}"),
                     )
             except Exception as e:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "update custom resource", e
                 )
 
         # Fallback return in case all retries are exhausted without explicit return
-        return self._response_formatter.format_error_response(
+        return self._ResponseFormatter.format_error_response(
             "update custom resource",
             Exception("All retry attempts exhausted without successful completion"),
         )
@@ -455,7 +454,7 @@ class CRDOperationsClient(CRDOperations):
     ) -> Dict[str, Any]:
         """Delete a custom resource with cleanup."""
         if not self._KUBERNETES_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "delete custom resource",
                 Exception("Kubernetes client library is not available"),
             )
@@ -475,7 +474,7 @@ class CRDOperationsClient(CRDOperations):
                 name=name,
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 deleted=True,
                 name=name,
                 namespace=namespace,
@@ -487,19 +486,19 @@ class CRDOperationsClient(CRDOperations):
             status = getattr(e, "status", "unknown")
             reason = getattr(e, "reason", "unknown")
             if status == 404:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "delete custom resource",
                     Exception(
                         f"Resource '{name}' not found in namespace '{namespace}'"
                     ),
                 )
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "delete custom resource",
                     Exception(f"API Error: {status} - {reason}"),
                 )
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "delete custom resource", e
             )
 
@@ -508,7 +507,7 @@ class CRDOperationsClient(CRDOperations):
     ) -> Dict[str, Any]:
         """Watch custom resource changes."""
         if not self._KUBERNETES_AVAILABLE:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "watch custom resource",
                 Exception("Kubernetes client library is not available"),
             )
@@ -525,7 +524,7 @@ class CRDOperationsClient(CRDOperations):
             result = await self.list_resources(resource_type, namespace)
 
             if result.get("status") == "success":
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     watch_enabled=True,
                     resource_type=resource_type,
                     namespace=namespace,
@@ -536,6 +535,6 @@ class CRDOperationsClient(CRDOperations):
                 return result
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "watch custom resource", e
             )

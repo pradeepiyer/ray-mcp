@@ -3,17 +3,24 @@
 from typing import Any, Dict, Optional
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import LogManager
+from ..foundation.interfaces import LogManager, ManagedComponent
 from ..foundation.logging_utils import LogProcessor
 
 
-class RayLogManager(ResourceManager, LogManager):
+class RayLogManager(ResourceManager, LogManager, ManagedComponent):
     """Manages log retrieval operations with unified patterns and memory protection."""
 
     def __init__(self, state_manager):
-        super().__init__(
-            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=True,
+            enable_kubernetes=False,
+            enable_cloud=False,
         )
+        ManagedComponent.__init__(self, state_manager)
+
         self._log_processor = LogProcessor()
 
     async def retrieve_logs(
@@ -85,7 +92,8 @@ class RayLogManager(ResourceManager, LogManager):
         max_size_mb: int = 10,
     ) -> Dict[str, Any]:
         """Unified job log retrieval with error analysis."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         try:
             # Get job client
@@ -118,7 +126,11 @@ class RayLogManager(ResourceManager, LogManager):
 
             # Add error analysis if requested
             if include_errors and processed_logs:
-                result["error_analysis"] = self._analyze_job_logs(processed_logs)
+                from ..foundation.logging_utils import LogAnalyzer
+
+                result["error_analysis"] = LogAnalyzer.analyze_logs_for_errors(
+                    processed_logs
+                )
 
             return result
 
@@ -137,7 +149,8 @@ class RayLogManager(ResourceManager, LogManager):
         include_errors: bool = False,
     ) -> Dict[str, Any]:
         """Retrieve job logs with pagination support."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         try:
             # Get job client
@@ -174,8 +187,10 @@ class RayLogManager(ResourceManager, LogManager):
 
             # Add error analysis if requested and we have logs
             if include_errors and paginated_result.get("logs"):
-                paginated_result["error_analysis"] = self._analyze_job_logs(
-                    paginated_result["logs"]
+                from ..foundation.logging_utils import LogAnalyzer
+
+                paginated_result["error_analysis"] = (
+                    LogAnalyzer.analyze_logs_for_errors(paginated_result["logs"])
                 )
 
             return paginated_result
@@ -228,34 +243,38 @@ class RayLogManager(ResourceManager, LogManager):
         """Validate log retrieval parameters."""
         # Validate identifier
         if not identifier or not isinstance(identifier, str) or not identifier.strip():
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 "Identifier must be a non-empty string"
             )
 
         # Validate log type - only job logs are supported
         if log_type != "job":
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 f"Invalid log_type: {log_type}. Only 'job' is supported"
             )
 
         # Validate size parameters
         if max_size_mb <= 0 or max_size_mb > 100:
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 "max_size_mb must be between 1 and 100"
             )
 
         # Validate line parameters (if specified and not default)
         if num_lines < 1 or num_lines > 10000:
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 "num_lines must be between 1 and 10000"
             )
 
         # Validate pagination parameters (if specified)
         if page is not None and page < 1:
-            return self._format_validation_error("page must be positive")
+            return self._ResponseFormatter.format_validation_error(
+                "page must be positive"
+            )
 
         if page_size is not None and (page_size < 1 or page_size > 1000):
-            return self._format_validation_error("page_size must be between 1 and 1000")
+            return self._ResponseFormatter.format_validation_error(
+                "page_size must be between 1 and 1000"
+            )
 
         return None
 
@@ -270,13 +289,25 @@ class RayLogManager(ResourceManager, LogManager):
         additional_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Create a standardized error response when log retrieval fails."""
-        response = {
-            "status": "error",
-            "log_type": log_type,
-            "identifier": identifier,
-            "logs": "",
-            "max_size_mb": max_size_mb,
-        }
+        # Use ResponseFormatter as base and add log-specific fields
+        error_msg = (
+            additional_info.get("error", "Log retrieval failed")
+            if additional_info
+            else "Log retrieval failed"
+        )
+        response = self._ResponseFormatter.format_error_response(
+            "retrieve logs", Exception(error_msg)
+        )
+
+        # Add log-specific fields
+        response.update(
+            {
+                "log_type": log_type,
+                "identifier": identifier,
+                "logs": "",
+                "max_size_mb": max_size_mb,
+            }
+        )
 
         # Add pagination info if applicable
         if page is not None and page_size is not None:
@@ -293,45 +324,10 @@ class RayLogManager(ResourceManager, LogManager):
             response["num_lines_retrieved"] = 0
             response["requested_lines"] = num_lines
 
-        # Add additional error information
+        # Add any remaining additional error information
         if additional_info:
-            response.update(additional_info)
+            # Remove the 'error' key since we already used it for the message
+            remaining_info = {k: v for k, v in additional_info.items() if k != "error"}
+            response.update(remaining_info)
 
         return response
-
-    def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
-        """Analyze job logs for errors and issues."""
-        if not logs:
-            return {"errors_found": False, "analysis": "No logs to analyze"}
-
-        error_patterns = [
-            r"ERROR",
-            r"Exception",
-            r"Traceback",
-            r"FAILED",
-            r"CRITICAL",
-            r"Fatal",
-        ]
-
-        log_lines = logs.split("\n")
-        errors = []
-
-        for i, line in enumerate(log_lines):
-            for pattern in error_patterns:
-                if pattern.lower() in line.lower():
-                    errors.append(
-                        {
-                            "line_number": i + 1,
-                            "error_type": pattern,
-                            "line_content": line.strip(),
-                        }
-                    )
-                    break
-
-        return {
-            "errors_found": len(errors) > 0,
-            "error_count": len(errors),
-            "errors": errors[:10],  # Limit to first 10 errors
-            "total_lines_analyzed": len(log_lines),
-            "analysis": f"Found {len(errors)} potential error lines out of {len(log_lines)} total lines",
-        }

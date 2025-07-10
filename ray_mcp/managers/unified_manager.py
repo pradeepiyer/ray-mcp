@@ -214,8 +214,10 @@ class RayUnifiedManager:
 
                     # Add error analysis if requested
                     if include_errors and final_result.get("logs"):
-                        final_result["error_analysis"] = self._analyze_logs_for_errors(
-                            final_result["logs"]
+                        from ..foundation.logging_utils import LogAnalyzer
+
+                        final_result["error_analysis"] = (
+                            LogAnalyzer.analyze_logs_for_errors(final_result["logs"])
                         )
 
                     return final_result
@@ -272,43 +274,6 @@ class RayUnifiedManager:
             return "local"
 
         return "local"  # Default to local
-
-    def _analyze_logs_for_errors(self, logs: str) -> Dict[str, Any]:
-        """Analyze logs for errors and issues."""
-        if not logs:
-            return {"errors_found": False, "analysis": "No logs to analyze"}
-
-        error_patterns = [
-            r"ERROR",
-            r"Exception",
-            r"Traceback",
-            r"FAILED",
-            r"CRITICAL",
-            r"Fatal",
-        ]
-
-        log_lines = logs.split("\n")
-        errors = []
-
-        for i, line in enumerate(log_lines):
-            for pattern in error_patterns:
-                if pattern.lower() in line.lower():
-                    errors.append(
-                        {
-                            "line_number": i + 1,
-                            "error_type": pattern,
-                            "line_content": line.strip(),
-                        }
-                    )
-                    break
-
-        return {
-            "errors_found": len(errors) > 0,
-            "error_count": len(errors),
-            "errors": errors[:10],  # Limit to first 10 errors
-            "total_lines_analyzed": len(log_lines),
-            "analysis": f"Found {len(errors)} potential error lines out of {len(log_lines)} total lines",
-        }
 
     # Port management methods (for internal use)
     async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:

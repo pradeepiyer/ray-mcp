@@ -352,3 +352,45 @@ class ResponseFormatter:
         response = {"status": "partial", "message": message}
         response.update(kwargs)
         return response
+
+
+class LogAnalyzer:
+    """Shared utility for analyzing logs for errors and issues."""
+
+    @staticmethod
+    def analyze_logs_for_errors(logs: str) -> Dict[str, Any]:
+        """Analyze logs for errors and issues - consolidated from duplicated methods."""
+        if not logs:
+            return {"errors_found": False, "analysis": "No logs to analyze"}
+
+        error_patterns = [
+            r"ERROR",
+            r"Exception",
+            r"Traceback",
+            r"FAILED",
+            r"CRITICAL",
+            r"Fatal",
+        ]
+
+        log_lines = logs.split("\n")
+        errors = []
+
+        for i, line in enumerate(log_lines):
+            for pattern in error_patterns:
+                if pattern.lower() in line.lower():
+                    errors.append(
+                        {
+                            "line_number": i + 1,
+                            "error_type": pattern,
+                            "line_content": line.strip(),
+                        }
+                    )
+                    break
+
+        return {
+            "errors_found": len(errors) > 0,
+            "error_count": len(errors),
+            "errors": errors[:10],  # Limit to first 10 errors
+            "total_lines_analyzed": len(log_lines),
+            "analysis": f"Found {len(errors)} potential error lines out of {len(log_lines)} total lines",
+        }

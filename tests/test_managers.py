@@ -140,18 +140,27 @@ class TestManagerContracts:
 
         manager = TestManager(state_manager)
         assert hasattr(manager, "_log_info")
-        assert hasattr(manager, "_format_success_response")
-        assert hasattr(manager, "_format_error_response")
+        # Response formatting now handled by ResponseFormatter directly
+        from ray_mcp.foundation.logging_utils import ResponseFormatter
+
+        assert hasattr(ResponseFormatter, "format_success_response")
+        assert hasattr(ResponseFormatter, "format_error_response")
 
         # Test ResourceManager pattern
-        class TestResourceManager(ResourceManager):
-            pass
+        from ray_mcp.foundation.interfaces import ManagedComponent
+
+        class TestResourceManager(ResourceManager, ManagedComponent):
+            def __init__(self, state_manager, **kwargs):
+                ResourceManager.__init__(self, state_manager, **kwargs)
+                ManagedComponent.__init__(self, state_manager)
 
         resource_manager = TestResourceManager(
             state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
         )
         assert hasattr(resource_manager, "_ensure_ray_available")
-        assert hasattr(resource_manager, "_ensure_initialized")
+        assert hasattr(
+            resource_manager, "_ensure_ray_initialized"
+        )  # Now in ManagedComponent
 
 
 @pytest.mark.fast
@@ -301,12 +310,15 @@ class TestManagerErrorHandling:
     async def test_resource_manager_error_patterns(self):
         """Test common error patterns in resource managers."""
         from ray_mcp.foundation.base_managers import ResourceManager
+        from ray_mcp.foundation.interfaces import ManagedComponent
 
         state_manager = Mock()
         state_manager.is_initialized.return_value = False
 
-        class TestResourceManager(ResourceManager):
-            pass
+        class TestResourceManager(ResourceManager, ManagedComponent):
+            def __init__(self, state_manager, **kwargs):
+                ResourceManager.__init__(self, state_manager, **kwargs)
+                ManagedComponent.__init__(self, state_manager)
 
         manager = TestResourceManager(
             state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
@@ -319,7 +331,7 @@ class TestManagerErrorHandling:
 
         # Test Ray not initialized error
         with pytest.raises(RuntimeError, match="Ray is not initialized"):
-            manager._ensure_initialized()
+            manager._ensure_ray_initialized()  # Now in ManagedComponent
 
     def test_validation_error_handling_patterns(self):
         """Test validation error handling patterns across managers."""

@@ -112,19 +112,6 @@ class PortManager(Protocol):
 
 
 @runtime_checkable
-class ProcessManager(Protocol):
-    """Protocol for process management."""
-
-    async def spawn_process(self, cmd: List[str], **kwargs) -> Optional[Any]:
-        """Spawn a new process."""
-        ...
-
-    async def terminate_process(self, process: Any, timeout: int = 5) -> Dict[str, Any]:
-        """Terminate a process gracefully."""
-        ...
-
-
-@runtime_checkable
 class KubernetesClient(Protocol):
     """Protocol for Kubernetes API client interactions."""
 
@@ -365,29 +352,6 @@ class KubeRayJobManager(Protocol):
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
         """Get Ray job logs."""
-        ...
-
-
-@runtime_checkable
-class CloudProviderAuth(Protocol):
-    """Protocol for cloud provider authentication."""
-
-    def detect_provider(self) -> Optional[CloudProvider]:
-        """Detect the current cloud provider."""
-        ...
-
-    def get_auth_type(self) -> Optional[AuthenticationType]:
-        """Get the authentication type available."""
-        ...
-
-    async def authenticate(
-        self, provider: CloudProvider, auth_config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Authenticate with cloud provider."""
-        ...
-
-    async def validate_authentication(self, provider: CloudProvider) -> Dict[str, Any]:
-        """Validate authentication with cloud provider."""
         ...
 
 

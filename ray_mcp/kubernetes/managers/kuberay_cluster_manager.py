@@ -4,12 +4,14 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 from ...foundation.base_managers import ResourceManager
-from ...foundation.interfaces import KubeRayClusterManager
+from ...foundation.interfaces import KubeRayClusterManager, ManagedComponent
 from ..crds.crd_operations import CRDOperationsClient
 from ..crds.ray_cluster_crd import RayClusterCRDManager
 
 
-class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
+class KubeRayClusterManagerImpl(
+    ResourceManager, KubeRayClusterManager, ManagedComponent
+):
     """Manages Ray cluster lifecycle using KubeRay Custom Resources."""
 
     def __init__(
@@ -18,9 +20,16 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         crd_operations: Optional[CRDOperationsClient] = None,
         cluster_crd: Optional[RayClusterCRDManager] = None,
     ):
-        super().__init__(
-            state_manager, enable_ray=True, enable_kubernetes=True, enable_cloud=False
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=True,
+            enable_kubernetes=True,
+            enable_cloud=False,
         )
+        ManagedComponent.__init__(self, state_manager)
+
         self._crd_operations = crd_operations or CRDOperationsClient()
         self._cluster_crd = cluster_crd or RayClusterCRDManager()
         self._core_v1_api = None
@@ -125,6 +134,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
         """Get Ray cluster status."""
+        # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.get_resource(
@@ -159,7 +169,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
                 "readyWorkerReplicas", 0
             ) >= status.get("minWorkerReplicas", 0)
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 cluster=cluster_status, ready=is_ready, raw_resource=resource
             )
         else:
@@ -167,6 +177,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
     async def list_ray_clusters(self, namespace: str = "default") -> Dict[str, Any]:
         """List Ray clusters."""
+        # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.list_resources(
@@ -188,7 +199,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
                 }
                 clusters.append(cluster_info)
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 clusters=clusters, total_count=len(clusters), namespace=namespace
             )
         else:
@@ -198,6 +209,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         self, name: str, cluster_spec: Dict[str, Any], namespace: str = "default"
     ) -> Dict[str, Any]:
         """Update Ray cluster configuration."""
+        # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         # Get current cluster to understand current state
@@ -252,7 +264,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         if update_result.get("status") == "success":
             self._update_cluster_state(name, namespace, "updating")
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 cluster_name=name,
                 namespace=namespace,
                 cluster_status="updating",
@@ -265,6 +277,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         self, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
         """Delete Ray cluster."""
+        # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         result = await self._crd_operations.delete_resource(
@@ -275,7 +288,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
             # Update state to remove the cluster
             self._remove_cluster_state(name, namespace)
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 cluster_name=name,
                 namespace=namespace,
                 deleted=True,
@@ -289,10 +302,11 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         self, name: str, worker_replicas: int, namespace: str = "default"
     ) -> Dict[str, Any]:
         """Scale Ray cluster workers."""
+        # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         if worker_replicas < 0:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "scale ray cluster", Exception("worker_replicas must be non-negative")
             )
 
@@ -307,7 +321,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         # Update worker group replicas
         worker_groups = current_spec.get("workerGroupSpecs", [])
         if not worker_groups:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "scale ray cluster", Exception("No worker groups found in cluster")
             )
 
@@ -328,7 +342,7 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
         )
 
         if update_result.get("status") == "success":
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 cluster_name=name,
                 namespace=namespace,
                 worker_replicas=worker_replicas,
@@ -504,11 +518,11 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
                 LoggingUtility.log_debug(
                     "nodeport_url",
-                    f"No NodePort found for dashboard port {dashboard_port}",
+                    f"Dashboard port {dashboard_port} not found in service ports",
                 )
                 return None
 
-            # Get a node IP to construct the URL (simplified for dashboard URL)
+            # Get node external IP (using sync version for non-async method)
             node_ip = self._get_node_external_ip_sync()
             if node_ip:
                 url = f"http://{node_ip}:{node_port}"
@@ -516,13 +530,13 @@ class KubeRayClusterManagerImpl(ResourceManager, KubeRayClusterManager):
 
                 LoggingUtility.log_info("nodeport_url", f"NodePort external URL: {url}")
                 return url
-            else:
-                from ...foundation.logging_utils import LoggingUtility
 
-                LoggingUtility.log_debug(
-                    "nodeport_url", "No external node IP available for NodePort access"
-                )
-                return None
+            from ...foundation.logging_utils import LoggingUtility
+
+            LoggingUtility.log_debug(
+                "nodeport_url", "Could not determine node external IP"
+            )
+            return None
 
         except Exception as e:
             from ...foundation.logging_utils import LoggingUtility

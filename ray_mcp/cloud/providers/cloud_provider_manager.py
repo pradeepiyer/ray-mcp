@@ -4,13 +4,19 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from ...foundation.base_managers import ResourceManager
-from ...foundation.interfaces import CloudProvider, CloudProviderManager
+from ...foundation.interfaces import (
+    CloudProvider,
+    CloudProviderManager,
+    ManagedComponent,
+)
 from ..config.cloud_provider_config import CloudProviderConfigManager
 from ..config.cloud_provider_detector import CloudProviderDetector
 from .gke_manager import GKEClusterManager
 
 
-class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
+class UnifiedCloudProviderManager(
+    ResourceManager, CloudProviderManager, ManagedComponent
+):
     """Unified manager for all cloud provider operations."""
 
     def __init__(
@@ -20,9 +26,16 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         config_manager: Optional[CloudProviderConfigManager] = None,
         gke_manager: Optional[GKEClusterManager] = None,
     ):
-        super().__init__(
-            state_manager, enable_ray=False, enable_kubernetes=True, enable_cloud=True
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=False,
+            enable_kubernetes=True,
+            enable_cloud=True,
         )
+        ManagedComponent.__init__(self, state_manager)
+
         self._detector = detector or CloudProviderDetector(state_manager)
         self._config_manager = config_manager or CloudProviderConfigManager(
             state_manager
@@ -52,7 +65,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                 "description": "Local Kubernetes cluster via kubeconfig",
             }
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 detected_provider=(
                     detected_provider.value if detected_provider else None
                 ),
@@ -62,7 +75,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "detect cloud provider", e
             )
 
@@ -73,7 +86,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         try:
             # Validate provider
             if provider not in CloudProvider:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "authenticate cloud provider",
                     Exception(f"Unsupported provider: {provider}"),
                 )
@@ -84,13 +97,13 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             elif provider == CloudProvider.LOCAL:
                 return await self._authenticate_local(auth_config or {})
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "authenticate cloud provider",
                     Exception(f"Authentication not implemented for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "authenticate cloud provider", e
             )
 
@@ -101,19 +114,21 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         try:
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
+                # Use ManagedComponent validation method instead of ResourceManager's
+                self._ensure_cloud_authenticated(provider)
                 return await self._gke_manager.discover_gke_clusters(
                     kwargs.get("project_id"), kwargs.get("zone")
                 )
             elif provider == CloudProvider.LOCAL:
                 return await self._list_local_contexts()
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "list cloud clusters",
                     Exception(f"Cluster listing not implemented for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "list cloud clusters", e
             )
 
@@ -124,9 +139,11 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         try:
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
+                # Use ManagedComponent validation method instead of ResourceManager's
+                self._ensure_cloud_authenticated(provider)
                 zone = kwargs.get("zone")
                 if not zone:
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "connect cloud cluster",
                         Exception("zone is required for GKE cluster connection"),
                     )
@@ -136,7 +153,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             elif provider == CloudProvider.LOCAL:
                 return await self._connect_local_cluster(cluster_name, kwargs)
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "connect cloud cluster",
                     Exception(
                         f"Cluster connection not implemented for {provider.value}"
@@ -144,7 +161,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "connect cloud cluster", e
             )
 
@@ -162,24 +179,26 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
 
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
+                # Use ManagedComponent validation method instead of ResourceManager's
+                self._ensure_cloud_authenticated(provider)
                 return await self._gke_manager.create_gke_cluster(
                     cluster_spec, kwargs.get("project_id")
                 )
             elif provider == CloudProvider.LOCAL:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "create cloud cluster",
                     Exception(
                         "Local cluster creation not supported. Use existing clusters or Docker/minikube."
                     ),
                 )
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "create cloud cluster",
                     Exception(f"Cluster creation not implemented for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "create cloud cluster", e
             )
 
@@ -190,9 +209,11 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         try:
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
+                # Use ManagedComponent validation method instead of ResourceManager's
+                self._ensure_cloud_authenticated(provider)
                 zone = kwargs.get("zone")
                 if not zone:
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "get cloud cluster info",
                         Exception("zone is required for GKE cluster info"),
                     )
@@ -202,13 +223,13 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             elif provider == CloudProvider.LOCAL:
                 return await self._get_local_cluster_info(cluster_name)
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "get cloud cluster info",
                     Exception(f"Cluster info not implemented for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "get cloud cluster info", e
             )
 
@@ -244,7 +265,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                     }
                 )
 
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     provider="local",
                     authenticated=True,
                     auth_type="kubeconfig",
@@ -254,7 +275,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                 return config_result
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "local authentication", e
             )
 
@@ -297,7 +318,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             return await k8s_config.list_contexts()
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "list local contexts", e
             )
 
@@ -317,7 +338,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "connect local cluster", e
             )
 
@@ -333,7 +354,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             return await k8s_manager.inspect_cluster()
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "get local cluster info", e
             )
 
@@ -345,7 +366,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
         try:
             # Common validation
             if not cluster_spec.get("name"):
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "validate cluster spec", Exception("Cluster name is required")
                 )
 
@@ -353,12 +374,12 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             if provider == CloudProvider.GKE:
                 return await self._validate_gke_cluster_spec(cluster_spec)
             else:
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     valid=True, cluster_spec=cluster_spec
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate cluster spec", e
             )
 
@@ -374,7 +395,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             field for field in required_fields if field not in cluster_spec
         ]
         if missing_fields:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate gke cluster spec",
                 Exception(f"Missing required fields: {', '.join(missing_fields)}"),
             )
@@ -389,7 +410,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                 f"Missing recommended fields: {', '.join(missing_recommended)}"
             )
 
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             valid=True, cluster_spec=cluster_spec, warnings=warnings
         )
 
@@ -434,7 +455,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                 if provider in ["gke", "local"]:
                     providers_to_check = [provider]
                 else:
-                    return self._response_formatter.format_error_response(
+                    return self._ResponseFormatter.format_error_response(
                         "check environment", Exception(f"Unknown provider: {provider}")
                     )
             else:
@@ -466,12 +487,10 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                     "pip install 'ray-mcp[cloud]' or uv sync --extra cloud"
                 )
 
-            return self._response_formatter.format_success_response(**results)
+            return self._ResponseFormatter.format_success_response(**results)
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
-                "check environment", e
-            )
+            return self._ResponseFormatter.format_error_response("check environment", e)
 
     async def _check_gke_environment(self) -> Dict[str, Any]:
         """Check GKE-specific environment setup."""
@@ -594,7 +613,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                 provider.value, {}
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider=provider.value,
                 authenticated=auth_state.get("authenticated", False),
                 connected=connection_state.get("connected", False),
@@ -603,7 +622,7 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"get {provider.value} status", e
             )
 
@@ -631,11 +650,11 @@ class UnifiedCloudProviderManager(ResourceManager, CloudProviderManager):
                     kubernetes_server_version=None,
                 )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider=provider.value, disconnected=True
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"disconnect {provider.value}", e
             )

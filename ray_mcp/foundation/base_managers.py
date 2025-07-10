@@ -27,9 +27,6 @@ class BaseManager(ABC):
         self._LoggingUtility = logging_utils["LoggingUtility"]
         self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
-        # Backward compatibility: keep instance for managers that still use it
-        self._response_formatter = self._ResponseFormatter()
-
     @property
     def state_manager(self) -> StateManager:
         """Get the state manager."""
@@ -49,25 +46,10 @@ class BaseManager(ABC):
         self._LoggingUtility.log_error(operation, error)
 
     # === Response Formatting Methods ===
-    def _format_success_response(self, **kwargs) -> Dict[str, Any]:
-        """Format success response."""
-        return self._response_formatter.format_success_response(**kwargs)
-
-    def _format_error_response(
-        self, operation: str, error: Exception, **kwargs
-    ) -> Dict[str, Any]:
-        """Format error response."""
-        return self._response_formatter.format_error_response(
-            operation, error, **kwargs
-        )
-
-    def _format_validation_error(self, message: str, **kwargs) -> Dict[str, Any]:
-        """Format validation error response."""
-        return self._response_formatter.format_validation_error(message, **kwargs)
-
-    def _handle_exceptions(self, operation: str):
-        """Decorator for handling exceptions in manager methods."""
-        return self._ResponseFormatter.handle_exceptions(operation)
+    # Use ResponseFormatter directly instead of creating wrapper methods
+    # Example: ResponseFormatter.format_success_response(**kwargs)
+    # Example: ResponseFormatter.format_error_response(operation, error, **kwargs)
+    # Example: ResponseFormatter.format_validation_error(message, **kwargs)
 
     async def _execute_operation(
         self, operation_name: str, operation_func, *args, **kwargs
@@ -77,10 +59,10 @@ class BaseManager(ABC):
             result = await operation_func(*args, **kwargs)
             if isinstance(result, dict) and "status" in result:
                 return result
-            return self._format_success_response(**result)
+            return self._ResponseFormatter.format_success_response(**result)
         except Exception as e:
             self._log_error(operation_name, e)
-            return self._format_error_response(operation_name, e)
+            return self._ResponseFormatter.format_error_response(operation_name, e)
 
     # === Validation Methods (former ValidationMixin) ===
     def _validate_job_id(
@@ -88,7 +70,7 @@ class BaseManager(ABC):
     ) -> Optional[Dict[str, Any]]:
         """Validate job ID format."""
         if not job_id or not isinstance(job_id, str) or not job_id.strip():
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 f"Invalid job_id for {operation_name}: must be a non-empty string"
             )
         return None
@@ -96,7 +78,7 @@ class BaseManager(ABC):
     def _validate_entrypoint(self, entrypoint: str) -> Optional[Dict[str, Any]]:
         """Validate job entrypoint."""
         if not entrypoint or not isinstance(entrypoint, str) or not entrypoint.strip():
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 "Entrypoint must be a non-empty string"
             )
         return None
@@ -108,7 +90,7 @@ class BaseManager(ABC):
             or not isinstance(cluster_name, str)
             or not cluster_name.strip()
         ):
-            return self._format_validation_error(
+            return self._ResponseFormatter.format_validation_error(
                 "Cluster name must be a non-empty string"
             )
         return None
@@ -179,6 +161,9 @@ class ResourceManager(BaseManager):
 
     This replaces the old RayBaseManager, KubernetesBaseManager, CloudProviderBaseManager,
     and KubeRayBaseManager with a single configurable class.
+
+    Note: Connection validation methods have been moved to ManagedComponent to eliminate duplication.
+    Manager classes should inherit from both ResourceManager and ManagedComponent.
     """
 
     def __init__(
@@ -243,11 +228,6 @@ class ResourceManager(BaseManager):
                 "Ray is not available. Please install Ray to use this feature."
             )
 
-    def _ensure_initialized(self) -> None:
-        """Ensure Ray is initialized."""
-        if not self._state_manager.is_initialized():
-            raise RuntimeError("Ray is not initialized. Please start Ray first.")
-
     def _is_ray_initialized(self) -> bool:
         """Check if Ray is initialized."""
         if not self._RAY_AVAILABLE or not self._ray:
@@ -264,18 +244,6 @@ class ResourceManager(BaseManager):
             raise RuntimeError(
                 "Kubernetes client library is not available. Please install kubernetes package."
             )
-
-    def _ensure_connected(self) -> None:
-        """Ensure Kubernetes is connected."""
-        state = self._state_manager.get_state()
-        if not state.get("kubernetes_connected", False):
-            raise RuntimeError(
-                "Kubernetes is not connected. Please connect to a cluster first."
-            )
-
-    def _ensure_kuberay_ready(self) -> None:
-        """Ensure Kubernetes is connected and KubeRay is available."""
-        self._ensure_connected()
 
     # === Cloud Methods ===
     def _ensure_google_cloud_available(self) -> None:

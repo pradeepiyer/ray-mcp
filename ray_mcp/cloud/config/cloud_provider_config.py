@@ -20,7 +20,6 @@ class CloudProviderConfigManager(CloudProviderConfig):
         self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
         self._state_manager = state_manager
-        self._response_formatter = self._ResponseFormatter()
         self._config_cache = {}
         self._templates = self._load_templates()
 
@@ -45,12 +44,12 @@ class CloudProviderConfigManager(CloudProviderConfig):
             # Cache the configuration
             self._config_cache[provider.value] = config
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider=provider.value, config=config, loaded=True
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"load {provider.value} config", e
             )
 
@@ -62,13 +61,13 @@ class CloudProviderConfigManager(CloudProviderConfig):
             if provider == CloudProvider.GKE:
                 return self._validate_gke_config(config)
             else:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     f"validate {provider.value} config",
                     Exception(f"Validation not supported for {provider.value}"),
                 )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"validate {provider.value} config", e
             )
 
@@ -79,19 +78,19 @@ class CloudProviderConfigManager(CloudProviderConfig):
         try:
             template = self._templates.get(provider.value, {}).get(cluster_type)
             if not template:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     f"get {provider.value} template",
                     Exception(
                         f"Template '{cluster_type}' not found for {provider.value}"
                     ),
                 )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider=provider.value, cluster_type=cluster_type, template=template
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"get {provider.value} template", e
             )
 
@@ -283,7 +282,7 @@ class CloudProviderConfigManager(CloudProviderConfig):
                 missing_fields.append(field)
 
         if missing_fields:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate gke config",
                 Exception(f"Missing required fields: {', '.join(missing_fields)}"),
             )
@@ -291,11 +290,11 @@ class CloudProviderConfigManager(CloudProviderConfig):
         # Validate project_id format
         project_id = config["project_id"]
         if not isinstance(project_id, str) or len(project_id) < 6:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate gke config", Exception("Invalid project_id format")
             )
 
-        return self._response_formatter.format_success_response(
+        return self._ResponseFormatter.format_success_response(
             provider="gke", valid=True, config=config
         )
 
@@ -313,12 +312,12 @@ class CloudProviderConfigManager(CloudProviderConfig):
             with open(file_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False)
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider=provider.value, config_file=file_path, saved=True
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"save {provider.value} config", e
             )
 
@@ -326,11 +325,11 @@ class CloudProviderConfigManager(CloudProviderConfig):
         """Get list of available templates for a provider."""
         try:
             templates = list(self._templates.get(provider.value, {}).keys())
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 provider=provider.value, templates=templates
             )
 
         except Exception as e:
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 f"get {provider.value} templates", e
             )

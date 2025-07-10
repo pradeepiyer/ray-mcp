@@ -3,12 +3,12 @@
 from typing import Any, Dict, List, Optional
 
 from ...foundation.base_managers import ResourceManager
-from ...foundation.interfaces import KubernetesManager
+from ...foundation.interfaces import KubernetesManager, ManagedComponent
 from ..config.kubernetes_client import KubernetesApiClient
 from ..config.kubernetes_config import KubernetesConfigManager
 
 
-class KubernetesClusterManager(ResourceManager, KubernetesManager):
+class KubernetesClusterManager(ResourceManager, KubernetesManager, ManagedComponent):
     """Manages Kubernetes cluster operations with clean separation of concerns."""
 
     def __init__(
@@ -17,9 +17,16 @@ class KubernetesClusterManager(ResourceManager, KubernetesManager):
         config_manager: Optional[KubernetesConfigManager] = None,
         client: Optional[KubernetesApiClient] = None,
     ):
-        super().__init__(
-            state_manager, enable_ray=False, enable_kubernetes=True, enable_cloud=False
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=False,
+            enable_kubernetes=True,
+            enable_cloud=False,
         )
+        ManagedComponent.__init__(self, state_manager)
+
         self._config_manager = config_manager or KubernetesConfigManager()
         self._client = client or KubernetesApiClient(self._config_manager)
 
@@ -128,7 +135,8 @@ class KubernetesClusterManager(ResourceManager, KubernetesManager):
 
     async def _inspect_cluster_operation(self) -> Dict[str, Any]:
         """Execute Kubernetes cluster inspection operation."""
-        self._ensure_connected()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_kubernetes_connected()
 
         # Get comprehensive cluster information
         cluster_info = await self._client.get_cluster_info()
@@ -225,17 +233,20 @@ class KubernetesClusterManager(ResourceManager, KubernetesManager):
 
     async def get_namespaces(self) -> Dict[str, Any]:
         """Get list of namespaces."""
-        self._ensure_connected()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_kubernetes_connected()
         return await self._client.list_namespaces()
 
     async def get_nodes(self) -> Dict[str, Any]:
         """Get cluster nodes."""
-        self._ensure_connected()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_kubernetes_connected()
         return await self._client.get_nodes()
 
     async def get_pods(self, namespace: str = "default") -> Dict[str, Any]:
         """Get pods in a namespace."""
-        self._ensure_connected()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_kubernetes_connected()
         return await self._client.get_pods(namespace)
 
     async def validate_config(self) -> Dict[str, Any]:

@@ -418,27 +418,36 @@ class TestFoundationComponents:
         manager = TestManager(state_manager)
         assert manager.state_manager == state_manager
         assert hasattr(manager, "_log_info")
-        assert hasattr(manager, "_format_success_response")
-        assert hasattr(manager, "_format_error_response")
+        # Test response formatting through ResponseFormatter
+        from ray_mcp.foundation.logging_utils import ResponseFormatter
 
-        # Test response formatting
-        success_response = manager._format_success_response(result="test")
+        success_response = ResponseFormatter.format_success_response(result="test")
         assert isinstance(success_response, dict)
+        assert success_response["status"] == "success"
+        assert success_response["result"] == "test"
 
-        error_response = manager._format_error_response(
+        error_response = ResponseFormatter.format_error_response(
             "operation", RuntimeError("test")
         )
         assert isinstance(error_response, dict)
+        assert error_response["status"] == "error"
+        assert "operation" in error_response["message"]
 
         # Test ResourceManager
-        class TestResourceManager(ResourceManager):
-            pass
+        from ray_mcp.foundation.interfaces import ManagedComponent
+
+        class TestResourceManager(ResourceManager, ManagedComponent):
+            def __init__(self, state_manager, **kwargs):
+                ResourceManager.__init__(self, state_manager, **kwargs)
+                ManagedComponent.__init__(self, state_manager)
 
         resource_manager = TestResourceManager(
             state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
         )
         assert hasattr(resource_manager, "_ensure_ray_available")
-        assert hasattr(resource_manager, "_ensure_initialized")
+        assert hasattr(
+            resource_manager, "_ensure_ray_initialized"
+        )  # Now in ManagedComponent
 
     def test_validation_and_utility_methods(self):
         """Test that validation and utility methods work correctly."""

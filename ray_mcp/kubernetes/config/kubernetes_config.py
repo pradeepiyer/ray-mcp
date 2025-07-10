@@ -23,7 +23,6 @@ class KubernetesConfigManager(KubernetesConfig):
         self._ConfigException = k8s_imports["ConfigException"]
         self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
 
-        self._response_formatter = self._ResponseFormatter()
         self._current_config = None
         self._current_context = None
 
@@ -33,7 +32,7 @@ class KubernetesConfigManager(KubernetesConfig):
         """Load Kubernetes configuration from file or environment."""
         try:
             if not self._KUBERNETES_AVAILABLE:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "load kubernetes config",
                     Exception(
                         "Kubernetes client library is not available. Please install kubernetes package: pip install kubernetes"
@@ -43,7 +42,7 @@ class KubernetesConfigManager(KubernetesConfig):
             # Try to load config from various sources
             if self._try_load_incluster_config():
                 self._current_context = "in-cluster"
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     config_type="in-cluster", context="in-cluster"
                 )
 
@@ -54,7 +53,7 @@ class KubernetesConfigManager(KubernetesConfig):
                 self._current_context = (
                     context or self._get_current_context_from_config(config_file)
                 )
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     config_type="kubeconfig",
                     config_file=config_file,
                     context=self._current_context,
@@ -63,18 +62,18 @@ class KubernetesConfigManager(KubernetesConfig):
             # Try environment variables
             if self._try_load_env_config():
                 self._current_context = "environment"
-                return self._response_formatter.format_success_response(
+                return self._ResponseFormatter.format_success_response(
                     config_type="environment", context="environment"
                 )
 
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "load kubernetes config",
                 Exception("No valid Kubernetes configuration found"),
             )
 
         except Exception as e:
             self._LoggingUtility.log_error("load kubernetes config", e)
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "load kubernetes config", e
             )
 
@@ -82,7 +81,7 @@ class KubernetesConfigManager(KubernetesConfig):
         """Validate the loaded Kubernetes configuration."""
         try:
             if not self._KUBERNETES_AVAILABLE:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "validate kubernetes config",
                     Exception("Kubernetes client library is not available"),
                 )
@@ -96,14 +95,14 @@ class KubernetesConfigManager(KubernetesConfig):
 
             # Safe access to git_version attribute
             git_version = getattr(version_info, "git_version", "unknown")
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 valid=True,
                 context=self._current_context,
                 server_version=git_version,
             )
         except Exception as e:
             self._LoggingUtility.log_error("validate kubernetes config", e)
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "validate kubernetes config", e
             )
 
@@ -111,7 +110,7 @@ class KubernetesConfigManager(KubernetesConfig):
         """List available Kubernetes contexts."""
         try:
             if not self._KUBERNETES_AVAILABLE:
-                return self._response_formatter.format_error_response(
+                return self._ResponseFormatter.format_error_response(
                     "list kubernetes contexts",
                     Exception(
                         "Kubernetes client library is not available. Please install kubernetes package: pip install kubernetes"
@@ -151,13 +150,13 @@ class KubernetesConfigManager(KubernetesConfig):
                 else None
             )
 
-            return self._response_formatter.format_success_response(
+            return self._ResponseFormatter.format_success_response(
                 contexts=context_list,
                 active_context=active_context_name,
             )
         except Exception as e:
             self._LoggingUtility.log_error("list kubernetes contexts", e)
-            return self._response_formatter.format_error_response(
+            return self._ResponseFormatter.format_error_response(
                 "list kubernetes contexts", e
             )
 

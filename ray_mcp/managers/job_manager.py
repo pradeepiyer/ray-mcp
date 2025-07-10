@@ -4,16 +4,23 @@ import inspect
 from typing import Any, Dict, List, Optional
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import JobManager
+from ..foundation.interfaces import JobManager, ManagedComponent
 
 
-class RayJobManager(ResourceManager, JobManager):
+class RayJobManager(ResourceManager, JobManager, ManagedComponent):
     """Manages Ray job operations with clean separation of concerns."""
 
     def __init__(self, state_manager):
-        super().__init__(
-            state_manager, enable_ray=True, enable_kubernetes=False, enable_cloud=False
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=True,
+            enable_kubernetes=False,
+            enable_cloud=False,
         )
+        ManagedComponent.__init__(self, state_manager)
+
         self._job_client: Optional[Any] = None
         self._initializing_job_client = False  # Add flag to prevent infinite recursion
 
@@ -66,7 +73,8 @@ class RayJobManager(ResourceManager, JobManager):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Execute job submission operation."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         # Validate entrypoint
         validation_error = self._validate_entrypoint(entrypoint)
@@ -101,7 +109,8 @@ class RayJobManager(ResourceManager, JobManager):
 
     async def _list_jobs_operation(self) -> Dict[str, Any]:
         """Execute list jobs operation."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         job_client = await self._get_or_create_job_client("list jobs")
         if not job_client:
@@ -122,7 +131,8 @@ class RayJobManager(ResourceManager, JobManager):
 
     async def _cancel_job_operation(self, job_id: str) -> Dict[str, Any]:
         """Execute cancel job operation."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         # Validate job ID
         validation_error = self._validate_job_id(job_id, "cancel job")
@@ -148,7 +158,8 @@ class RayJobManager(ResourceManager, JobManager):
         self, job_id: str, mode: str = "status"
     ) -> Dict[str, Any]:
         """Execute inspect job operation."""
-        self._ensure_initialized()
+        # Use ManagedComponent validation method instead of ResourceManager's
+        self._ensure_ray_initialized()
 
         # Validate job ID
         validation_error = self._validate_job_id(job_id, "inspect job")

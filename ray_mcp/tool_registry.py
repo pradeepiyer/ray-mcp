@@ -580,7 +580,9 @@ class ToolRegistry:
 
             # Add error analysis if requested
             if include_errors and final_result.get("logs"):
-                final_result["error_analysis"] = self._analyze_job_logs(
+                from .foundation.logging_utils import LogAnalyzer
+
+                final_result["error_analysis"] = LogAnalyzer.analyze_logs_for_errors(
                     final_result["logs"]
                 )
 
@@ -588,43 +590,6 @@ class ToolRegistry:
 
         except Exception as e:
             return ResponseFormatter.format_error_response("process kuberay logs", e)
-
-    def _analyze_job_logs(self, logs: str) -> Dict[str, Any]:
-        """Analyze job logs for errors and issues (similar to local ray log analysis)."""
-        if not logs:
-            return {"errors_found": False, "analysis": "No logs to analyze"}
-
-        error_patterns = [
-            r"ERROR",
-            r"Exception",
-            r"Traceback",
-            r"FAILED",
-            r"CRITICAL",
-            r"Fatal",
-        ]
-
-        log_lines = logs.split("\n")
-        errors = []
-
-        for i, line in enumerate(log_lines):
-            for pattern in error_patterns:
-                if pattern.lower() in line.lower():
-                    errors.append(
-                        {
-                            "line_number": i + 1,
-                            "error_type": pattern,
-                            "line_content": line.strip(),
-                        }
-                    )
-                    break
-
-        return {
-            "errors_found": len(errors) > 0,
-            "error_count": len(errors),
-            "errors": errors[:10],  # Limit to first 10 errors
-            "total_lines_analyzed": len(log_lines),
-            "analysis": f"Found {len(errors)} potential error lines out of {len(log_lines)} total lines",
-        }
 
     # Cloud provider handlers
     async def _detect_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
