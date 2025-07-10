@@ -208,11 +208,11 @@ inspect_ray_cluster()
 # Cloud provider workflow
 detect_cloud_provider()
 authenticate_cloud_provider(provider="gke", project_id="my-project")
-list_cloud_clusters(provider="gke") 
-connect_cloud_cluster(provider="gke", cluster_name="my-cluster", zone="us-central1-a")
+list_kubernetes_clusters(provider="gke") 
+connect_kubernetes_cluster(provider="gke", cluster_name="my-cluster", zone="us-central1-a")
 
 # Create and manage cloud clusters
-create_cloud_cluster(
+create_kubernetes_cluster(
     provider="gke",
     cluster_spec={
         "name": "ray-cluster",
@@ -241,10 +241,10 @@ create_cloud_cluster(
 ### Cloud Provider Management
 - `detect_cloud_provider` - Auto-detect available cloud environments
 - `authenticate_cloud_provider` - Authenticate with GKE/EKS/local clusters
-- `list_cloud_clusters` - Discover clusters across cloud providers
-- `connect_cloud_cluster` - Connect to specific cloud clusters
-- `create_cloud_cluster` - Create new GKE/EKS clusters
-- `get_cloud_cluster_info` - Get detailed cluster information
+- `list_kubernetes_clusters` - Discover Kubernetes clusters across cloud providers
+- `connect_kubernetes_cluster` - Connect to specific Kubernetes clusters
+- `create_kubernetes_cluster` - Create new GKE/EKS clusters
+- `get_kubernetes_cluster_info` - Get detailed Kubernetes cluster information
 - `get_cloud_provider_status` - Check authentication/connection status
 - `disconnect_cloud_provider` - Disconnect from cloud providers
 - `get_cloud_config_template` - Get cluster configuration templates
@@ -396,6 +396,6 @@ Contributions welcome! See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup instr
 3. **Test cluster operations**:
    ```bash
    # List clusters
-   list_cloud_clusters gke
-   list_cloud_clusters eks
+   list_kubernetes_clusters gke
+   list_kubernetes_clusters eks
    ``` 

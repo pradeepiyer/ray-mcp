@@ -358,12 +358,68 @@ class RayUnifiedManager:
 
     # Kubernetes management methods
     async def connect_kubernetes_cluster(
-        self, config_file: Optional[str] = None, context: Optional[str] = None
+        self,
+        config_file: Optional[str] = None,
+        context: Optional[str] = None,
+        cluster_name: Optional[str] = None,
+        provider: Optional[str] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
-        """Connect to Kubernetes cluster."""
-        return await self._kubernetes_manager.connect_cluster(
-            config_file=config_file, context=context
-        )
+        """Connect to Kubernetes cluster - supports both local kubeconfig and cloud provider connections.
+
+        For local connections: Use config_file and/or context parameters
+        For cloud provider connections: Use cluster_name, provider, and cloud-specific kwargs (zone, project_id, etc.)
+        """
+        # If provider is specified, this is a cloud provider connection
+        if provider or cluster_name:
+            if not cluster_name:
+                return {
+                    "status": "error",
+                    "message": "cluster_name is required for cloud provider connections",
+                }
+
+            if provider:
+                provider_enum = CloudProvider(provider)
+                result = await self._cloud_provider_manager.connect_cloud_cluster(
+                    provider_enum, cluster_name, **kwargs
+                )
+
+                # If GKE connection was successful, coordinate with KubeRay managers
+                if (
+                    result.get("status") == "success"
+                    and provider_enum == CloudProvider.GKE
+                ):
+                    await self._coordinate_gke_kubernetes_config()
+
+                return result
+            else:
+                # If no provider specified, detect and use the current environment
+                detection_result = await self.detect_cloud_provider()
+                detected_provider = detection_result.get("detected_provider")
+                if detected_provider:
+                    provider_enum = CloudProvider(detected_provider)
+                    result = await self._cloud_provider_manager.connect_cloud_cluster(
+                        provider_enum, cluster_name, **kwargs
+                    )
+
+                    # If GKE connection was successful, coordinate with KubeRay managers
+                    if (
+                        result.get("status") == "success"
+                        and provider_enum == CloudProvider.GKE
+                    ):
+                        await self._coordinate_gke_kubernetes_config()
+
+                    return result
+                else:
+                    return {
+                        "status": "error",
+                        "message": "No cloud provider detected and none specified",
+                    }
+        else:
+            # This is a local kubeconfig connection
+            return await self._kubernetes_manager.connect_cluster(
+                config_file=config_file, context=context
+            )
 
     async def disconnect_kubernetes_cluster(self) -> Dict[str, Any]:
         """Disconnect from Kubernetes cluster."""
@@ -376,6 +432,37 @@ class RayUnifiedManager:
     async def kubernetes_health_check(self) -> Dict[str, Any]:
         """Perform health check on Kubernetes cluster."""
         return await self._kubernetes_manager.health_check()
+
+    async def list_kubernetes_clusters(
+        self, provider: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
+        """List Kubernetes clusters - supports both local kubeconfig contexts and cloud provider clusters.
+
+        For cloud provider clusters: Use provider parameter (e.g., 'gke', 'eks')
+        For local contexts: Omit provider or use provider='local'
+        """
+        if provider and provider != "local":
+            provider_enum = CloudProvider(provider)
+            return await self._cloud_provider_manager.list_cloud_clusters(
+                provider_enum, **kwargs
+            )
+        elif provider == "local":
+            # List local Kubernetes contexts
+            return await self._kubernetes_manager.list_contexts()
+        else:
+            # If no provider specified, detect and use the current environment
+            detection_result = await self.detect_cloud_provider()
+            detected_provider = detection_result.get("detected_provider")
+            if detected_provider:
+                provider_enum = CloudProvider(detected_provider)
+                return await self._cloud_provider_manager.list_cloud_clusters(
+                    provider_enum, **kwargs
+                )
+            else:
+                return {
+                    "status": "error",
+                    "message": "No cloud provider detected and none specified",
+                }
 
     async def list_kubernetes_contexts(self) -> Dict[str, Any]:
         """List available Kubernetes contexts."""
@@ -517,69 +604,6 @@ class RayUnifiedManager:
             provider_enum, auth_config
         )
 
-    async def list_cloud_clusters(
-        self, provider: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
-        """List clusters for a cloud provider."""
-        if provider:
-            provider_enum = CloudProvider(provider)
-            return await self._cloud_provider_manager.list_cloud_clusters(
-                provider_enum, **kwargs
-            )
-        else:
-            # If no provider specified, detect and use the current environment
-            detection_result = await self.detect_cloud_provider()
-            detected_provider = detection_result.get("detected_provider")
-            if detected_provider:
-                provider_enum = CloudProvider(detected_provider)
-                return await self._cloud_provider_manager.list_cloud_clusters(
-                    provider_enum, **kwargs
-                )
-            else:
-                return {
-                    "status": "error",
-                    "message": "No cloud provider detected and none specified",
-                }
-
-    async def connect_cloud_cluster(
-        self, cluster_name: str, provider: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
-        """Connect to a cloud cluster."""
-        if provider:
-            provider_enum = CloudProvider(provider)
-            result = await self._cloud_provider_manager.connect_cloud_cluster(
-                provider_enum, cluster_name, **kwargs
-            )
-
-            # If GKE connection was successful, coordinate with KubeRay managers
-            if result.get("status") == "success" and provider_enum == CloudProvider.GKE:
-                await self._coordinate_gke_kubernetes_config()
-
-            return result
-        else:
-            # If no provider specified, detect and use the current environment
-            detection_result = await self.detect_cloud_provider()
-            detected_provider = detection_result.get("detected_provider")
-            if detected_provider:
-                provider_enum = CloudProvider(detected_provider)
-                result = await self._cloud_provider_manager.connect_cloud_cluster(
-                    provider_enum, cluster_name, **kwargs
-                )
-
-                # If GKE connection was successful, coordinate with KubeRay managers
-                if (
-                    result.get("status") == "success"
-                    and provider_enum == CloudProvider.GKE
-                ):
-                    await self._coordinate_gke_kubernetes_config()
-
-                return result
-            else:
-                return {
-                    "status": "error",
-                    "message": "No cloud provider detected and none specified",
-                }
-
     async def _coordinate_gke_kubernetes_config(self) -> None:
         """Coordinate GKE Kubernetes configuration with KubeRay managers."""
         try:
@@ -679,53 +703,64 @@ class RayUnifiedManager:
                 f"Failed to ensure KubeRay-GKE coordination: {str(e)}",
             )
 
-    async def create_cloud_cluster(
+    async def create_kubernetes_cluster(
         self, cluster_spec: Dict[str, Any], provider: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
-        """Create a cloud cluster."""
-        if provider:
-            provider_enum = CloudProvider(provider)
-            return await self._cloud_provider_manager.create_cloud_cluster(
-                provider_enum, cluster_spec, **kwargs
-            )
-        else:
+        """Create a Kubernetes cluster - supports cloud providers only (local cluster creation not supported).
+
+        For cloud providers: Use provider parameter (e.g., 'gke') and cluster_spec
+        """
+        if not provider:
             # If no provider specified, detect and use the current environment
             detection_result = await self.detect_cloud_provider()
             detected_provider = detection_result.get("detected_provider")
-            if detected_provider:
-                provider_enum = CloudProvider(detected_provider)
-                return await self._cloud_provider_manager.create_cloud_cluster(
-                    provider_enum, cluster_spec, **kwargs
-                )
+            if detected_provider and detected_provider != "local":
+                provider = detected_provider
             else:
                 return {
                     "status": "error",
-                    "message": "No cloud provider detected and none specified",
+                    "message": "Cloud provider is required for cluster creation. Local cluster creation not supported.",
                 }
 
-    async def get_cloud_cluster_info(
+        if provider == "local":
+            return {
+                "status": "error",
+                "message": "Local cluster creation not supported. Use existing clusters or Docker/minikube.",
+            }
+
+        provider_enum = CloudProvider(provider)
+        return await self._cloud_provider_manager.create_cloud_cluster(
+            provider_enum, cluster_spec, **kwargs
+        )
+
+    async def get_kubernetes_cluster_info(
         self, cluster_name: str, provider: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
-        """Get cloud cluster information."""
-        if provider:
+        """Get Kubernetes cluster information - supports both local and cloud provider clusters.
+
+        For cloud provider clusters: Use provider parameter and cluster_name
+        For local clusters: Use cluster_name (as context name) and provider='local' or omit provider
+        """
+        if provider and provider != "local":
             provider_enum = CloudProvider(provider)
             return await self._cloud_provider_manager.get_cloud_cluster_info(
                 provider_enum, cluster_name, **kwargs
             )
+        elif provider == "local":
+            # For local clusters, get info about the current cluster
+            return await self._kubernetes_manager.inspect_cluster()
         else:
             # If no provider specified, detect and use the current environment
             detection_result = await self.detect_cloud_provider()
             detected_provider = detection_result.get("detected_provider")
-            if detected_provider:
+            if detected_provider and detected_provider != "local":
                 provider_enum = CloudProvider(detected_provider)
                 return await self._cloud_provider_manager.get_cloud_cluster_info(
                     provider_enum, cluster_name, **kwargs
                 )
             else:
-                return {
-                    "status": "error",
-                    "message": "No cloud provider detected and none specified",
-                }
+                # Default to local cluster info
+                return await self._kubernetes_manager.inspect_cluster()
 
     async def get_cloud_provider_status(self, provider: str) -> Dict[str, Any]:
         """Get cloud provider status."""

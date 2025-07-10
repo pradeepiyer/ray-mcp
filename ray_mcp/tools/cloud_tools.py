@@ -42,8 +42,8 @@ def get_authenticate_cloud_provider_schema() -> Dict[str, Any]:
     return build_cloud_provider_schema(additional_properties, required_provider=True)
 
 
-def get_list_cloud_clusters_schema() -> Dict[str, Any]:
-    """Schema for list_cloud_clusters tool."""
+def get_list_kubernetes_clusters_schema() -> Dict[str, Any]:
+    """Schema for list_kubernetes_clusters tool."""
     additional_properties = {
         "project_id": get_string_property("Google Cloud project ID (GKE only)"),
         "zone": get_string_property("Zone to list clusters from (GKE only)"),
@@ -51,16 +51,16 @@ def get_list_cloud_clusters_schema() -> Dict[str, Any]:
     return build_cloud_provider_schema(additional_properties, required_provider=True)
 
 
-def get_connect_cloud_cluster_schema() -> Dict[str, Any]:
-    """Schema for connect_cloud_cluster tool."""
+def get_connect_kubernetes_cluster_schema() -> Dict[str, Any]:
+    """Schema for connect_kubernetes_cluster tool."""
     additional_properties = {
         "context": get_string_property("Kubernetes context name (local only)"),
     }
     return build_gke_cluster_schema(additional_properties, required_cluster_name=True)
 
 
-def get_create_cloud_cluster_schema() -> Dict[str, Any]:
-    """Schema for create_cloud_cluster tool."""
+def get_create_kubernetes_cluster_schema() -> Dict[str, Any]:
+    """Schema for create_kubernetes_cluster tool."""
     return {
         "type": "object",
         "properties": {
@@ -71,9 +71,11 @@ def get_create_cloud_cluster_schema() -> Dict[str, Any]:
             },
             "cluster_spec": {
                 "type": "object",
-                "description": "Cluster specification for the cloud provider",
+                "description": "Kubernetes cluster specification for the cloud provider",
                 "properties": {
-                    "name": get_string_property("Name of the cluster to create"),
+                    "name": get_string_property(
+                        "Name of the Kubernetes cluster to create"
+                    ),
                     "zone": get_string_property("Zone to create the cluster in"),
                     "node_count": get_integer_with_min(
                         1, "Number of nodes in the cluster", 3
@@ -90,8 +92,8 @@ def get_create_cloud_cluster_schema() -> Dict[str, Any]:
     }
 
 
-def get_get_cloud_cluster_info_schema() -> Dict[str, Any]:
-    """Schema for get_cloud_cluster_info tool."""
+def get_get_kubernetes_cluster_info_schema() -> Dict[str, Any]:
+    """Schema for get_kubernetes_cluster_info tool."""
     return build_gke_cluster_schema(required_cluster_name=True)
 
 

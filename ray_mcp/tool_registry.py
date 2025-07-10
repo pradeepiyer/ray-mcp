@@ -129,31 +129,31 @@ class ToolRegistry:
         )
 
         self._register_tool(
-            name="list_cloud_clusters",
-            description="List available clusters in the specified cloud provider.",
-            schema=cloud_tools.get_list_cloud_clusters_schema(),
-            handler=self._list_cloud_clusters_handler,
+            name="list_kubernetes_clusters",
+            description="List available Kubernetes clusters from cloud providers (GKE, EKS) or local kubeconfig contexts. Discovers existing clusters that can run Ray workloads via KubeRay operator.",
+            schema=cloud_tools.get_list_kubernetes_clusters_schema(),
+            handler=self._list_kubernetes_clusters_handler,
         )
 
         self._register_tool(
-            name="connect_cloud_cluster",
-            description="Connect to an existing cluster in the specified cloud provider.",
-            schema=cloud_tools.get_connect_cloud_cluster_schema(),
-            handler=self._connect_cloud_cluster_handler,
+            name="connect_kubernetes_cluster",
+            description="Connect to an existing Kubernetes cluster for Ray operations. Establishes kubectl-like access to GKE clusters or local Kubernetes clusters, enabling KubeRay job and cluster management.",
+            schema=cloud_tools.get_connect_kubernetes_cluster_schema(),
+            handler=self._connect_kubernetes_cluster_handler,
         )
 
         self._register_tool(
-            name="create_cloud_cluster",
-            description="Create a new cluster in the specified cloud provider.",
-            schema=cloud_tools.get_create_cloud_cluster_schema(),
-            handler=self._create_cloud_cluster_handler,
+            name="create_kubernetes_cluster",
+            description="Create a new managed Kubernetes cluster in cloud providers (currently supports GKE). Creates infrastructure suitable for running Ray workloads with KubeRay operator.",
+            schema=cloud_tools.get_create_kubernetes_cluster_schema(),
+            handler=self._create_kubernetes_cluster_handler,
         )
 
         self._register_tool(
-            name="get_cloud_cluster_info",
-            description="Get detailed information about a specific cloud cluster.",
-            schema=cloud_tools.get_get_cloud_cluster_info_schema(),
-            handler=self._get_cloud_cluster_info_handler,
+            name="get_kubernetes_cluster_info",
+            description="Get detailed information about a specific Kubernetes cluster including node status, Kubernetes version, network configuration, and Ray/KubeRay readiness.",
+            schema=cloud_tools.get_get_kubernetes_cluster_info_schema(),
+            handler=self._get_kubernetes_cluster_info_handler,
         )
 
         self._register_tool(
@@ -662,21 +662,21 @@ class ToolRegistry:
             provider=provider, auth_config=auth_config if auth_config else None
         )
 
-    async def _list_cloud_clusters_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for list_cloud_clusters tool."""
-        return await self.ray_manager.list_cloud_clusters(**kwargs)
+    async def _list_kubernetes_clusters_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for list_kubernetes_clusters tool."""
+        return await self.ray_manager.list_kubernetes_clusters(**kwargs)
 
-    async def _connect_cloud_cluster_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for connect_cloud_cluster tool."""
-        return await self.ray_manager.connect_cloud_cluster(**kwargs)
+    async def _connect_kubernetes_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for connect_kubernetes_cluster tool."""
+        return await self.ray_manager.connect_kubernetes_cluster(**kwargs)
 
-    async def _create_cloud_cluster_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for create_cloud_cluster tool."""
-        return await self.ray_manager.create_cloud_cluster(**kwargs)
+    async def _create_kubernetes_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for create_kubernetes_cluster tool."""
+        return await self.ray_manager.create_kubernetes_cluster(**kwargs)
 
-    async def _get_cloud_cluster_info_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for get_cloud_cluster_info tool."""
-        return await self.ray_manager.get_cloud_cluster_info(**kwargs)
+    async def _get_kubernetes_cluster_info_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for get_kubernetes_cluster_info tool."""
+        return await self.ray_manager.get_kubernetes_cluster_info(**kwargs)
 
     async def _get_cloud_provider_status_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for get_cloud_provider_status tool."""
