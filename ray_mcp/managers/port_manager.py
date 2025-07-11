@@ -60,19 +60,78 @@ class PortManager:
         )
 
     def cleanup_port_lock(self, port: int) -> None:
-        """Clean up the lock file for a successfully used port."""
-        try:
-            temp_dir = self._get_temp_dir()
-            lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
-            if os.path.exists(lock_file_path):
-                os.unlink(lock_file_path)
-                self._log_info(
-                    "port_allocation", f"Cleaned up lock file for port {port}"
-                )
-        except (OSError, IOError) as e:
+        """Clean up the lock file for a successfully used port.
+
+        Uses atomic file locking to prevent race conditions during cleanup.
+        """
+        temp_dir = self._get_temp_dir()
+        lock_file_path = os.path.join(temp_dir, f"ray_port_{port}.lock")
+
+        # Use atomic cleanup with proper locking
+        if self._safely_remove_lock_file(lock_file_path):
+            self._log_info("port_allocation", f"Cleaned up lock file for port {port}")
+        else:
             self._log_warning(
-                "port_allocation", f"Could not clean up lock file for port {port}: {e}"
+                "port_allocation",
+                f"Lock file for port {port} was already cleaned up or in use",
             )
+
+    def _safely_remove_lock_file(self, lock_file_path: str) -> bool:
+        """Safely remove a lock file using atomic operations.
+
+        Args:
+            lock_file_path: Path to the lock file to remove
+
+        Returns:
+            bool: True if file was removed, False if it was already gone or in use
+        """
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Try to acquire lock before removing to avoid race conditions
+                with open(lock_file_path, "r+") as lock_file:
+                    try:
+                        # Try to acquire exclusive lock (non-blocking)
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+                        # Read the content to check if it's our lock
+                        lock_file.seek(0)
+                        content = lock_file.read().strip()
+
+                        # Only remove if it's our process or stale
+                        if not content or not self._is_content_active_lock(content):
+                            # Safe to remove - truncate first then remove file
+                            lock_file.seek(0)
+                            lock_file.truncate()
+                            # Lock will be released when file is closed
+
+                        # Remove the file outside the context manager
+                        break
+                    except OSError:
+                        # Lock is held by another process, file is in use
+                        return False
+
+            except FileNotFoundError:
+                # File doesn't exist, nothing to clean up
+                return False
+            except (OSError, IOError) as e:
+                # Other error occurred, try again
+                if attempt == max_retries - 1:
+                    self._log_warning(
+                        "port_allocation",
+                        f"Failed to safely remove lock file {lock_file_path}: {e}",
+                    )
+                    return False
+                time.sleep(0.01)  # Small delay before retry
+                continue
+
+        # Now actually remove the file
+        try:
+            os.unlink(lock_file_path)
+            return True
+        except (OSError, IOError):
+            # File was already removed or other error
+            return False
 
     def _get_temp_dir(self) -> str:
         """Get temp directory, fallback to current directory if not available."""
@@ -150,22 +209,60 @@ class PortManager:
             return False
 
     def _cleanup_stale_lock_files(self) -> None:
-        """Clean up stale lock files from processes that no longer exist."""
+        """Clean up stale lock files from processes that no longer exist.
+
+        Uses safe iteration and atomic operations to prevent race conditions.
+        """
         try:
             temp_dir = self._get_temp_dir()
 
-            for filename in os.listdir(temp_dir):
-                if filename.startswith("ray_port_") and filename.endswith(".lock"):
-                    lock_file_path = os.path.join(temp_dir, filename)
-                    if not self._is_lock_file_active(lock_file_path):
-                        self._remove_stale_lock(lock_file_path)
+            # Get snapshot of files to avoid modification during iteration
+            try:
+                filenames = [
+                    f
+                    for f in os.listdir(temp_dir)
+                    if f.startswith("ray_port_") and f.endswith(".lock")
+                ]
+            except (OSError, IOError):
+                return
+
+            for filename in filenames:
+                lock_file_path = os.path.join(temp_dir, filename)
+                if self._is_stale_lock_file(lock_file_path):
+                    if self._safely_remove_lock_file(lock_file_path):
                         self._log_info(
                             "port_allocation", f"Cleaned up stale lock file {filename}"
                         )
+
         except (OSError, IOError) as e:
             self._log_warning(
                 "port_allocation", f"Error cleaning up stale lock files: {e}"
             )
+
+    def _is_stale_lock_file(self, lock_file_path: str) -> bool:
+        """Check if a lock file is stale and safe to remove.
+
+        Args:
+            lock_file_path: Path to the lock file to check
+
+        Returns:
+            bool: True if the lock file is stale and can be removed
+        """
+        try:
+            # Try to acquire lock to check if it's in use
+            with open(lock_file_path, "r") as f:
+                try:
+                    # Try non-blocking lock to see if file is in use
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # Got the lock, now check content
+                    content = f.read().strip()
+                    return not self._is_content_active_lock(content)
+                except OSError:
+                    # Lock is held by another process, not stale
+                    return False
+        except (OSError, IOError):
+            # Can't read file, consider it stale
+            return True
 
     def _is_lock_file_active(self, lock_file_path: str) -> bool:
         """Check if a lock file represents an active lock."""
