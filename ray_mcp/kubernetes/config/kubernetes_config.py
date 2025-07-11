@@ -1,27 +1,29 @@
-"""Kubernetes configuration management."""
+"""Kubernetes configuration management for Ray MCP."""
 
 import asyncio
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ...foundation.interfaces import KubernetesConfig
 
 
-class KubernetesConfigManager(KubernetesConfig):
-    """Manages Kubernetes configuration with support for multiple contexts and environments."""
+class KubernetesConfig:
+    """Manages Kubernetes configuration loading and validation."""
 
     def __init__(self):
-        # Get imports
+        # Import logging utilities
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]
         self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
+        # Import Kubernetes modules
         k8s_imports = get_kubernetes_imports()
         self._client = k8s_imports["client"]
         self._config = k8s_imports["config"]
-        self._ConfigException = k8s_imports["ConfigException"]
         self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
+        self._ApiException = k8s_imports["ApiException"]
+        self._ConfigException = k8s_imports["ConfigException"]
 
         self._current_config = None
         self._current_context = None

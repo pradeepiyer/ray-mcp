@@ -1,27 +1,19 @@
-"""Kubernetes and KubeRay integration components.
+"""Kubernetes integration for Ray MCP.
 
-This package contains all Kubernetes-related functionality including
-managers, CRD operations, and configuration management.
+This package provides comprehensive Kubernetes support including:
+- KubeRay cluster and job management
+- Native Kubernetes configuration and client handling
 """
 
-from .config import KubernetesApiClient, KubernetesConfigManager
-from .crds import CRDOperations, RayClusterCRDManager, RayJobCRDManager
-from .managers import (
-    KubeRayClusterManagerImpl,
-    KubeRayJobManagerImpl,
-    KubernetesClusterManager,
-)
+from .config import KubernetesClient, KubernetesConfig
+from .managers import KubeRayClusterManager, KubeRayJobManager, KubernetesManager
 
 __all__ = [
+    # Configuration
+    "KubernetesConfig",
+    "KubernetesClient",
     # Managers
-    "KubernetesClusterManager",
-    "KubeRayClusterManagerImpl",
-    "KubeRayJobManagerImpl",
-    # CRDs
-    "RayClusterCRDManager",
-    "RayJobCRDManager",
-    "CRDOperations",
-    # Config
-    "KubernetesConfigManager",
-    "KubernetesApiClient",
+    "KubernetesManager",
+    "KubeRayClusterManager",
+    "KubeRayJobManager",
 ]

@@ -1,17 +1,19 @@
-"""Cloud provider integration components.
+"""Cloud provider integration for Ray MCP.
 
-This package contains cloud provider specific functionality including
-managers, configuration, and provider detection.
+This package provides comprehensive cloud provider support including:
+- Google Kubernetes Engine (GKE) cluster management
+- Cloud provider detection and configuration
+- Unified cloud operations interface
 """
 
-from .config import CloudProviderConfigManager, CloudProviderDetector
-from .providers import GKEClusterManager, UnifiedCloudProviderManager
+from .config import CloudProviderConfig, CloudProviderDetector
+from .providers import CloudProviderManager, GKEManager
 
 __all__ = [
-    # Providers
-    "UnifiedCloudProviderManager",
-    "GKEClusterManager",
-    # Config
-    "CloudProviderConfigManager",
+    # Configuration
+    "CloudProviderConfig",
     "CloudProviderDetector",
+    # Managers
+    "CloudProviderManager",
+    "GKEManager",
 ]

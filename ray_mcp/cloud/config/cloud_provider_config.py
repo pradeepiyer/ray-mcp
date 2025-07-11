@@ -1,19 +1,20 @@
-"""Cloud provider configuration management."""
+"""Cloud provider configuration management for Ray MCP."""
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
 
 from ...foundation.import_utils import get_logging_utils
-from ...foundation.interfaces import CloudProvider, CloudProviderConfig, StateManager
+from ...foundation.interfaces import CloudProvider
 
 
-class CloudProviderConfigManager(CloudProviderConfig):
-    """Manages cloud provider configurations and templates."""
+class CloudProviderConfig:
+    """Manages cloud provider configuration and templates."""
 
-    def __init__(self, state_manager: Optional[StateManager] = None):
+    def __init__(self, state_manager=None):
         # Get imports
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]

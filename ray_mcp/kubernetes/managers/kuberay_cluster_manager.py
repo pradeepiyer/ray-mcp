@@ -1,18 +1,16 @@
-"""KubeRay cluster management implementation."""
+"""KubeRay cluster management for Ray MCP."""
 
 import asyncio
 from typing import Any, Dict, List, Optional
 
 from ...foundation.base_managers import ResourceManager
-from ...foundation.interfaces import KubeRayClusterManager, ManagedComponent
+from ...foundation.interfaces import ManagedComponent
 from ..crds.crd_operations import CRDOperationsClient
 from ..crds.ray_cluster_crd import RayClusterCRDManager
 
 
-class KubeRayClusterManagerImpl(
-    ResourceManager, KubeRayClusterManager, ManagedComponent
-):
-    """Manages Ray cluster lifecycle using KubeRay Custom Resources."""
+class KubeRayClusterManager(ResourceManager, ManagedComponent):
+    """Manages Ray clusters using the KubeRay operator."""
 
     def __init__(
         self,
@@ -30,7 +28,7 @@ class KubeRayClusterManagerImpl(
         )
         ManagedComponent.__init__(self, state_manager)
 
-        self._crd_operations = crd_operations or CRDOperationsClient()
+        self._crd_operations = crd_operations or CRDOperationsClient(state_manager)
         self._cluster_crd = cluster_crd or RayClusterCRDManager()
         self._core_v1_api = None
 

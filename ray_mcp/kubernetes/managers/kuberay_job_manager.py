@@ -1,15 +1,15 @@
-"""KubeRay job management implementation."""
+"""KubeRay job management for Ray MCP."""
 
 from typing import Any, Dict, Optional
 
 from ...foundation.base_managers import ResourceManager
-from ...foundation.interfaces import KubeRayJobManager, ManagedComponent
+from ...foundation.interfaces import ManagedComponent
 from ..crds.crd_operations import CRDOperationsClient
 from ..crds.ray_job_crd import RayJobCRDManager
 
 
-class KubeRayJobManagerImpl(ResourceManager, KubeRayJobManager, ManagedComponent):
-    """Manages Ray job lifecycle using KubeRay Custom Resources."""
+class KubeRayJobManager(ResourceManager, ManagedComponent):
+    """Manages Ray jobs using the KubeRay operator."""
 
     def __init__(
         self,
@@ -27,7 +27,7 @@ class KubeRayJobManagerImpl(ResourceManager, KubeRayJobManager, ManagedComponent
         )
         ManagedComponent.__init__(self, state_manager)
 
-        self._crd_operations = crd_operations or CRDOperationsClient()
+        self._crd_operations = crd_operations or CRDOperationsClient(state_manager)
         self._job_crd = job_crd or RayJobCRDManager()
 
     def set_kubernetes_config(self, kubernetes_config) -> None:
@@ -244,9 +244,9 @@ class KubeRayJobManagerImpl(ResourceManager, KubeRayJobManager, ManagedComponent
 
         # Try to get logs using Kubernetes client for compatibility with tests
         try:
-            from ..config.kubernetes_client import KubernetesApiClient
+            from ..config.kubernetes_client import KubernetesClient
 
-            k8s_client = KubernetesApiClient()
+            k8s_client = KubernetesClient()
 
             # Try to get job-specific pod logs
             pod_logs_result = await k8s_client.get_pod_logs(

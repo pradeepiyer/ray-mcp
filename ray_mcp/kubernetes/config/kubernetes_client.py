@@ -1,36 +1,32 @@
-"""Kubernetes API client management."""
+"""Kubernetes API client management for Ray MCP."""
 
 import asyncio
 from typing import Any, Dict, List, Optional
 
 from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ...foundation.interfaces import KubernetesClient
-from .kubernetes_config import KubernetesConfigManager
 
 
-class KubernetesApiClient(KubernetesClient):
-    """Kubernetes API client with comprehensive cluster interaction capabilities."""
+class KubernetesClient:
+    """Manages Kubernetes API client operations and connections."""
 
-    def __init__(
-        self,
-        config_manager: Optional[KubernetesConfigManager] = None,
-        kubernetes_config: Optional[Any] = None,
-    ):
-        # Get imports
+    def __init__(self, config_manager=None):
+        # Import logging utilities
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]
         self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
+        # Import Kubernetes modules
         k8s_imports = get_kubernetes_imports()
         self._client = k8s_imports["client"]
-        self._ApiException = k8s_imports["ApiException"]
+        self._config = k8s_imports["config"]
         self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
+        self._ApiException = k8s_imports["ApiException"]
+        self._ConfigException = k8s_imports["ConfigException"]
 
-        self._config_manager = config_manager or KubernetesConfigManager()
-        self._kubernetes_config = kubernetes_config  # Pre-configured Kubernetes client
-        self._core_v1_api = None
-        self._apps_v1_api = None
-        self._version_api = None
+        self._config_manager = config_manager
+        self._api_client = None
+        self._v1_client = None
+        self._apps_v1_client = None
 
     def set_kubernetes_config(self, kubernetes_config: Any) -> None:
         """Set the Kubernetes configuration to use for API calls."""

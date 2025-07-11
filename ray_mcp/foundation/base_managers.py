@@ -1,7 +1,8 @@
-"""Consolidated base manager classes - 2 classes instead of 8."""
+"""Base manager classes for Ray MCP components."""
 
 from abc import ABC, abstractmethod
 import asyncio
+import time
 from typing import Any, Dict, Optional
 
 from .import_utils import (
@@ -10,61 +11,88 @@ from .import_utils import (
     get_logging_utils,
     get_ray_imports,
 )
-from .interfaces import StateManager
+from .interfaces import ManagedComponent
 
 
 class BaseManager(ABC):
-    """Unified base class with common functionality and all former mixin capabilities.
+    """Lightweight base class for simple components that need only logging and validation."""
 
-    This replaces the old BaseManager + 3 mixins (ValidationMixin, StateManagementMixin, AsyncOperationMixin).
-    """
-
-    def __init__(self, state_manager: StateManager):
-        self._state_manager = state_manager
-
-        # Get imports
+    def __init__(
+        self,
+        state_manager,
+        enable_validation: bool = True,
+        validation_interval: float = 30.0,
+    ):
+        # Import logging utilities
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]
         self._ResponseFormatter = logging_utils["ResponseFormatter"]
 
-    @property
-    def state_manager(self) -> StateManager:
-        """Get the state manager."""
-        return self._state_manager
+        # Basic validation properties
+        self._enable_validation = enable_validation
+        self._validation_interval = validation_interval
+        self._last_validation = 0.0
 
-    # === Logging Methods ===
+        # Store state manager but don't use it for logging utilities
+        self._external_state_manager = state_manager
+
+    @property
+    def state_manager(self):
+        """Get the state manager."""
+        return self._external_state_manager
+
     def _log_info(self, operation: str, message: str) -> None:
-        """Log info message."""
+        """Log info message using logging utilities."""
         self._LoggingUtility.log_info(operation, message)
 
     def _log_warning(self, operation: str, message: str) -> None:
-        """Log warning message."""
+        """Log warning message using logging utilities."""
         self._LoggingUtility.log_warning(operation, message)
 
     def _log_error(self, operation: str, error: Exception) -> None:
-        """Log error message."""
+        """Log error message using logging utilities."""
         self._LoggingUtility.log_error(operation, error)
 
-    # === Response Formatting Methods ===
-    # Use ResponseFormatter directly instead of creating wrapper methods
-    # Example: ResponseFormatter.format_success_response(**kwargs)
-    # Example: ResponseFormatter.format_error_response(operation, error, **kwargs)
-    # Example: ResponseFormatter.format_validation_error(message, **kwargs)
+    def _validate_input(self, value: Any, name: str, required: bool = True) -> bool:
+        """Basic input validation."""
+        if required and (value is None or (isinstance(value, str) and not value)):
+            self._log_error(f"validate {name}", ValueError(f"{name} is required"))
+            return False
+        return True
 
-    async def _execute_operation(
-        self, operation_name: str, operation_func, *args, **kwargs
-    ) -> Dict[str, Any]:
-        """Execute an operation with standardized error handling."""
-        try:
-            result = await operation_func(*args, **kwargs)
-            if isinstance(result, dict) and "status" in result:
-                return result
-            return self._ResponseFormatter.format_success_response(**result)
-        except Exception as e:
-            self._log_error(operation_name, e)
-            return self._ResponseFormatter.format_error_response(operation_name, e)
+    def _should_validate(self) -> bool:
+        """Check if validation should run based on interval."""
+        if not self._enable_validation:
+            return False
 
-    # === Validation Methods (former ValidationMixin) ===
+        current_time = time.time()
+        if (current_time - self._last_validation) >= self._validation_interval:
+            self._last_validation = current_time
+            return True
+        return False
+
+    # === State Management Helper Methods ===
+    def _get_state(self) -> Dict[str, Any]:
+        """Get current state."""
+        return self._external_state_manager.get_state()
+
+    def _update_state(self, **kwargs) -> None:
+        """Update state with validation."""
+        self._external_state_manager.update_state(**kwargs)
+
+    def _reset_state(self) -> None:
+        """Reset state to initial values."""
+        self._external_state_manager.reset_state()
+
+    def _get_state_value(self, key: str, default: Any = None) -> Any:
+        """Get a specific value from state."""
+        return self._get_state().get(key, default)
+
+    def _is_state_initialized(self) -> bool:
+        """Check if state is initialized."""
+        return self._external_state_manager.is_initialized()
+
+    # === Validation Helper Methods ===
     def _validate_job_id(
         self, job_id: str, operation_name: str
     ) -> Optional[Dict[str, Any]]:
@@ -95,28 +123,7 @@ class BaseManager(ABC):
             )
         return None
 
-    # === State Management Methods (former StateManagementMixin) ===
-    def _get_state(self) -> Dict[str, Any]:
-        """Get current state."""
-        return self._state_manager.get_state()
-
-    def _update_state(self, **kwargs) -> None:
-        """Update state with validation."""
-        self._state_manager.update_state(**kwargs)
-
-    def _reset_state(self) -> None:
-        """Reset state to initial values."""
-        self._state_manager.reset_state()
-
-    def _get_state_value(self, key: str, default: Any = None) -> Any:
-        """Get a specific value from state."""
-        return self._get_state().get(key, default)
-
-    def _is_state_initialized(self) -> bool:
-        """Check if state is initialized."""
-        return self._state_manager.is_initialized()
-
-    # === Async Operation Methods (former AsyncOperationMixin) ===
+    # === Async Operation Helper Methods ===
     async def _retry_operation(
         self,
         operation_func,
@@ -138,95 +145,113 @@ class BaseManager(ABC):
                 else:
                     raise
 
-    async def _test_connection(
-        self,
-        connection_func,
-        max_retries: int = 3,
-        retry_delay: float = 1.0,
-        operation_name: str = "connection test",
-    ) -> bool:
-        """Test a connection with retry logic."""
-        try:
-            await self._retry_operation(
-                connection_func, max_retries, retry_delay, operation_name
-            )
-            return True
-        except Exception as e:
-            self._log_error(operation_name, e)
-            return False
+    @abstractmethod
+    async def _validate_state(self) -> bool:
+        """Validate current state. Must be implemented by subclasses."""
+        pass
 
 
 class ResourceManager(BaseManager):
-    """Unified resource manager with optional Ray, Kubernetes, and Cloud capabilities.
-
-    This replaces the old RayBaseManager, KubernetesBaseManager, CloudProviderBaseManager,
-    and KubeRayBaseManager with a single configurable class.
-
-    Note: Connection validation methods have been moved to ManagedComponent to eliminate duplication.
-    Manager classes should inherit from both ResourceManager and ManagedComponent.
-    """
+    """Enhanced base class for resource-intensive managers that need import management."""
 
     def __init__(
         self,
-        state_manager: StateManager,
-        enable_ray: bool = True,
-        enable_kubernetes: bool = True,
-        enable_cloud: bool = True,
+        state_manager,
+        enable_ray: bool = False,
+        enable_kubernetes: bool = False,
+        enable_cloud: bool = False,
+        enable_validation: bool = True,
+        validation_interval: float = 30.0,
     ):
-        super().__init__(state_manager)
+        super().__init__(state_manager, enable_validation, validation_interval)
 
-        # Ray capabilities (optional)
+        # Import enabled services based on configuration
         if enable_ray:
-            ray_imports = get_ray_imports()
-            self._ray = ray_imports["ray"]
-            self._JobSubmissionClient = ray_imports["JobSubmissionClient"]
-            self._RAY_AVAILABLE = ray_imports["RAY_AVAILABLE"]
-        else:
-            self._ray = None
-            self._JobSubmissionClient = None
-            self._RAY_AVAILABLE = False
-
-        # Kubernetes capabilities (optional)
+            self._setup_ray_imports()
         if enable_kubernetes:
-            k8s_imports = get_kubernetes_imports()
-            self._client = k8s_imports["client"]
-            self._config = k8s_imports["config"]
-            self._ApiException = k8s_imports["ApiException"]
-            self._ConfigException = k8s_imports["ConfigException"]
-            self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
-        else:
-            self._client = None
-            self._config = None
-            self._ApiException = Exception
-            self._ConfigException = Exception
-            self._KUBERNETES_AVAILABLE = False
-
-        # Cloud capabilities (optional)
+            self._setup_kubernetes_imports()
         if enable_cloud:
-            gcp_imports = get_google_cloud_imports()
-            self._gcp_default = gcp_imports["default"]
-            self._DefaultCredentialsError = gcp_imports["DefaultCredentialsError"]
-            self._container_v1 = gcp_imports["container_v1"]
-            self._service_account = gcp_imports["service_account"]
-            self._google_auth_transport = gcp_imports["google_auth_transport"]
-            self._GOOGLE_CLOUD_AVAILABLE = gcp_imports["GOOGLE_CLOUD_AVAILABLE"]
-            self._GOOGLE_AUTH_AVAILABLE = gcp_imports["GOOGLE_AUTH_AVAILABLE"]
-        else:
-            self._gcp_default = None
-            self._DefaultCredentialsError = Exception
-            self._container_v1 = None
-            self._service_account = None
-            self._google_auth_transport = None
-            self._GOOGLE_CLOUD_AVAILABLE = False
-            self._GOOGLE_AUTH_AVAILABLE = False
+            self._setup_cloud_imports()
 
-    # === Ray Methods ===
+    def _setup_ray_imports(self) -> None:
+        """Set up Ray imports with error handling."""
+        ray_imports = get_ray_imports()
+        self._ray = ray_imports.get("ray")
+        self._JobSubmissionClient = ray_imports.get("JobSubmissionClient")
+        self._RAY_AVAILABLE = ray_imports.get("RAY_AVAILABLE", False)
+
+    def _setup_kubernetes_imports(self) -> None:
+        """Set up Kubernetes imports with error handling."""
+        k8s_imports = get_kubernetes_imports()
+        self._client = k8s_imports.get("client")
+        self._config = k8s_imports.get("config")
+        self._ApiException = k8s_imports.get("ApiException", Exception)
+        self._ConfigException = k8s_imports.get("ConfigException", Exception)
+        self._KUBERNETES_AVAILABLE = k8s_imports.get("KUBERNETES_AVAILABLE", False)
+
+    def _setup_cloud_imports(self) -> None:
+        """Set up cloud provider imports with error handling."""
+        gcp_imports = get_google_cloud_imports()
+        self._default = gcp_imports.get("default")
+        self._DefaultCredentialsError = gcp_imports.get(
+            "DefaultCredentialsError", Exception
+        )
+        self._container_v1 = gcp_imports.get("container_v1")
+        self._service_account = gcp_imports.get("service_account")
+        self._google_auth_transport = gcp_imports.get("google_auth_transport")
+        self._GOOGLE_CLOUD_AVAILABLE = gcp_imports.get("GOOGLE_CLOUD_AVAILABLE", False)
+        self._GOOGLE_AUTH_AVAILABLE = gcp_imports.get("GOOGLE_AUTH_AVAILABLE", False)
+
     def _ensure_ray_available(self) -> None:
         """Ensure Ray is available."""
         if not self._RAY_AVAILABLE:
             raise RuntimeError(
-                "Ray is not available. Please install Ray to use this feature."
+                "Ray is not available. Please install Ray: pip install ray[default]"
             )
+
+    def _ensure_kubernetes_available(self) -> None:
+        """Ensure Kubernetes client is available."""
+        if not self._KUBERNETES_AVAILABLE:
+            raise RuntimeError(
+                "Kubernetes client is not available. Please install: pip install kubernetes"
+            )
+
+    def _ensure_gcp_available(self) -> None:
+        """Ensure GCP libraries are available."""
+        if not self._GOOGLE_CLOUD_AVAILABLE:
+            raise RuntimeError(
+                "GCP libraries are not available. Please install: pip install google-cloud-container google-auth"
+            )
+
+    async def _execute_operation(
+        self, operation_name: str, operation_func, *args, **kwargs
+    ) -> Dict[str, Any]:
+        """Execute an operation with comprehensive error handling and validation."""
+        try:
+            # Optional validation before operation
+            if self._should_validate():
+                await self._validate_state()
+
+            # Execute the operation
+            result = await operation_func(*args, **kwargs)
+
+            # Ensure result is a dictionary
+            if not isinstance(result, dict):
+                result = {"result": result}
+
+            # Add success status if not present
+            if "status" not in result:
+                result["status"] = "success"
+
+            return result
+
+        except Exception as e:
+            self._log_error(operation_name, e)
+            return self._ResponseFormatter.format_error_response(operation_name, e)
+
+    async def _validate_state(self) -> bool:
+        """Default validation implementation."""
+        return True
 
     def _is_ray_initialized(self) -> bool:
         """Check if Ray is initialized."""
@@ -236,30 +261,3 @@ class ResourceManager(BaseManager):
             return bool(self._ray.is_initialized())
         except Exception:
             return False
-
-    # === Kubernetes Methods ===
-    def _ensure_kubernetes_available(self) -> None:
-        """Ensure Kubernetes is available."""
-        if not self._KUBERNETES_AVAILABLE:
-            raise RuntimeError(
-                "Kubernetes client library is not available. Please install kubernetes package."
-            )
-
-    # === Cloud Methods ===
-    def _ensure_google_cloud_available(self) -> None:
-        """Ensure Google Cloud SDK is available."""
-        if not self._GOOGLE_CLOUD_AVAILABLE:
-            raise RuntimeError(
-                "Google Cloud SDK is not available. Please install google-cloud-container."
-            )
-
-    def _ensure_google_auth_available(self) -> None:
-        """Ensure Google Auth is available."""
-        if not self._GOOGLE_AUTH_AVAILABLE:
-            raise RuntimeError("Google auth transport is not available.")
-
-    def _get_current_time(self) -> str:
-        """Get current time as ISO string."""
-        from datetime import datetime
-
-        return datetime.utcnow().isoformat() + "Z"

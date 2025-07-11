@@ -9,7 +9,6 @@ import threading
 import time
 from typing import Any, Dict, Optional, Union
 
-from ..foundation.interfaces import StateManager
 from ..foundation.logging_utils import LoggingUtility
 
 # Import Ray modules with error handling
@@ -22,7 +21,7 @@ except ImportError:
     ray = None
 
 
-class RayStateManager(StateManager):
+class StateManager:
     """Manages Ray cluster state with thread-safe operations and validation."""
 
     def __init__(self, validation_interval: float = 1.0):

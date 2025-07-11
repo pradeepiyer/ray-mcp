@@ -1,9 +1,6 @@
-"""Kubernetes configuration and client management."""
+"""Kubernetes configuration components."""
 
-from .kubernetes_client import KubernetesApiClient
-from .kubernetes_config import KubernetesConfigManager
+from .kubernetes_client import KubernetesClient
+from .kubernetes_config import KubernetesConfig
 
-__all__ = [
-    "KubernetesConfigManager",
-    "KubernetesApiClient",
-]
+__all__ = ["KubernetesClient", "KubernetesConfig"]

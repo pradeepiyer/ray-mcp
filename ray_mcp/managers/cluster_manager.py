@@ -9,11 +9,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import ClusterManager, ManagedComponent, StateManager
+from ..foundation.interfaces import ManagedComponent
 from .port_manager import PortManager
 
 
-class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
+class ClusterManager(ResourceManager, ManagedComponent):
     """Manages Ray cluster lifecycle operations with clean separation of concerns."""
 
     def __init__(

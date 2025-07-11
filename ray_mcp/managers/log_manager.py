@@ -3,12 +3,12 @@
 from typing import Any, Dict, Optional
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import LogManager, ManagedComponent
+from ..foundation.interfaces import ManagedComponent
 from ..foundation.logging_utils import LogProcessor
 
 
-class RayLogManager(ResourceManager, LogManager, ManagedComponent):
-    """Manages log retrieval operations with unified patterns and memory protection."""
+class LogManager(ResourceManager, ManagedComponent):
+    """Manages Ray log retrieval and processing operations."""
 
     def __init__(self, state_manager):
         # Initialize both parent classes

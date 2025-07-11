@@ -1,21 +1,20 @@
-"""Core Ray management components.
+"""Ray MCP managers package.
 
-This package contains the primary managers for Ray cluster operations,
-including cluster, job, log, state, and port management.
+This package contains all the specialized managers for Ray MCP operations.
 """
 
-from .cluster_manager import RayClusterManager
-from .job_manager import RayJobManager
-from .log_manager import RayLogManager
+from .cluster_manager import ClusterManager
+from .job_manager import JobManager
+from .log_manager import LogManager
 from .port_manager import PortManager
-from .state_manager import RayStateManager
+from .state_manager import StateManager
 from .unified_manager import RayUnifiedManager
 
 __all__ = [
-    "RayClusterManager",
-    "RayJobManager",
-    "RayLogManager",
-    "RayStateManager",
+    "ClusterManager",
+    "JobManager",
+    "LogManager",
     "PortManager",
+    "StateManager",
     "RayUnifiedManager",
 ]

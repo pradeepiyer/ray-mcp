@@ -1,11 +1,11 @@
-"""Kubernetes and KubeRay manager implementations."""
+"""Kubernetes managers package."""
 
-from .kuberay_cluster_manager import KubeRayClusterManagerImpl
-from .kuberay_job_manager import KubeRayJobManagerImpl
-from .kubernetes_manager import KubernetesClusterManager
+from .kuberay_cluster_manager import KubeRayClusterManager
+from .kuberay_job_manager import KubeRayJobManager
+from .kubernetes_manager import KubernetesManager
 
 __all__ = [
-    "KubernetesClusterManager",
-    "KubeRayClusterManagerImpl",
-    "KubeRayJobManagerImpl",
+    "KubernetesManager",
+    "KubeRayClusterManager",
+    "KubeRayJobManager",
 ]

@@ -295,7 +295,7 @@ uv run pytest --cov=ray_mcp --cov-report=html
 import pytest
 from unittest.mock import AsyncMock, Mock
 
-from ray_mcp.managers.cluster_manager import RayClusterManager
+from ray_mcp.managers.cluster_manager import ClusterManager
 
 @pytest.mark.asyncio
 async def test_init_cluster_success():
@@ -305,7 +305,7 @@ async def test_init_cluster_success():
     port_manager.get_available_port.return_value = 10001
     
     # Create manager
-    manager = RayClusterManager(state_manager, port_manager)
+    manager = ClusterManager(state_manager, port_manager)
     
     # Test operation
     result = await manager.init_ray_cluster(num_cpus=4)

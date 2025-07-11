@@ -1,15 +1,15 @@
-"""Centralized job management for Ray."""
+"""Centralized job management for Ray clusters."""
 
 import asyncio
 import inspect
 from typing import Any, Dict, List, Optional
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import JobManager, ManagedComponent
+from ..foundation.interfaces import ManagedComponent
 
 
-class RayJobManager(ResourceManager, JobManager, ManagedComponent):
-    """Manages Ray job operations with clean separation of concerns."""
+class JobManager(ResourceManager, ManagedComponent):
+    """Manages Ray job lifecycle operations with robust client management."""
 
     def __init__(self, state_manager):
         # Initialize both parent classes
@@ -22,8 +22,8 @@ class RayJobManager(ResourceManager, JobManager, ManagedComponent):
         )
         ManagedComponent.__init__(self, state_manager)
 
-        self._job_client: Optional[Any] = None
-        self._job_client_lock = asyncio.Lock()  # Synchronize job client initialization
+        # Job client lock for thread-safe operations
+        self._job_client_lock = asyncio.Lock()
 
     @property
     def _handle_exceptions(self):

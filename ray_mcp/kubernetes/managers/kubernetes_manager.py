@@ -1,22 +1,17 @@
 """Kubernetes cluster management for Ray MCP."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ...foundation.base_managers import ResourceManager
-from ...foundation.interfaces import KubernetesManager, ManagedComponent
-from ..config.kubernetes_client import KubernetesApiClient
-from ..config.kubernetes_config import KubernetesConfigManager
+from ...foundation.interfaces import ManagedComponent
+from ..config.kubernetes_client import KubernetesClient
+from ..config.kubernetes_config import KubernetesConfig
 
 
-class KubernetesClusterManager(ResourceManager, KubernetesManager, ManagedComponent):
-    """Manages Kubernetes cluster operations with clean separation of concerns."""
+class KubernetesManager(ResourceManager, ManagedComponent):
+    """Manages Kubernetes cluster connections and operations."""
 
-    def __init__(
-        self,
-        state_manager,
-        config_manager: Optional[KubernetesConfigManager] = None,
-        client: Optional[KubernetesApiClient] = None,
-    ):
+    def __init__(self, state_manager):
         # Initialize both parent classes
         ResourceManager.__init__(
             self,
@@ -27,8 +22,8 @@ class KubernetesClusterManager(ResourceManager, KubernetesManager, ManagedCompon
         )
         ManagedComponent.__init__(self, state_manager)
 
-        self._config_manager = config_manager or KubernetesConfigManager()
-        self._client = client or KubernetesApiClient(self._config_manager)
+        self._config_manager = KubernetesConfig()
+        self._client = KubernetesClient(self._config_manager)
 
     async def connect(self, context: Optional[str] = None) -> Dict[str, Any]:
         """Connect to a Kubernetes cluster."""
@@ -256,10 +251,10 @@ class KubernetesClusterManager(ResourceManager, KubernetesManager, ManagedCompon
         )
 
     # Component access for advanced usage
-    def get_config_manager(self) -> KubernetesConfigManager:
+    def get_config_manager(self) -> KubernetesConfig:
         """Get the configuration manager component."""
         return self._config_manager
 
-    def get_client(self) -> KubernetesApiClient:
+    def get_client(self) -> KubernetesClient:
         """Get the API client component."""
         return self._client

@@ -3,11 +3,10 @@
 from typing import Any, Dict, Optional
 import uuid
 
-from ...foundation.interfaces import RayJobCRD
 from .base_crd_manager import BaseCRDManager
 
 
-class RayJobCRDManager(BaseCRDManager, RayJobCRD):
+class RayJobCRDManager(BaseCRDManager):
     """Manager for RayJob Custom Resource Definitions."""
 
     def create_spec(
