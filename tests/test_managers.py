@@ -473,6 +473,13 @@ class TestManagerResourceHandling:
             "127.0.0.1",  # Missing port
             "127.0.0.1:abc",  # Invalid port
             "300.300.300.300:8000",  # Invalid IP
+            "192.168..1:8080",  # Empty part in IPv4 (double dots)
+            "192.168.1.:8080",  # Empty part in IPv4 (trailing dot)
+            ".192.168.1.1:8080",  # Empty part in IPv4 (leading dot)
+            "192.168.1.1.:8080",  # Empty part in IPv4 (trailing dot after last part)
+            "192..168.1.1:8080",  # Empty part in IPv4 (middle double dots)
+            "192.168.1.1..:8080",  # Multiple empty parts at end
+            "..192.168.1.1:8080",  # Multiple empty parts at start
         ]
 
         for address in invalid_addresses:
