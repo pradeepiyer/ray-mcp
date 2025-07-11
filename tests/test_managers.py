@@ -780,6 +780,103 @@ class TestManagerWorkflows:
         assert not final_state["initialized"]
         assert final_state["cluster_address"] is None
 
+    @pytest.mark.asyncio
+    async def test_job_manager_parameter_filtering_fix(self):
+        """Test that job manager correctly passes through all parameters without filtering."""
+        state_manager = Mock()
+        state_manager.is_initialized.return_value = True
+        state_manager.get_state.return_value = {
+            "dashboard_url": "http://127.0.0.1:8265",
+            "job_client": None,
+        }
+
+        job_manager = JobManager(state_manager)
+
+        # Mock Ray availability and client
+        mock_client = Mock()
+        mock_client.list_jobs.return_value = []
+        mock_client.submit_job.return_value = "job_12345"
+        mock_client_class = Mock(return_value=mock_client)
+
+        job_manager._RAY_AVAILABLE = True
+        job_manager._JobSubmissionClient = mock_client_class
+
+        # Mock validation methods
+        with patch.object(job_manager, "_validate_entrypoint", return_value=None):
+            # Test that additional parameters are passed through without filtering
+            # Previously these would be filtered out by inspect.signature()
+            result = await job_manager._submit_job_operation(
+                entrypoint="python test.py",
+                runtime_env={"pip": ["numpy"]},
+                job_id="test_job",
+                metadata={"test": "value"},
+                # Additional parameters that should be passed through
+                submission_id="custom_submission_id",
+                entrypoint_num_cpus=2,
+                entrypoint_memory="2G",
+                custom_param="custom_value",
+            )
+
+            # Verify the job was submitted successfully
+            assert result["job_id"] == "job_12345"
+            assert "message" in result
+
+            # Verify that submit_job was called with all parameters including the additional ones
+            mock_client.submit_job.assert_called_once_with(
+                entrypoint="python test.py",
+                runtime_env={"pip": ["numpy"]},
+                job_id="test_job",
+                metadata={"test": "value"},
+                submission_id="custom_submission_id",
+                entrypoint_num_cpus=2,
+                entrypoint_memory="2G",
+                custom_param="custom_value",
+            )
+
+    @pytest.mark.asyncio
+    async def test_tool_registry_parameter_filtering_fix(self):
+        """Test that tool registry correctly passes through all parameters without filtering."""
+        from ray_mcp.tool_registry import ToolRegistry
+
+        # Create a mock unified manager
+        mock_unified_manager = Mock()
+        mock_unified_manager.submit_ray_job = AsyncMock(
+            return_value={"status": "success", "job_id": "job_12345"}
+        )
+
+        registry = ToolRegistry(mock_unified_manager)
+
+        # Mock the job type detection to return "local"
+        with patch.object(registry, "_detect_job_type", return_value="local"):
+            # Test that additional parameters are passed through without filtering
+            result = await registry._submit_ray_job_handler(
+                entrypoint="python test.py",
+                runtime_env={"pip": ["numpy"]},
+                job_id="test_job",
+                metadata={"test": "value"},
+                # Additional parameters that should be passed through
+                submission_id="custom_submission_id",
+                entrypoint_num_cpus=2,
+                entrypoint_memory="2G",
+                custom_param="custom_value",
+            )
+
+            # Verify the job was submitted successfully
+            assert result["status"] == "success"
+            assert result["job_id"] == "job_12345"
+
+            # Verify that submit_ray_job was called with all parameters including the additional ones
+            mock_unified_manager.submit_ray_job.assert_called_once_with(
+                entrypoint="python test.py",
+                runtime_env={"pip": ["numpy"]},
+                job_id="test_job",
+                metadata={"test": "value"},
+                submission_id="custom_submission_id",
+                entrypoint_num_cpus=2,
+                entrypoint_memory="2G",
+                custom_param="custom_value",
+            )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

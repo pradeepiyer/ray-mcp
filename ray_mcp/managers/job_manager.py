@@ -1,7 +1,6 @@
 """Centralized job management for Ray clusters."""
 
 import asyncio
-import inspect
 from typing import Any, Dict, List, Optional
 
 from ..foundation.base_managers import ResourceManager
@@ -87,17 +86,15 @@ class JobManager(ResourceManager, ManagedComponent):
         if not job_client:
             raise RuntimeError("Failed to initialize job client")
 
-        # Filter kwargs to only include valid parameters for submit_job
-        sig = inspect.signature(job_client.submit_job)
-        valid_params = set(sig.parameters.keys())
-        filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
-
+        # Pass all kwargs to Ray's submit_job method - let Ray handle parameter validation
+        # This avoids the issue where inspect.signature() filters out valid parameters
+        # that are accepted through **kwargs in Ray's JobSubmissionClient.submit_job method
         submitted_job_id = job_client.submit_job(
             entrypoint=entrypoint,
             runtime_env=runtime_env,
             job_id=job_id,
             metadata=metadata,
-            **filtered_kwargs,
+            **kwargs,
         )
 
         return {
