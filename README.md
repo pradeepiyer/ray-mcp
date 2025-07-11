@@ -242,23 +242,6 @@ export RAY_DISABLE_USAGE_STATS=1
 export RAY_MCP_LOG_LEVEL=INFO
 ```
 
-## 🚀 Use Cases
-
-### Machine Learning Training
-- **Distributed Training** - Scale ML workloads across multiple nodes
-- **Hyperparameter Tuning** - Parallel parameter optimization
-- **Data Processing** - Large-scale data preprocessing pipelines
-
-### Batch Processing  
-- **ETL Workflows** - Transform and load large datasets
-- **Scientific Computing** - Parallel numerical computations
-- **Report Generation** - Automated report processing
-
-### Development & Testing
-- **Algorithm Development** - Test distributed algorithms locally
-- **Performance Testing** - Benchmark applications at scale
-- **CI/CD Integration** - Automated testing with Ray clusters
-
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [development guide](docs/DEVELOPMENT.md) for details on:
