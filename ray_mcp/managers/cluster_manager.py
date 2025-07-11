@@ -733,11 +733,11 @@ class ClusterManager(ResourceManager, ManagedComponent):
         self, process: subprocess.Popen, node_name: str
     ) -> Dict[str, Any]:
         """Safely terminate a process and ensure proper cleanup.
-        
+
         The key insight: always call wait() after terminate() to prevent zombies.
         """
         process_id = process.pid
-        
+
         try:
             # If process is already dead, we're done
             if process.poll() is not None:
@@ -747,11 +747,11 @@ class ClusterManager(ResourceManager, ManagedComponent):
                     "message": f"Worker '{node_name}' was already stopped",
                     "process_id": process_id,
                 }
-            
+
             # Try graceful termination first
             process.terminate()
             loop = asyncio.get_running_loop()
-            
+
             try:
                 await asyncio.wait_for(
                     loop.run_in_executor(None, process.wait), timeout=5
@@ -774,7 +774,7 @@ class ClusterManager(ResourceManager, ManagedComponent):
                     "message": f"Worker '{node_name}' force stopped",
                     "process_id": process_id,
                 }
-        
+
         except Exception as e:
             # If anything goes wrong, ensure we still wait() for the process
             try:
@@ -784,7 +784,7 @@ class ClusterManager(ResourceManager, ManagedComponent):
                     await loop.run_in_executor(None, process.wait)
             except Exception:
                 pass  # We tried our best
-            
+
             return {
                 "status": "error",
                 "node_name": node_name,
