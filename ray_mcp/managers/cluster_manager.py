@@ -218,7 +218,7 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
             parts = host.split(".")
 
             # If it looks like an IPv4 pattern (all parts are digits), validate strictly
-            looks_like_ipv4 = all(part.isdigit() or not part for part in parts)
+            looks_like_ipv4 = all(part.isdigit() for part in parts if part)
 
             if looks_like_ipv4:
                 # This looks like an IPv4 address, validate it strictly
