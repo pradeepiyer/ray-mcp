@@ -672,15 +672,27 @@ class ToolRegistry:
             state = self.ray_manager.state_manager.get_state()
             gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
 
+            # Priority 1: Check for active cloud provider connections (GKE, etc.)
             if gke_connection.get("connected", False):
                 return "kubernetes"
+
+            # Priority 2: Check for general Kubernetes connection
             if state.get("kubernetes_connected", False):
                 return "kubernetes"
+
+            # Priority 3: Check for existing KubeRay clusters
             if (
                 hasattr(self.ray_manager, "kuberay_clusters")
                 and self.ray_manager.kuberay_clusters
             ):
                 return "kubernetes"
+
+            # Priority 4: If we have any indication of Kubernetes/GKE availability,
+            # prefer kubernetes (for ephemeral cluster creation) over local
+            if gke_connection or state.get("cloud_provider_connections", {}).get("gke"):
+                return "kubernetes"
+
+            # Priority 5: Check if local Ray is initialized
             if (
                 hasattr(self.ray_manager, "is_initialized")
                 and self.ray_manager.is_initialized

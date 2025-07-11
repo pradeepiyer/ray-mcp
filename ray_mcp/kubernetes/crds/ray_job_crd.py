@@ -97,6 +97,8 @@ class RayJobCRDManager(BaseCRDManager):
                 "backoffLimit": backoff_limit,
                 "suspend": suspend,
                 "shutdownAfterJobFinishes": shutdown_after_job_finishes,
+                # Add job runner pod template with resource limits
+                "submitterPodTemplate": self._build_submitter_pod_template(**kwargs),
             },
         }
 
@@ -256,16 +258,109 @@ class RayJobCRDManager(BaseCRDManager):
         return {"valid": len(errors) == 0, "errors": errors}
 
     def _format_runtime_env(self, runtime_env: Dict[str, Any]) -> str:
-        """Format runtime environment as YAML string."""
+        """Format runtime environment as YAML string with smart defaults."""
+        # Create a copy to avoid modifying the original
+        processed_env = runtime_env.copy()
+        
+        # Handle working_dir to prevent large uploads
+        if "working_dir" in processed_env:
+            working_dir = processed_env["working_dir"]
+            
+            # If working_dir is "." (current directory), add comprehensive excludes
+            if working_dir == ".":
+                excludes = processed_env.get("excludes", [])
+                
+                # Add default excludes to prevent large file uploads
+                default_excludes = [
+                    # Ray and Python binaries
+                    "**/*.so", "**/*.so.*", "**/*.whl", "**/*.jar",
+                    "**/bin/python*", "**/lib/libpython*", "**/lib/libstdc++*",
+                    
+                    # Conda/Anaconda directories  
+                    "anaconda3/**", "miniconda3/**", ".conda/**",
+                    "**/site-packages/ray/**", "**/site-packages/numpy/**",
+                    "**/site-packages/scipy/**", "**/site-packages/pandas/**",
+                    "**/site-packages/torch/**", "**/site-packages/tensorflow/**",
+                    
+                    # Package caches and builds
+                    "**/__pycache__/**", "**/.pyc", "**/build/**", "**/dist/**",
+                    "**/.git/**", "**/.pytest_cache/**", "**/.tox/**",
+                    
+                    # Large ML/Data files
+                    "**/models/**", "**/data/**", "**/datasets/**", "**/*.pkl",
+                    "**/*.h5", "**/*.hdf5", "**/*.npy", "**/*.npz",
+                    
+                    # Documentation and logs
+                    "**/docs/**", "**/logs/**", "**/*.log", "**/*.md"
+                ]
+                
+                # Merge with existing excludes, avoiding duplicates
+                all_excludes = list(set(excludes + default_excludes))
+                processed_env["excludes"] = all_excludes
+                
+                self._LoggingUtility.log_info(
+                    "runtime_env_processing",
+                    f"Added {len(default_excludes)} default excludes for working_dir='.' to prevent large uploads"
+                )
+        
         try:
             import yaml
-
-            return yaml.dump(runtime_env, default_flow_style=False)
+            return yaml.dump(processed_env, default_flow_style=False)
         except ImportError:
             # Fallback to JSON if YAML not available
             import json
+            return json.dumps(processed_env)
 
-            return json.dumps(runtime_env)
+    def _build_submitter_pod_template(self, **kwargs: Any) -> Dict[str, Any]:
+        """Build submitter pod template for job runner with resource limits."""
+        # Get resource configuration for job runner pod
+        resources = kwargs.get("resources", {})
+        image = kwargs.get("image", "rayproject/ray:2.47.0")
+
+        # Default resource limits for job runner pod (more conservative than cluster pods)
+        default_resources = {
+            "requests": {"cpu": "500m", "memory": "1Gi"},
+            "limits": {"cpu": "1", "memory": "2Gi"},
+        }
+
+        # Use provided resources or defaults
+        pod_resources = resources if resources else default_resources
+
+        submitter_template = {
+            "spec": {
+                "containers": [
+                    {
+                        "name": "ray-job-submitter",
+                        "image": image,
+                        "resources": pod_resources,
+                    }
+                ],
+                "restartPolicy": "Never",
+            }
+        }
+
+        # Add node selector if provided
+        node_selector = kwargs.get("node_selector")
+        if node_selector:
+            submitter_template["spec"]["nodeSelector"] = node_selector
+
+        # Add tolerations if provided
+        tolerations = kwargs.get("tolerations")
+        if tolerations:
+            submitter_template["spec"]["tolerations"] = tolerations
+
+        # Add service account if provided
+        service_account = kwargs.get("service_account")
+        if service_account:
+            submitter_template["spec"]["serviceAccount"] = service_account
+
+        # Add environment variables if provided
+        environment = kwargs.get("environment")
+        if environment:
+            env_vars = [{"name": k, "value": v} for k, v in environment.items()]
+            submitter_template["spec"]["containers"][0]["env"] = env_vars
+
+        return submitter_template
 
     def _build_default_cluster_spec(self) -> Dict[str, Any]:
         """Build default RayCluster specification for the job."""

@@ -86,7 +86,13 @@ class KubeRayJobManager(ResourceManager, ManagedComponent):
                 k: v
                 for k, v in job_spec.items()
                 if k
-                not in ["entrypoint", "runtime_env", "job_name", "ray_cluster_spec"]
+                not in [
+                    "entrypoint",
+                    "runtime_env",
+                    "job_name",
+                    "ray_cluster_spec",
+                    "namespace",
+                ]
             },
         )
 
