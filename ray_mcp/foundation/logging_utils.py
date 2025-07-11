@@ -51,11 +51,14 @@ class LogProcessor:
         return truncated_text + f"\n... (truncated at {max_size_mb}MB limit)"
 
     @staticmethod
-    def _stream_log_lines(log_source: Union[str, List[str]]):
+    def _stream_log_lines(
+        log_source: Union[str, List[str]], max_line_size_bytes: int = 1024 * 1024
+    ):
         """Generator that yields log lines one by one to prevent memory exhaustion.
 
         Args:
             log_source: String or list of log lines to process
+            max_line_size_bytes: Maximum size per line in bytes to prevent memory exhaustion
 
         Yields:
             Individual lines from the log source
@@ -63,19 +66,50 @@ class LogProcessor:
         if isinstance(log_source, str):
             # For strings, use a character-by-character approach to avoid loading all lines in memory
             current_line = ""
+            current_line_bytes = 0
+            line_truncated = False
+
             for char in log_source:
                 if char == "\n":
-                    yield current_line
+                    # End of line - yield what we have and reset
+                    if line_truncated:
+                        yield current_line + "... (line truncated due to size limit)"
+                    else:
+                        yield current_line
                     current_line = ""
+                    current_line_bytes = 0
+                    line_truncated = False
                 else:
-                    current_line += char
+                    # Only add character if we haven't already truncated this line
+                    if not line_truncated:
+                        char_bytes = len(char.encode("utf-8"))
+                        if current_line_bytes + char_bytes > max_line_size_bytes:
+                            # Line is too long, mark as truncated but don't add more characters
+                            line_truncated = True
+                        else:
+                            current_line += char
+                            current_line_bytes += char_bytes
+
             # Don't forget the last line if it doesn't end with newline
-            if current_line:
-                yield current_line
+            if current_line or line_truncated:
+                if line_truncated:
+                    yield current_line + "... (line truncated due to size limit)"
+                else:
+                    yield current_line
         else:
-            # For lists, yield each line directly
+            # For lists, check each line's size and truncate if necessary
             for line in log_source:
-                yield line
+                line_bytes = len(line.encode("utf-8"))
+                if line_bytes > max_line_size_bytes:
+                    # Truncate the line to fit within the size limit
+                    truncated_line = line
+                    while (
+                        len(truncated_line.encode("utf-8")) > max_line_size_bytes - 50
+                    ):  # Leave space for truncation marker
+                        truncated_line = truncated_line[:-1]
+                    yield truncated_line + "... (line truncated due to size limit)"
+                else:
+                    yield line
 
     @staticmethod
     def stream_logs_with_limits(
@@ -102,26 +136,16 @@ class LogProcessor:
 
         try:
             # Use streaming approach to process logs line by line
-            for line_idx, line in enumerate(LogProcessor._stream_log_lines(log_source)):
+            for line_idx, line in enumerate(
+                LogProcessor._stream_log_lines(log_source, max_line_size_kb * 1024)
+            ):
                 # Early exit if we've reached the line limit
                 if len(lines) >= max_lines:
                     lines.append(f"... (truncated at {max_lines} lines)")
                     break
 
-                # Check per-line size limit first to prevent memory exhaustion
-                line_bytes = line.encode("utf-8")
-                if len(line_bytes) > max_line_bytes:
-                    # Truncate the individual line if it's too large
-                    truncated_line = (
-                        line[:max_line_size_kb]
-                        .encode("utf-8", errors="ignore")
-                        .decode("utf-8", errors="ignore")
-                    )
-                    truncated_line += f"... (line truncated at {max_line_size_kb}KB)"
-                    line_bytes = truncated_line.encode("utf-8")
-                    line = truncated_line
-
                 # Check total size limit
+                line_bytes = line.encode("utf-8")
                 if current_size + len(line_bytes) > max_size_bytes:
                     lines.append(f"... (truncated at {max_size_mb}MB limit)")
                     break
@@ -204,7 +228,9 @@ class LogProcessor:
             current_line_idx = 0
             page_lines = []
 
-            for line in LogProcessor._stream_log_lines(log_source):
+            for line in LogProcessor._stream_log_lines(
+                log_source, max_line_size_kb * 1024
+            ):
                 if current_line_idx >= end_idx:
                     break
 
@@ -216,24 +242,11 @@ class LogProcessor:
             # Apply size limits to the page with per-line size checking
             current_size = 0
             max_size_bytes = max_size_mb * 1024 * 1024
-            max_line_bytes = max_line_size_kb * 1024
             limited_lines = []
 
             for line in page_lines:
-                # Check per-line size limit first to prevent memory exhaustion
-                line_bytes = line.encode("utf-8")
-                if len(line_bytes) > max_line_bytes:
-                    # Truncate the individual line if it's too large
-                    truncated_line = (
-                        line[:max_line_size_kb]
-                        .encode("utf-8", errors="ignore")
-                        .decode("utf-8", errors="ignore")
-                    )
-                    truncated_line += f"... (line truncated at {max_line_size_kb}KB)"
-                    line_bytes = truncated_line.encode("utf-8")
-                    line = truncated_line
-
                 # Check total size limit
+                line_bytes = line.encode("utf-8")
                 if current_size + len(line_bytes) > max_size_bytes:
                     limited_lines.append(f"... (truncated at {max_size_mb}MB limit)")
                     break
