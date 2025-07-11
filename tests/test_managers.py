@@ -475,10 +475,13 @@ class TestManagerResourceHandling:
             patch("asyncio.get_running_loop") as mock_loop,
             patch("asyncio.wait_for") as mock_wait_for,
         ):
-            mock_loop.return_value = asyncio.get_running_loop()
-            mock_executor = Mock()
-            mock_loop.return_value.run_in_executor = mock_executor
-            mock_executor.return_value = None  # Simulate successful wait after kill
+            mock_event_loop = Mock()
+            mock_loop.return_value = mock_event_loop
+
+            # Mock run_in_executor to return a future that resolves to None
+            mock_future = asyncio.Future()
+            mock_future.set_result(None)
+            mock_event_loop.run_in_executor.return_value = mock_future
 
             result = await cluster_manager._safely_terminate_process(
                 mock_process2, "worker-2"
@@ -489,7 +492,7 @@ class TestManagerResourceHandling:
             assert "Error stopping worker" in result["message"]
             # Verify that despite the exception, kill() and run_in_executor were called
             mock_process2.kill.assert_called_once()
-            mock_executor.assert_called_once()
+            mock_event_loop.run_in_executor.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_worker_process_cleanup_timeout_handling(self):
