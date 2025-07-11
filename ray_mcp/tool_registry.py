@@ -1,11 +1,6 @@
-"""Streamlined tool registry for Ray MCP server using modular schemas.
-
-This module centralizes all tool definitions, schemas, and implementations to eliminate
-duplication and provide a single source of truth for tool metadata.
-"""
+"""Tool registry for Ray MCP server."""
 
 import asyncio
-import inspect
 import json
 import logging
 import os
@@ -376,11 +371,10 @@ class ToolRegistry:
                 ]
             }
 
-            # Filter to only include valid parameters for local job submission
-            sig = inspect.signature(self.ray_manager.submit_ray_job)
-            valid_params = {k for k in sig.parameters.keys() if k != "self"}
-            filtered = {k: v for k, v in local_kwargs.items() if k in valid_params}
-            return await self.ray_manager.submit_ray_job(**filtered)
+            # Pass all local_kwargs to Ray's submit_ray_job method - let Ray handle parameter validation
+            # This avoids the issue where inspect.signature() filters out valid parameters
+            # that might be accepted through **kwargs in the underlying method
+            return await self.ray_manager.submit_ray_job(**local_kwargs)
 
         elif job_type in ["kubernetes", "k8s"]:
             await self._ensure_gke_coordination()
