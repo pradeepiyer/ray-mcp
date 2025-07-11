@@ -6,7 +6,6 @@ import os
 import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
 
 from ..foundation.base_managers import ResourceManager
 from ..foundation.interfaces import ManagedComponent
@@ -294,13 +293,7 @@ class ClusterManager(ResourceManager, ManagedComponent):
                     ),
                 )
 
-            # Verify cluster connectivity via dashboard API
-            job_client = await self._test_dashboard_connection(dashboard_url)
-            if not job_client:
-                return self._ResponseFormatter.format_error_response(
-                    "connect to cluster",
-                    Exception(f"Failed to connect to Ray dashboard at {dashboard_url}"),
-                )
+            # Note: Job client will be created lazily when needed by job operations
 
             # Initialize local Ray without connecting to remote cluster
             # This gives us access to Ray APIs for cluster inspection
@@ -316,7 +309,7 @@ class ClusterManager(ResourceManager, ManagedComponent):
                 cluster_address=address,
                 gcs_address=actual_gcs_address,
                 dashboard_url=dashboard_url,
-                job_client=job_client,
+                job_client=None,  # Will be created lazily when needed
                 connection_type="existing",
             )
 
@@ -485,46 +478,6 @@ class ClusterManager(ResourceManager, ManagedComponent):
         except Exception as e:
             self._LoggingUtility.log_error("start head node process", e)
             return None
-
-    async def _test_dashboard_connection(
-        self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
-    ) -> Optional[Any]:
-        """Test connection to Ray dashboard API."""
-        if not self._JobSubmissionClient:
-            return None
-
-        for attempt in range(max_retries):
-            try:
-                self._LoggingUtility.log_info(
-                    "dashboard_connect",
-                    f"Testing dashboard connection (attempt {attempt + 1}/{max_retries}): {dashboard_url}",
-                )
-
-                # Create client and test connection
-                job_client = self._JobSubmissionClient(dashboard_url)
-
-                # Test the connection by listing jobs
-                _ = job_client.list_jobs()
-
-                self._LoggingUtility.log_info(
-                    "dashboard_connect", "Dashboard connection successful"
-                )
-                return job_client
-
-            except Exception as e:
-                self._LoggingUtility.log_warning(
-                    "dashboard_connect", f"Attempt {attempt + 1} failed: {e}"
-                )
-
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
-
-        self._LoggingUtility.log_error(
-            "dashboard_connect",
-            Exception(f"Failed to connect to dashboard after {max_retries} attempts"),
-        )
-        return None
 
     def _get_default_worker_config(self) -> List[Dict[str, Any]]:
         """Get default worker node configuration."""
