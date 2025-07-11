@@ -1,5 +1,6 @@
 """Centralized job management for Ray."""
 
+import asyncio
 import inspect
 from typing import Any, Dict, List, Optional
 
@@ -22,7 +23,7 @@ class RayJobManager(ResourceManager, JobManager, ManagedComponent):
         ManagedComponent.__init__(self, state_manager)
 
         self._job_client: Optional[Any] = None
-        self._initializing_job_client = False  # Add flag to prevent infinite recursion
+        self._job_client_lock = asyncio.Lock()  # Synchronize job client initialization
 
     @property
     def _handle_exceptions(self):
@@ -210,44 +211,34 @@ class RayJobManager(ResourceManager, JobManager, ManagedComponent):
             )
             return None
 
-        # Prevent infinite recursion during client initialization
-        if self._initializing_job_client:
-            self._log_warning(
-                operation_name,
-                "Job client initialization already in progress, preventing recursion",
-            )
-            return None
-
         # Return existing client if available
         if self._get_state_value("job_client"):
             return self._get_state_value("job_client")
 
-        # Create new client
-        dashboard_url = self._get_state_value("dashboard_url")
-        if not dashboard_url:
-            self._log_warning(
-                operation_name, "Dashboard URL not available, attempting to initialize"
-            )
-            self._initializing_job_client = True
-            try:
-                dashboard_url = await self._initialize_job_client_if_available()
-            except Exception as e:
-                self._log_warning(
-                    operation_name, f"Failed to initialize job client: {e}"
-                )
-                dashboard_url = None
-            finally:
-                self._initializing_job_client = False
+        # Use lock to synchronize client initialization
+        async with self._job_client_lock:
+            # Double-check pattern - another task might have initialized while waiting
+            if self._get_state_value("job_client"):
+                return self._get_state_value("job_client")
 
+            # Create new client
+            dashboard_url = self._get_state_value("dashboard_url")
             if not dashboard_url:
-                return None
+                self._log_warning(
+                    operation_name,
+                    "Dashboard URL not available, attempting to initialize",
+                )
+                dashboard_url = await self._initialize_job_client_if_available()
 
-        # Initialize client with retry logic
-        job_client = await self._initialize_job_client_with_retry(dashboard_url)
-        if job_client:
-            self._update_state(job_client=job_client)
+                if not dashboard_url:
+                    return None
 
-        return job_client
+            # Initialize client with retry logic
+            job_client = await self._initialize_job_client_with_retry(dashboard_url)
+            if job_client:
+                self._update_state(job_client=job_client)
+
+            return job_client
 
     async def _initialize_job_client_with_retry(
         self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
@@ -277,14 +268,6 @@ class RayJobManager(ResourceManager, JobManager, ManagedComponent):
 
     async def _initialize_job_client_if_available(self) -> Optional[str]:
         """Try to initialize job client if Ray cluster is available."""
-        # Additional safeguard against recursive calls
-        if self._initializing_job_client:
-            self._log_warning(
-                "initialize job client",
-                "Job client initialization already in progress, avoiding nested initialization",
-            )
-            return None
-
         try:
             if not self._is_ray_initialized():
                 return None
