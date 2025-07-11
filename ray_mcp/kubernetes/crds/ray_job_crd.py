@@ -261,54 +261,76 @@ class RayJobCRDManager(BaseCRDManager):
         """Format runtime environment as YAML string with smart defaults."""
         # Create a copy to avoid modifying the original
         processed_env = runtime_env.copy()
-        
+
         # Handle working_dir to prevent large uploads
         if "working_dir" in processed_env:
             working_dir = processed_env["working_dir"]
-            
+
             # If working_dir is "." (current directory), add comprehensive excludes
             if working_dir == ".":
                 excludes = processed_env.get("excludes", [])
-                
+
                 # Add default excludes to prevent large file uploads
                 default_excludes = [
                     # Ray and Python binaries
-                    "**/*.so", "**/*.so.*", "**/*.whl", "**/*.jar",
-                    "**/bin/python*", "**/lib/libpython*", "**/lib/libstdc++*",
-                    
-                    # Conda/Anaconda directories  
-                    "anaconda3/**", "miniconda3/**", ".conda/**",
-                    "**/site-packages/ray/**", "**/site-packages/numpy/**",
-                    "**/site-packages/scipy/**", "**/site-packages/pandas/**",
-                    "**/site-packages/torch/**", "**/site-packages/tensorflow/**",
-                    
+                    "**/*.so",
+                    "**/*.so.*",
+                    "**/*.whl",
+                    "**/*.jar",
+                    "**/bin/python*",
+                    "**/lib/libpython*",
+                    "**/lib/libstdc++*",
+                    # Conda/Anaconda directories
+                    "anaconda3/**",
+                    "miniconda3/**",
+                    ".conda/**",
+                    "**/site-packages/ray/**",
+                    "**/site-packages/numpy/**",
+                    "**/site-packages/scipy/**",
+                    "**/site-packages/pandas/**",
+                    "**/site-packages/torch/**",
+                    "**/site-packages/tensorflow/**",
                     # Package caches and builds
-                    "**/__pycache__/**", "**/.pyc", "**/build/**", "**/dist/**",
-                    "**/.git/**", "**/.pytest_cache/**", "**/.tox/**",
-                    
+                    "**/__pycache__/**",
+                    "**/.pyc",
+                    "**/build/**",
+                    "**/dist/**",
+                    "**/.git/**",
+                    "**/.pytest_cache/**",
+                    "**/.tox/**",
                     # Large ML/Data files
-                    "**/models/**", "**/data/**", "**/datasets/**", "**/*.pkl",
-                    "**/*.h5", "**/*.hdf5", "**/*.npy", "**/*.npz",
-                    
+                    "**/models/**",
+                    "**/data/**",
+                    "**/datasets/**",
+                    "**/*.pkl",
+                    "**/*.h5",
+                    "**/*.hdf5",
+                    "**/*.npy",
+                    "**/*.npz",
                     # Documentation and logs
-                    "**/docs/**", "**/logs/**", "**/*.log", "**/*.md"
+                    "**/docs/**",
+                    "**/logs/**",
+                    "**/*.log",
+                    "**/*.md",
                 ]
-                
+
                 # Merge with existing excludes, avoiding duplicates
                 all_excludes = list(set(excludes + default_excludes))
                 processed_env["excludes"] = all_excludes
-                
+
                 self._LoggingUtility.log_info(
                     "runtime_env_processing",
-                    f"Added {len(default_excludes)} default excludes for working_dir='.' to prevent large uploads"
+                    f"Added {len(default_excludes)} default excludes for working_dir='.' to prevent large uploads",
                 )
-        
+
         try:
             import yaml
+
             return yaml.dump(processed_env, default_flow_style=False)
         except ImportError:
             # Fallback to JSON if YAML not available
             import json
+
             return json.dumps(processed_env)
 
     def _build_submitter_pod_template(self, **kwargs: Any) -> Dict[str, Any]:

@@ -729,57 +729,77 @@ class ClusterManager(ResourceManager, ManagedComponent):
             self._LoggingUtility.log_error("spawn worker process", e)
             return None
 
+    async def _safely_terminate_process(
+        self, process: subprocess.Popen, node_name: str
+    ) -> Dict[str, Any]:
+        """Safely terminate a process and ensure proper cleanup.
+
+        The key insight: always call wait() after terminate() to prevent zombies.
+        """
+        process_id = process.pid
+
+        try:
+            # If process is already dead, we're done
+            if process.poll() is not None:
+                return {
+                    "status": "stopped",
+                    "node_name": node_name,
+                    "message": f"Worker '{node_name}' was already stopped",
+                    "process_id": process_id,
+                }
+
+            # Try graceful termination first
+            process.terminate()
+            loop = asyncio.get_running_loop()
+
+            try:
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, process.wait), timeout=5
+                )
+                return {
+                    "status": "stopped",
+                    "node_name": node_name,
+                    "message": f"Worker '{node_name}' stopped gracefully",
+                    "process_id": process_id,
+                }
+            except asyncio.TimeoutError:
+                # Force kill if graceful shutdown times out
+                process.kill()
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, process.wait), timeout=3
+                )
+                return {
+                    "status": "force_stopped",
+                    "node_name": node_name,
+                    "message": f"Worker '{node_name}' force stopped",
+                    "process_id": process_id,
+                }
+
+        except Exception as e:
+            # If anything goes wrong, ensure we still wait() for the process
+            try:
+                if process.poll() is None:  # Still alive
+                    process.kill()
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, process.wait)
+            except Exception:
+                pass  # We tried our best
+
+            return {
+                "status": "error",
+                "node_name": node_name,
+                "message": f"Error stopping worker '{node_name}': {str(e)}",
+                "process_id": process_id,
+            }
+
     async def _stop_all_workers(self) -> List[Dict[str, Any]]:
         """Stop all worker nodes with simplified cleanup."""
         results = []
 
         for i, process in enumerate(self._worker_processes):
-            try:
-                node_name = self._worker_configs[i].get("node_name", f"worker-{i+1}")
-
-                # Terminate process
-                process.terminate()
-
-                # Wait for graceful shutdown
-                try:
-                    loop = asyncio.get_running_loop()
-                    await asyncio.wait_for(
-                        loop.run_in_executor(None, process.wait), timeout=5
-                    )
-                    status = "stopped"
-                    message = f"Worker '{node_name}' stopped gracefully"
-                except asyncio.TimeoutError:
-                    # Force kill
-                    process.kill()
-                    try:
-                        await asyncio.wait_for(
-                            loop.run_in_executor(None, process.wait), timeout=3
-                        )
-                        status = "force_stopped"
-                        message = f"Worker '{node_name}' force stopped"
-                    except asyncio.TimeoutError:
-                        status = "force_stopped"
-                        message = (
-                            f"Worker '{node_name}' force stopped (may still be running)"
-                        )
-
-                results.append(
-                    {
-                        "status": status,
-                        "node_name": node_name,
-                        "message": message,
-                        "process_id": process.pid,
-                    }
-                )
-
-            except Exception as e:
-                results.append(
-                    {
-                        "status": "error",
-                        "node_name": f"worker-{i+1}",
-                        "message": f"Error stopping worker: {str(e)}",
-                    }
-                )
+            node_name = self._worker_configs[i].get("node_name", f"worker-{i+1}")
+            result = await self._safely_terminate_process(process, node_name)
+            results.append(result)
 
         # Clear worker tracking
         self._worker_processes.clear()

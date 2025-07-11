@@ -423,6 +423,184 @@ class TestManagerResourceHandling:
         mock_ray.shutdown.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_worker_process_cleanup_safe_termination(self):
+        """Test that worker processes are properly cleaned up even when exceptions occur."""
+        from ray_mcp.managers.port_manager import PortManager
+
+        state_manager = StateManager()
+        port_manager = PortManager()
+        cluster_manager = ClusterManager(state_manager, port_manager)
+
+        # Create mock processes
+        mock_process1 = Mock()
+        mock_process1.pid = 1234
+        mock_process1.poll.return_value = None  # Process is alive
+        mock_process1.terminate = Mock()
+        mock_process1.wait = Mock()
+
+        mock_process2 = Mock()
+        mock_process2.pid = 5678
+        mock_process2.poll.return_value = None  # Process is alive
+        mock_process2.terminate = Mock(side_effect=Exception("Terminate failed"))
+        mock_process2.kill = Mock()
+        mock_process2.wait = Mock()
+
+        # Set up worker processes and configs
+        cluster_manager._worker_processes = [mock_process1, mock_process2]
+        cluster_manager._worker_configs = [
+            {"node_name": "worker-1"},
+            {"node_name": "worker-2"},
+        ]
+
+        # Test graceful shutdown for first process
+        with (
+            patch("asyncio.get_running_loop") as mock_loop,
+            patch("asyncio.wait_for") as mock_wait_for,
+        ):
+            mock_loop.return_value = asyncio.get_running_loop()
+            mock_wait_for.return_value = None  # Simulate successful wait
+
+            result = await cluster_manager._safely_terminate_process(
+                mock_process1, "worker-1"
+            )
+
+            assert result["status"] == "stopped"
+            assert result["node_name"] == "worker-1"
+            assert "stopped gracefully" in result["message"]
+            mock_process1.terminate.assert_called_once()
+            mock_wait_for.assert_called_once()
+
+        # Test exception during termination for second process
+        with (
+            patch("asyncio.get_running_loop") as mock_loop,
+            patch("asyncio.wait_for") as mock_wait_for,
+        ):
+            mock_event_loop = Mock()
+            mock_loop.return_value = mock_event_loop
+
+            # Mock run_in_executor to return a future that resolves to None
+            mock_future = asyncio.Future()
+            mock_future.set_result(None)
+            mock_event_loop.run_in_executor.return_value = mock_future
+
+            result = await cluster_manager._safely_terminate_process(
+                mock_process2, "worker-2"
+            )
+
+            assert result["status"] == "error"
+            assert result["node_name"] == "worker-2"
+            assert "Error stopping worker" in result["message"]
+            # Verify that despite the exception, kill() and run_in_executor were called
+            mock_process2.kill.assert_called_once()
+            mock_event_loop.run_in_executor.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_worker_process_cleanup_timeout_handling(self):
+        """Test that worker process cleanup handles timeouts correctly."""
+        from ray_mcp.managers.port_manager import PortManager
+
+        state_manager = StateManager()
+        port_manager = PortManager()
+        cluster_manager = ClusterManager(state_manager, port_manager)
+
+        # Create mock process that times out on graceful shutdown
+        mock_process = Mock()
+        mock_process.pid = 1234
+        mock_process.poll.return_value = None  # Process is alive
+        mock_process.terminate = Mock()
+        mock_process.kill = Mock()
+        mock_process.wait = Mock()
+
+        with (
+            patch("asyncio.get_running_loop") as mock_loop,
+            patch("asyncio.wait_for") as mock_wait_for,
+        ):
+            mock_loop.return_value = asyncio.get_running_loop()
+            # First wait_for (terminate) times out, second (kill) succeeds
+            mock_wait_for.side_effect = [asyncio.TimeoutError(), None]
+
+            result = await cluster_manager._safely_terminate_process(
+                mock_process, "worker-test"
+            )
+
+            assert result["status"] == "force_stopped"
+            assert result["node_name"] == "worker-test"
+            assert "force stopped" in result["message"]
+            mock_process.terminate.assert_called_once()
+            mock_process.kill.assert_called_once()
+            # wait_for should be called twice (once for terminate, once for kill)
+            assert mock_wait_for.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_stop_all_workers_integration(self):
+        """Test the complete _stop_all_workers method with mixed scenarios."""
+        from ray_mcp.managers.port_manager import PortManager
+
+        state_manager = StateManager()
+        port_manager = PortManager()
+        cluster_manager = ClusterManager(state_manager, port_manager)
+
+        # Create mock processes with different behaviors
+        mock_process1 = Mock()
+        mock_process1.pid = 1234
+        mock_process1.poll.return_value = None  # Process is alive
+        mock_process1.terminate = Mock()
+        mock_process1.wait = Mock()
+
+        mock_process2 = Mock()
+        mock_process2.pid = 5678
+        mock_process2.poll.return_value = 0  # Process is already dead
+
+        mock_process3 = Mock()
+        mock_process3.pid = 9012
+        mock_process3.poll.return_value = None  # Process is alive
+        mock_process3.terminate = Mock(side_effect=Exception("Terminate failed"))
+        mock_process3.kill = Mock()
+        mock_process3.wait = Mock()
+
+        # Set up worker processes and configs
+        cluster_manager._worker_processes = [
+            mock_process1,
+            mock_process2,
+            mock_process3,
+        ]
+        cluster_manager._worker_configs = [
+            {"node_name": "worker-1"},
+            {"node_name": "worker-2"},
+            {"node_name": "worker-3"},
+        ]
+
+        with (
+            patch("asyncio.get_running_loop") as mock_loop,
+            patch("asyncio.wait_for") as mock_wait_for,
+        ):
+            mock_loop.return_value = asyncio.get_running_loop()
+            mock_wait_for.return_value = None  # Simulate successful waits
+
+            results = await cluster_manager._stop_all_workers()
+
+            assert len(results) == 3
+
+            # First worker should stop gracefully
+            assert results[0]["status"] == "stopped"
+            assert results[0]["node_name"] == "worker-1"
+            assert "stopped gracefully" in results[0]["message"]
+
+            # Second worker was already stopped
+            assert results[1]["status"] == "stopped"
+            assert results[1]["node_name"] == "worker-2"
+            assert "already stopped" in results[1]["message"]
+
+            # Third worker should have error but still be cleaned up
+            assert results[2]["status"] == "error"
+            assert results[2]["node_name"] == "worker-3"
+            assert "Error stopping worker" in results[2]["message"]
+
+            # Verify worker tracking is cleared
+            assert len(cluster_manager._worker_processes) == 0
+            assert len(cluster_manager._worker_configs) == 0
+
+    @pytest.mark.asyncio
     async def test_job_manager_client_lifecycle(self):
         """Test job manager handles client lifecycle correctly."""
         state_manager = Mock()
