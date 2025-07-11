@@ -739,7 +739,8 @@ class ToolRegistry:
         ):
             return "kubernetes"
 
-        return await self._detect_job_type()
+        # Default to local cluster type if no patterns match
+        return "local"
 
     async def _create_kuberay_cluster(self, **kwargs) -> Dict[str, Any]:
         """Create a KubeRay cluster from init_ray parameters."""
