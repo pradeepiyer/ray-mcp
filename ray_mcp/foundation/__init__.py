@@ -13,7 +13,6 @@ from .interfaces import (
     KubernetesConfig,
     LogManager,
     ManagedComponent,
-    PortManager,
     StateManager,
 )
 from .test_mocks import get_mock_logging_utils
@@ -27,7 +26,6 @@ __all__ = [
     "JobManager",
     "LogManager",
     "StateManager",
-    "PortManager",
     "KubernetesConfig",
     "CloudProvider",
     "ManagedComponent",

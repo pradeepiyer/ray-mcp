@@ -8,36 +8,24 @@ import tempfile
 import time
 from typing import Optional
 
-from ..foundation.base_managers import BaseManager
-from ..foundation.interfaces import PortManager
+from ..foundation.import_utils import get_logging_utils
 
 
-class RayPortManager(BaseManager, PortManager):
+class PortManager:
     """Manages port allocation with atomic reservation to prevent race conditions."""
 
-    def __init__(self, state_manager=None):
-        # Use a simple dummy state manager if none provided for backward compatibility
-        if state_manager is None:
-            state_manager = self._create_dummy_state_manager()
-        super().__init__(state_manager)
+    def __init__(self):
+        # Import logging utilities directly - no state management needed
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
 
-    def _create_dummy_state_manager(self):
-        """Create a simple dummy state manager for backward compatibility."""
+    def _log_info(self, operation: str, message: str) -> None:
+        """Log info message."""
+        self._LoggingUtility.log_info(operation, message)
 
-        class DummyStateManager:
-            def get_state(self):
-                return {}
-
-            def update_state(self, **kwargs):
-                pass
-
-            def reset_state(self):
-                pass
-
-            def is_initialized(self):
-                return False
-
-        return DummyStateManager()
+    def _log_warning(self, operation: str, message: str) -> None:
+        """Log warning message."""
+        self._LoggingUtility.log_warning(operation, message)
 
     async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:
         """Find a free port with atomic reservation.

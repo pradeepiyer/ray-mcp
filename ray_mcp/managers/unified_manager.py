@@ -10,7 +10,7 @@ from ..kubernetes.managers.kubernetes_manager import KubernetesClusterManager
 from .cluster_manager import RayClusterManager
 from .job_manager import RayJobManager
 from .log_manager import RayLogManager
-from .port_manager import RayPortManager
+from .port_manager import PortManager
 from .state_manager import RayStateManager
 
 
@@ -25,7 +25,7 @@ class RayUnifiedManager:
     def __init__(self):
         # Initialize core components
         self._state_manager = RayStateManager()
-        self._port_manager = RayPortManager(self._state_manager)
+        self._port_manager = PortManager()
 
         # Initialize specialized managers with dependencies
         self._cluster_manager = RayClusterManager(
@@ -301,7 +301,7 @@ class RayUnifiedManager:
         """Get the log manager component."""
         return self._log_manager
 
-    def get_port_manager(self) -> RayPortManager:
+    def get_port_manager(self) -> PortManager:
         """Get the port manager component."""
         return self._port_manager
 

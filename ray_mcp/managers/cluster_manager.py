@@ -9,12 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import (
-    ClusterManager,
-    ManagedComponent,
-    PortManager,
-    StateManager,
-)
+from ..foundation.interfaces import ClusterManager, ManagedComponent, StateManager
+from .port_manager import PortManager
 
 
 class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
@@ -272,7 +268,7 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
         raise ValueError(f"Unable to parse cluster address: {address}")
 
     async def _connect_to_existing_cluster(self, address: str) -> Dict[str, Any]:
-        """Connect to an existing Ray cluster via dashboard API."""
+        """Connect to an existing Ray cluster via dashboard API with atomic state updates."""
         try:
             # Validate address format
             if not self._validate_cluster_address(address):
@@ -314,7 +310,7 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
             # Query the actual GCS address from the Ray cluster after connection
             actual_gcs_address = await self._get_actual_gcs_address()
 
-            # Update state with dashboard-based connection
+            # Apply all state updates atomically in a single batch
             self.state_manager.update_state(
                 initialized=True,
                 cluster_address=address,
@@ -332,13 +328,14 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
             )
 
         except Exception as e:
+            # No state changes have been made if we reach this point
             self._LoggingUtility.log_error("connect to cluster", e)
             return self._ResponseFormatter.format_error_response(
                 "connect to cluster", e
             )
 
     async def _start_new_cluster(self, **kwargs) -> Dict[str, Any]:
-        """Start a new Ray cluster."""
+        """Start a new Ray cluster with atomic state updates."""
         try:
             # Use Ray's default approach - let Ray handle port allocation
             # This avoids port conflicts and is more reliable
@@ -379,15 +376,6 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
             gcs_address = runtime_context.gcs_address if runtime_context else None
             cluster_address = gcs_address or f"{host}:10001"  # fallback
 
-            # Update state
-            self.state_manager.update_state(
-                initialized=True,
-                cluster_address=cluster_address,
-                gcs_address=gcs_address,
-                dashboard_url=dashboard_url,
-                connection_type="new",
-            )
-
             # Start worker nodes if requested
             worker_results = []
             worker_nodes = kwargs.get("worker_nodes")
@@ -402,6 +390,15 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
                     default_workers, cluster_address
                 )
 
+            # Apply all state updates atomically in a single batch
+            self.state_manager.update_state(
+                initialized=True,
+                cluster_address=cluster_address,
+                gcs_address=gcs_address,
+                dashboard_url=dashboard_url,
+                connection_type="new",
+            )
+
             return self._ResponseFormatter.format_success_response(
                 message="Ray cluster started successfully",
                 result_type="started",
@@ -414,7 +411,7 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
             )
 
         except Exception as e:
-            # Cleanup on failure
+            # Cleanup on failure - no state changes have been made
             # Note: The 'ray start' command has already exited, so we just need to clear the reference.
             # Ray daemon processes (if started) will be cleaned up by the OS or manual intervention.
             if self._head_node_process:
@@ -423,7 +420,6 @@ class RayClusterManager(ResourceManager, ClusterManager, ManagedComponent):
                     "Clearing head node process reference after failure",
                 )
                 self._head_node_process = None
-            self.state_manager.reset_state()
             return self._ResponseFormatter.format_error_response("start cluster", e)
 
     async def _build_head_node_command(

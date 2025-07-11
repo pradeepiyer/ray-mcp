@@ -20,7 +20,7 @@ import pytest
 from ray_mcp.managers.cluster_manager import RayClusterManager
 from ray_mcp.managers.job_manager import RayJobManager
 from ray_mcp.managers.log_manager import RayLogManager
-from ray_mcp.managers.port_manager import RayPortManager
+from ray_mcp.managers.port_manager import PortManager
 from ray_mcp.managers.state_manager import RayStateManager
 from ray_mcp.managers.unified_manager import RayUnifiedManager
 
@@ -216,7 +216,7 @@ class TestManagerIntegration:
     def test_port_manager_cluster_manager_integration(self):
         """Test integration between port and cluster managers."""
         state_manager = RayStateManager()
-        port_manager = RayPortManager(state_manager)
+        port_manager = PortManager()
         cluster_manager = RayClusterManager(state_manager, port_manager)
 
         # Test that cluster manager has port manager reference
@@ -392,10 +392,10 @@ class TestManagerResourceHandling:
     @pytest.mark.asyncio
     async def test_cluster_manager_connection_type_handling(self):
         """Test cluster manager handles different connection types correctly."""
-        from ray_mcp.managers.port_manager import RayPortManager
+        from ray_mcp.managers.port_manager import PortManager
 
         state_manager = RayStateManager()
-        port_manager = RayPortManager(state_manager)
+        port_manager = PortManager()
         cluster_manager = RayClusterManager(state_manager, port_manager)
 
         # Mock Ray
@@ -449,10 +449,10 @@ class TestManagerResourceHandling:
 
     def test_address_validation_patterns(self):
         """Test address validation patterns across managers."""
-        from ray_mcp.managers.port_manager import RayPortManager
+        from ray_mcp.managers.port_manager import PortManager
 
         state_manager = RayStateManager()
-        port_manager = RayPortManager(state_manager)
+        port_manager = PortManager()
         cluster_manager = RayClusterManager(state_manager, port_manager)
 
         # Test valid addresses

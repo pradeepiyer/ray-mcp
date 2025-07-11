@@ -99,19 +99,6 @@ class LogManager(Protocol):
 
 
 @runtime_checkable
-class PortManager(Protocol):
-    """Protocol for port management."""
-
-    async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:
-        """Find a free port."""
-        ...
-
-    def cleanup_port_lock(self, port: int) -> None:
-        """Clean up port lock file."""
-        ...
-
-
-@runtime_checkable
 class KubernetesClient(Protocol):
     """Protocol for Kubernetes API client interactions."""
 

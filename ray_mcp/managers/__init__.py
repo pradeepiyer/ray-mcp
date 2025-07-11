@@ -7,7 +7,7 @@ including cluster, job, log, state, and port management.
 from .cluster_manager import RayClusterManager
 from .job_manager import RayJobManager
 from .log_manager import RayLogManager
-from .port_manager import RayPortManager
+from .port_manager import PortManager
 from .state_manager import RayStateManager
 from .unified_manager import RayUnifiedManager
 
@@ -16,6 +16,6 @@ __all__ = [
     "RayJobManager",
     "RayLogManager",
     "RayStateManager",
-    "RayPortManager",
+    "PortManager",
     "RayUnifiedManager",
 ]
