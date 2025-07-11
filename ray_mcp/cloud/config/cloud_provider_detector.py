@@ -1,4 +1,4 @@
-"""Cloud provider detection and environment analysis."""
+"""Cloud provider detection and auto-configuration."""
 
 import os
 import platform
@@ -7,13 +7,13 @@ import subprocess
 from typing import Any, Dict, Optional
 
 from ...foundation.import_utils import get_logging_utils
-from ...foundation.interfaces import AuthenticationType, CloudProvider, StateManager
+from ...foundation.interfaces import AuthenticationType, CloudProvider
 
 
 class CloudProviderDetector:
-    """Detects cloud provider environment and configuration."""
+    """Detects available cloud providers and their configurations."""
 
-    def __init__(self, state_manager: Optional[StateManager] = None):
+    def __init__(self, state_manager=None):
         # Get imports
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]

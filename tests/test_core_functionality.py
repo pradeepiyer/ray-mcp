@@ -413,7 +413,8 @@ class TestFoundationComponents:
         state_manager = Mock()
 
         class TestManager(BaseManager):
-            pass
+            async def _validate_state(self) -> bool:
+                return True
 
         manager = TestManager(state_manager)
         assert manager.state_manager == state_manager
@@ -458,7 +459,8 @@ class TestFoundationComponents:
         state_manager.is_initialized.return_value = True
 
         class TestManager(BaseManager):
-            pass
+            async def _validate_state(self) -> bool:
+                return True
 
         manager = TestManager(state_manager)
 

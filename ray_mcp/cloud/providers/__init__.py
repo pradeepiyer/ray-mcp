@@ -1,9 +1,6 @@
-"""Cloud provider manager implementations."""
+"""Cloud provider implementations for Ray MCP."""
 
-from .cloud_provider_manager import UnifiedCloudProviderManager
-from .gke_manager import GKEClusterManager
+from .cloud_provider_manager import CloudProviderManager
+from .gke_manager import GKEManager
 
-__all__ = [
-    "UnifiedCloudProviderManager",
-    "GKEClusterManager",
-]
+__all__ = ["CloudProviderManager", "GKEManager"]

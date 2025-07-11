@@ -1,18 +1,21 @@
-"""Google Kubernetes Engine (GKE) cluster management."""
+"""Google Kubernetes Engine (GKE) cluster management for Ray MCP."""
 
 import asyncio
 import base64
 import json
 import os
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ...foundation.base_managers import ResourceManager
 from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ...foundation.interfaces import CloudProvider, GKEManager, ManagedComponent
-from ...kubernetes.config.kubernetes_config import KubernetesConfigManager
-from ..config.cloud_provider_config import CloudProviderConfigManager
+from ...foundation.interfaces import CloudProvider, ManagedComponent
+from ...kubernetes.config.kubernetes_config import KubernetesConfig
+from ..config.cloud_provider_config import CloudProviderConfig
 from ..config.cloud_provider_detector import CloudProviderDetector
+
+if TYPE_CHECKING:
+    from ...managers.state_manager import StateManager
 
 # Import additional modules for proper GKE integration
 try:
@@ -22,15 +25,20 @@ except ImportError:
     pass
 
 
-class GKEClusterManager(ResourceManager, GKEManager, ManagedComponent):
-    """Manages GKE clusters with authentication and discovery capabilities."""
+class GKEManager(ResourceManager, ManagedComponent):
+    """Manages Google Kubernetes Engine clusters and operations."""
+
+    # GKE-specific constants
+    DEFAULT_NODE_POOL_NAME = "default-pool"
+    DEFAULT_CLUSTER_VERSION = "latest"
+    DEFAULT_MACHINE_TYPE = "e2-medium"
+    DEFAULT_DISK_SIZE_GB = 100
+    DEFAULT_NUM_NODES = 3
 
     def __init__(
         self,
-        state_manager,
-        detector: Optional[CloudProviderDetector] = None,
-        config_manager: Optional[CloudProviderConfigManager] = None,
-        kubernetes_config: Optional[KubernetesConfigManager] = None,
+        state_manager: "StateManager",
+        kubernetes_config: Optional[KubernetesConfig] = None,
     ):
         # Initialize both parent classes
         ResourceManager.__init__(
@@ -42,11 +50,9 @@ class GKEClusterManager(ResourceManager, GKEManager, ManagedComponent):
         )
         ManagedComponent.__init__(self, state_manager)
 
-        self._detector = detector or CloudProviderDetector(state_manager)
-        self._config_manager = config_manager or CloudProviderConfigManager(
-            state_manager
-        )
-        self._kubernetes_config = kubernetes_config or KubernetesConfigManager()
+        self._detector = CloudProviderDetector(state_manager)
+        self._config_manager = CloudProviderConfig(state_manager)
+        self._kubernetes_config = kubernetes_config or KubernetesConfig()
         self._gke_client = None
         self._k8s_client = None  # Add Kubernetes client
         # Initialize missing instance variables
@@ -83,7 +89,7 @@ class GKEClusterManager(ResourceManager, GKEManager, ManagedComponent):
         project_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute GKE authentication operation."""
-        self._ensure_google_cloud_available()
+        self._ensure_gcp_available()
 
         # Use service account path from parameter or environment
         service_account_path = service_account_path or os.getenv(
@@ -247,7 +253,7 @@ class GKEClusterManager(ResourceManager, GKEManager, ManagedComponent):
         self, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute GKE cluster discovery operation."""
-        self._ensure_google_cloud_available()
+        self._ensure_gcp_available()
 
         # Use ManagedComponent validation method instead of manual check
         self._ensure_cloud_authenticated(CloudProvider.GKE)
@@ -299,7 +305,7 @@ class GKEClusterManager(ResourceManager, GKEManager, ManagedComponent):
 
     def _ensure_clients(self) -> None:
         """Ensure GKE clients are initialized."""
-        self._ensure_google_cloud_available()
+        self._ensure_gcp_available()
 
         if not self._credentials:
             raise RuntimeError("Not authenticated with GKE")

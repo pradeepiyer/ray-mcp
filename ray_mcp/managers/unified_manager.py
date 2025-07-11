@@ -2,16 +2,17 @@
 
 from typing import Any, Dict, Optional
 
-from ..cloud.providers.cloud_provider_manager import UnifiedCloudProviderManager
+from ray_mcp.cloud.providers.cloud_provider_manager import CloudProviderManager
+from ray_mcp.kubernetes.managers.kubernetes_manager import KubernetesManager
+
 from ..foundation.interfaces import CloudProvider
-from ..kubernetes.managers.kuberay_cluster_manager import KubeRayClusterManagerImpl
-from ..kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
-from ..kubernetes.managers.kubernetes_manager import KubernetesClusterManager
-from .cluster_manager import RayClusterManager
-from .job_manager import RayJobManager
-from .log_manager import RayLogManager
-from .port_manager import RayPortManager
-from .state_manager import RayStateManager
+from ..kubernetes.managers.kuberay_cluster_manager import KubeRayClusterManager
+from ..kubernetes.managers.kuberay_job_manager import KubeRayJobManager
+from .cluster_manager import ClusterManager
+from .job_manager import JobManager
+from .log_manager import LogManager
+from .port_manager import PortManager
+from .state_manager import StateManager
 
 
 class RayUnifiedManager:
@@ -24,23 +25,21 @@ class RayUnifiedManager:
 
     def __init__(self):
         # Initialize core components
-        self._state_manager = RayStateManager()
-        self._port_manager = RayPortManager(self._state_manager)
+        self._state_manager = StateManager()
+        self._port_manager = PortManager()
 
         # Initialize specialized managers with dependencies
-        self._cluster_manager = RayClusterManager(
-            self._state_manager, self._port_manager
-        )
-        self._job_manager = RayJobManager(self._state_manager)
-        self._log_manager = RayLogManager(self._state_manager)
-        self._kubernetes_manager = KubernetesClusterManager(self._state_manager)
-        self._kuberay_cluster_manager = KubeRayClusterManagerImpl(self._state_manager)
-        self._kuberay_job_manager = KubeRayJobManagerImpl(self._state_manager)
-        self._cloud_provider_manager = UnifiedCloudProviderManager(self._state_manager)
+        self._cluster_manager = ClusterManager(self._state_manager, self._port_manager)
+        self._job_manager = JobManager(self._state_manager)
+        self._log_manager = LogManager(self._state_manager)
+        self._kubernetes_manager = KubernetesManager(self._state_manager)
+        self._kuberay_cluster_manager = KubeRayClusterManager(self._state_manager)
+        self._kuberay_job_manager = KubeRayJobManager(self._state_manager)
+        self._cloud_provider_manager = CloudProviderManager(self._state_manager)
 
     # Delegate properties to state manager
     @property
-    def state_manager(self) -> RayStateManager:
+    def state_manager(self) -> StateManager:
         """Get the state manager."""
         return self._state_manager
 
@@ -285,39 +284,39 @@ class RayUnifiedManager:
         self._port_manager.cleanup_port_lock(port)
 
     # Component access for advanced usage
-    def get_state_manager(self) -> RayStateManager:
+    def get_state_manager(self) -> StateManager:
         """Get the state manager component."""
         return self._state_manager
 
-    def get_cluster_manager(self) -> RayClusterManager:
+    def get_cluster_manager(self) -> ClusterManager:
         """Get the cluster manager component."""
         return self._cluster_manager
 
-    def get_job_manager(self) -> RayJobManager:
+    def get_job_manager(self) -> JobManager:
         """Get the job manager component."""
         return self._job_manager
 
-    def get_log_manager(self) -> RayLogManager:
+    def get_log_manager(self) -> LogManager:
         """Get the log manager component."""
         return self._log_manager
 
-    def get_port_manager(self) -> RayPortManager:
+    def get_port_manager(self) -> PortManager:
         """Get the port manager component."""
         return self._port_manager
 
-    def get_kubernetes_manager(self) -> KubernetesClusterManager:
+    def get_kubernetes_manager(self) -> KubernetesManager:
         """Get the Kubernetes manager component."""
         return self._kubernetes_manager
 
-    def get_kuberay_cluster_manager(self) -> KubeRayClusterManagerImpl:
+    def get_kuberay_cluster_manager(self) -> KubeRayClusterManager:
         """Get the KubeRay cluster manager component."""
         return self._kuberay_cluster_manager
 
-    def get_kuberay_job_manager(self) -> KubeRayJobManagerImpl:
+    def get_kuberay_job_manager(self) -> KubeRayJobManager:
         """Get the KubeRay job manager component."""
         return self._kuberay_job_manager
 
-    def get_cloud_provider_manager(self) -> UnifiedCloudProviderManager:
+    def get_cloud_provider_manager(self) -> CloudProviderManager:
         """Get the cloud provider manager component."""
         return self._cloud_provider_manager
 

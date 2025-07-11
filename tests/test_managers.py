@@ -17,11 +17,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ray_mcp.managers.cluster_manager import RayClusterManager
-from ray_mcp.managers.job_manager import RayJobManager
-from ray_mcp.managers.log_manager import RayLogManager
-from ray_mcp.managers.port_manager import RayPortManager
-from ray_mcp.managers.state_manager import RayStateManager
+from ray_mcp.managers.cluster_manager import ClusterManager
+from ray_mcp.managers.job_manager import JobManager
+from ray_mcp.managers.log_manager import LogManager
+from ray_mcp.managers.port_manager import PortManager
+from ray_mcp.managers.state_manager import StateManager
 from ray_mcp.managers.unified_manager import RayUnifiedManager
 
 
@@ -105,7 +105,7 @@ class TestManagerContracts:
 
     def test_state_manager_contract_compliance(self):
         """Test that state manager fulfills expected interface contract."""
-        manager = RayStateManager()
+        manager = StateManager()
 
         # Test initial state structure
         state = manager.get_state()
@@ -136,7 +136,8 @@ class TestManagerContracts:
 
         # Test BaseManager pattern
         class TestManager(BaseManager):
-            pass
+            async def _validate_state(self) -> bool:
+                return True
 
         manager = TestManager(state_manager)
         assert hasattr(manager, "_log_info")
@@ -215,9 +216,9 @@ class TestManagerIntegration:
 
     def test_port_manager_cluster_manager_integration(self):
         """Test integration between port and cluster managers."""
-        state_manager = RayStateManager()
-        port_manager = RayPortManager(state_manager)
-        cluster_manager = RayClusterManager(state_manager, port_manager)
+        state_manager = StateManager()
+        port_manager = PortManager()
+        cluster_manager = ClusterManager(state_manager, port_manager)
 
         # Test that cluster manager has port manager reference
         assert cluster_manager._port_manager is port_manager
@@ -284,7 +285,7 @@ class TestManagerErrorHandling:
                 # First validation fails
                 mock_ray.is_initialized.side_effect = Exception("Validation error")
 
-                manager = RayStateManager(validation_interval=0.01)
+                manager = StateManager(validation_interval=0.01)
                 manager.update_state(cluster_address="127.0.0.1:10001")
 
                 time.sleep(0.02)
@@ -340,17 +341,16 @@ class TestManagerErrorHandling:
         state_manager = Mock()
 
         class TestManager(BaseManager):
-            pass
+            async def _validate_state(self) -> bool:
+                return True
 
         manager = TestManager(state_manager)
 
-        # Test job ID validation
-        assert manager._validate_job_id("valid_job_id", "test") is None
-
-        error_response = manager._validate_job_id("", "test")
-        assert error_response is not None
-        assert error_response["status"] == "error"
-        assert "job_id" in error_response["message"]
+        # Test input validation
+        assert manager._validate_input("valid_value", "test_field") is True
+        assert manager._validate_input("", "test_field", required=True) is False
+        assert manager._validate_input(None, "test_field", required=True) is False
+        assert manager._validate_input("", "test_field", required=False) is True
 
 
 @pytest.mark.fast
@@ -359,7 +359,7 @@ class TestManagerResourceHandling:
 
     def test_state_manager_thread_safety(self):
         """Test that state manager operations are thread-safe."""
-        manager = RayStateManager()
+        manager = StateManager()
         results = []
 
         def update_state(thread_id):
@@ -392,11 +392,11 @@ class TestManagerResourceHandling:
     @pytest.mark.asyncio
     async def test_cluster_manager_connection_type_handling(self):
         """Test cluster manager handles different connection types correctly."""
-        from ray_mcp.managers.port_manager import RayPortManager
+        from ray_mcp.managers.port_manager import PortManager
 
-        state_manager = RayStateManager()
-        port_manager = RayPortManager(state_manager)
-        cluster_manager = RayClusterManager(state_manager, port_manager)
+        state_manager = StateManager()
+        port_manager = PortManager()
+        cluster_manager = ClusterManager(state_manager, port_manager)
 
         # Mock Ray
         mock_ray = Mock()
@@ -432,7 +432,7 @@ class TestManagerResourceHandling:
             "job_client": None,
         }
 
-        job_manager = RayJobManager(state_manager)
+        job_manager = JobManager(state_manager)
 
         # Mock Ray availability and client
         mock_client = Mock()
@@ -449,11 +449,11 @@ class TestManagerResourceHandling:
 
     def test_address_validation_patterns(self):
         """Test address validation patterns across managers."""
-        from ray_mcp.managers.port_manager import RayPortManager
+        from ray_mcp.managers.port_manager import PortManager
 
-        state_manager = RayStateManager()
-        port_manager = RayPortManager(state_manager)
-        cluster_manager = RayClusterManager(state_manager, port_manager)
+        state_manager = StateManager()
+        port_manager = PortManager()
+        cluster_manager = ClusterManager(state_manager, port_manager)
 
         # Test valid addresses
         valid_addresses = [

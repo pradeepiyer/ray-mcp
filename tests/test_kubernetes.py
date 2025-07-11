@@ -17,12 +17,10 @@ import pytest
 
 from ray_mcp.kubernetes.crds.ray_cluster_crd import RayClusterCRDManager
 from ray_mcp.kubernetes.crds.ray_job_crd import RayJobCRDManager
-from ray_mcp.kubernetes.managers.kuberay_cluster_manager import (
-    KubeRayClusterManagerImpl,
-)
-from ray_mcp.kubernetes.managers.kuberay_job_manager import KubeRayJobManagerImpl
-from ray_mcp.kubernetes.managers.kubernetes_manager import KubernetesClusterManager
-from ray_mcp.managers.state_manager import RayStateManager
+from ray_mcp.kubernetes.managers.kuberay_cluster_manager import KubeRayClusterManager
+from ray_mcp.kubernetes.managers.kuberay_job_manager import KubeRayJobManager
+from ray_mcp.kubernetes.managers.kubernetes_manager import KubernetesManager
+from ray_mcp.managers.state_manager import StateManager
 from ray_mcp.managers.unified_manager import RayUnifiedManager
 
 
@@ -149,13 +147,13 @@ class TestKubeRayClusterOperations:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.state_manager = RayStateManager()
+        self.state_manager = StateManager()
         self.state_manager.update_state(kubernetes_connected=True)
 
         self.mock_crd_operations = Mock()
         self.mock_cluster_crd = Mock()
 
-        self.cluster_manager = KubeRayClusterManagerImpl(
+        self.cluster_manager = KubeRayClusterManager(
             self.state_manager,
             crd_operations=self.mock_crd_operations,
             cluster_crd=self.mock_cluster_crd,
@@ -245,10 +243,10 @@ class TestKubeRayClusterOperations:
     def test_kuberay_readiness_requirements(self):
         """Test KubeRay readiness checks and requirements."""
         # Create a disconnected state manager and cluster manager
-        disconnected_state_manager = RayStateManager()
+        disconnected_state_manager = StateManager()
         disconnected_state_manager.reset_state()  # Ensure kubernetes_connected=False
 
-        disconnected_cluster_manager = KubeRayClusterManagerImpl(
+        disconnected_cluster_manager = KubeRayClusterManager(
             disconnected_state_manager,
             crd_operations=self.mock_crd_operations,
             cluster_crd=self.mock_cluster_crd,
@@ -259,9 +257,9 @@ class TestKubeRayClusterOperations:
             disconnected_cluster_manager._ensure_kuberay_ready()
 
         # Test again with another disconnected manager
-        another_disconnected_state_manager = RayStateManager()
+        another_disconnected_state_manager = StateManager()
         another_disconnected_state_manager.reset_state()
-        another_disconnected_cluster_manager = KubeRayClusterManagerImpl(
+        another_disconnected_cluster_manager = KubeRayClusterManager(
             another_disconnected_state_manager,
             crd_operations=self.mock_crd_operations,
             cluster_crd=self.mock_cluster_crd,
@@ -298,13 +296,13 @@ class TestKubeRayJobOperations:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.state_manager = RayStateManager()
+        self.state_manager = StateManager()
         self.state_manager.update_state(kubernetes_connected=True)
 
         self.mock_crd_operations = Mock()
         self.mock_job_crd = Mock()
 
-        self.job_manager = KubeRayJobManagerImpl(
+        self.job_manager = KubeRayJobManager(
             self.state_manager,
             crd_operations=self.mock_crd_operations,
             job_crd=self.mock_job_crd,
@@ -377,7 +375,7 @@ class TestKubeRayJobOperations:
 
         # Mock Kubernetes client for pod logs
         with patch(
-            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesApiClient"
+            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesClient"
         ) as mock_k8s_client_class:
             mock_k8s_client = Mock()
             mock_k8s_client_class.return_value = mock_k8s_client
@@ -420,7 +418,7 @@ class TestKubeRayJobOperations:
         )
 
         with patch(
-            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesApiClient"
+            "ray_mcp.kubernetes.config.kubernetes_client.KubernetesClient"
         ) as mock_k8s_client_class:
             mock_k8s_client = Mock()
             mock_k8s_client_class.return_value = mock_k8s_client
@@ -470,13 +468,13 @@ class TestKubeRayJobOperations:
 
 
 @pytest.mark.fast
-class TestKubernetesClusterManager:
+class TestKubernetesManager:
     """Test Kubernetes cluster management functionality."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.state_manager = RayStateManager()
-        self.k8s_manager = KubernetesClusterManager(self.state_manager)
+        self.state_manager = StateManager()
+        self.k8s_manager = KubernetesManager(self.state_manager)
 
     def test_kubernetes_manager_initialization(self):
         """Test Kubernetes manager initialization and structure."""
@@ -489,7 +487,7 @@ class TestKubernetesClusterManager:
     async def test_kubernetes_connectivity_workflows(self):
         """Test Kubernetes connectivity and disconnection workflows."""
         # Test connection without Kubernetes library available
-        manager = KubernetesClusterManager(self.state_manager)
+        manager = KubernetesManager(self.state_manager)
         manager._config_manager._KUBERNETES_AVAILABLE = False
 
         result = await manager.connect()
@@ -647,8 +645,8 @@ class TestKubernetesErrorHandlingPatterns:
 
     def test_kubernetes_availability_error_patterns(self):
         """Test error patterns when Kubernetes libraries are unavailable."""
-        state_manager = RayStateManager()
-        k8s_manager = KubernetesClusterManager(state_manager)
+        state_manager = StateManager()
+        k8s_manager = KubernetesManager(state_manager)
 
         # Simulate Kubernetes library unavailable
         k8s_manager._config_manager._KUBERNETES_AVAILABLE = False
@@ -665,11 +663,11 @@ class TestKubernetesErrorHandlingPatterns:
 
     def test_kuberay_connection_requirement_patterns(self):
         """Test error patterns when KubeRay operations require Kubernetes connection."""
-        state_manager = RayStateManager()
+        state_manager = StateManager()
         # Ensure state shows not connected
         state_manager.reset_state()
 
-        cluster_manager = KubeRayClusterManagerImpl(
+        cluster_manager = KubeRayClusterManager(
             state_manager,
             crd_operations=Mock(),
             cluster_crd=Mock(),
@@ -682,13 +680,13 @@ class TestKubernetesErrorHandlingPatterns:
     @pytest.mark.asyncio
     async def test_crd_operation_error_patterns(self):
         """Test error handling patterns in CRD operations."""
-        state_manager = RayStateManager()
+        state_manager = StateManager()
         state_manager.update_state(kubernetes_connected=True)
 
         mock_crd_operations = Mock()
         mock_cluster_crd = Mock()
 
-        cluster_manager = KubeRayClusterManagerImpl(
+        cluster_manager = KubeRayClusterManager(
             state_manager,
             crd_operations=mock_crd_operations,
             cluster_crd=mock_cluster_crd,

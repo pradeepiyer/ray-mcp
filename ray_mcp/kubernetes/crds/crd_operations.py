@@ -1,15 +1,16 @@
-"""Kubernetes CRD operations client for Ray resources."""
+"""Custom Resource Definition operations for Ray MCP."""
 
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from ...foundation.base_managers import ResourceManager
 from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ...foundation.interfaces import CRDOperations
-from ..config.kubernetes_config import KubernetesConfigManager
+from ...foundation.interfaces import ManagedComponent
+from ..config.kubernetes_config import KubernetesConfig
 
 
-class CRDOperationsClient(CRDOperations):
-    """Client for Custom Resource Definition operations with comprehensive CRUD support."""
+class CRDOperationsClient(ResourceManager, ManagedComponent):
+    """Manages Custom Resource Definition operations for Kubernetes."""
 
     # Resource type mappings
     RESOURCE_MAPPINGS = {
@@ -29,9 +30,19 @@ class CRDOperationsClient(CRDOperations):
 
     def __init__(
         self,
-        config_manager: Optional[KubernetesConfigManager] = None,
-        kubernetes_config: Optional[Any] = None,
+        state_manager,
+        config_manager: Optional[KubernetesConfig] = None,
     ):
+        # Initialize both parent classes
+        ResourceManager.__init__(
+            self,
+            state_manager,
+            enable_ray=False,
+            enable_kubernetes=True,
+            enable_cloud=False,
+        )
+        ManagedComponent.__init__(self, state_manager)
+
         # Get imports
         logging_utils = get_logging_utils()
         self._LoggingUtility = logging_utils["LoggingUtility"]
@@ -43,8 +54,8 @@ class CRDOperationsClient(CRDOperations):
         self._ApiException = k8s_imports["ApiException"]
         self._KUBERNETES_AVAILABLE = k8s_imports["KUBERNETES_AVAILABLE"]
 
-        self._config_manager = config_manager or KubernetesConfigManager()
-        self._kubernetes_config = kubernetes_config  # Pre-configured Kubernetes client
+        self._config_manager = config_manager or KubernetesConfig()
+        self._kubernetes_config = None  # Pre-configured Kubernetes client
         self._custom_objects_api = None
         self._api_client = None  # Persistent API client
         self._retry_attempts = 3

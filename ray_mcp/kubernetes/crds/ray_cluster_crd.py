@@ -3,14 +3,13 @@
 from typing import Any, Dict, List, Optional
 import uuid
 
-from ...foundation.interfaces import RayClusterCRD
 from .base_crd_manager import YAML_AVAILABLE, BaseCRDManager
 
 # Re-export YAML_AVAILABLE for backward compatibility with tests
 __all__ = ["RayClusterCRDManager", "YAML_AVAILABLE"]
 
 
-class RayClusterCRDManager(BaseCRDManager, RayClusterCRD):
+class RayClusterCRDManager(BaseCRDManager):
     """Manager for RayCluster Custom Resource Definitions."""
 
     def create_spec(
