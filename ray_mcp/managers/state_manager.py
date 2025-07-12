@@ -41,23 +41,24 @@ class StateManager:
     def get_state(self) -> Dict[str, Any]:
         """Get current state with validation."""
         with self._lock:
-            current_time = time.time()
-            # Only validate if not currently validating and enough time has passed
-            if (
-                not self._validating
-                and (current_time - self._state["last_validated"])
-                > self._validation_interval
-                and (
-                    self._state["cluster_address"] is not None
-                    or self._state["initialized"]
-                )
-            ):
+            if self._should_validate():
                 self._validating = True
                 try:
                     self._validate_and_update_state()
                 finally:
                     self._validating = False
             return self._state.copy()
+
+    def _should_validate(self) -> bool:
+        """Check if validation should be performed."""
+        if self._validating:
+            return False
+
+        current_time = time.time()
+        if (current_time - self._state["last_validated"]) <= self._validation_interval:
+            return False
+
+        return self._state["cluster_address"] is not None or self._state["initialized"]
 
     def update_state(self, **kwargs) -> None:
         """Update state atomically."""
