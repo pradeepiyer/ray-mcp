@@ -17,13 +17,6 @@ from ..config.cloud_provider_detector import CloudProviderDetector
 if TYPE_CHECKING:
     from ...managers.state_manager import StateManager
 
-# Import additional modules for proper GKE integration
-try:
-    import base64
-    import tempfile
-except ImportError:
-    pass
-
 
 class GKEManager(ResourceManager, ManagedComponent):
     """Manages Google Kubernetes Engine clusters and operations."""

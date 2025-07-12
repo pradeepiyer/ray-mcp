@@ -1,24 +1,15 @@
 """Ray MCP Server - Main entry point for the Ray Model Context Protocol server."""
 
-import argparse
 import asyncio
 import json
 import logging
 import sys
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional
 
 from mcp import stdio_server
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
-from mcp.types import (
-    CallToolRequest,
-    CallToolResult,
-    ListToolsRequest,
-    ListToolsResult,
-    ServerCapabilities,
-    TextContent,
-    Tool,
-)
+from mcp.types import ServerCapabilities, TextContent, Tool
 
 from . import __version__
 from .foundation.import_utils import is_ray_available

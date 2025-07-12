@@ -6,240 +6,165 @@ across tool schemas and ensure consistency.
 
 from typing import Any, Dict, List, Optional
 
+from .schema_registry import SchemaRegistry
+
 
 def get_cluster_type_property(include_auto: bool = True) -> Dict[str, Any]:
     """Get cluster type property schema with consistent options."""
-    enum_values = ["local", "kubernetes", "k8s"]
-    description = "Type of cluster: 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay clusters"
-
-    if include_auto:
-        enum_values.append("auto")
-        description += ", 'auto' for automatic detection"
-
-    return {
-        "type": "string",
-        "enum": enum_values,
-        "default": "auto" if include_auto else "local",
-        "description": description,
-    }
+    schema = SchemaRegistry.cluster_type_schema(include_all=False)
+    if not include_auto and "auto" in schema.get("enum", []):
+        # Remove "auto" from enum if not requested
+        enum_values = [v for v in schema["enum"] if v != "auto"]
+        schema = schema.copy()
+        schema["enum"] = enum_values
+        # Update default if it was "auto"
+        if schema.get("default") == "auto":
+            schema["default"] = "local"
+    return schema
 
 
 def get_cloud_provider_property(include_all: bool = False) -> Dict[str, Any]:
     """Get cloud provider property schema with consistent options."""
-    enum_values = ["gke", "local"]
-    description = (
-        "Cloud provider: 'gke' for Google Kubernetes Engine, 'local' for local clusters"
-    )
-
-    if include_all:
-        enum_values.insert(0, "all")
-        description = "Cloud provider: 'all' for all providers, " + description
-
-    schema = {
-        "type": "string",
-        "enum": enum_values,
-        "description": description,
-    }
-
-    if include_all:
-        schema["default"] = "all"
-
-    return schema
+    return SchemaRegistry.cloud_provider_schema(include_all=include_all)
 
 
 def get_kubernetes_namespace_property() -> Dict[str, Any]:
-    """Get kubernetes namespace property schema."""
-    return {
-        "type": "string",
-        "default": "default",
-        "description": "Kubernetes namespace (only used for KubeRay clusters)",
-    }
+    """Get Kubernetes namespace property schema."""
+    return SchemaRegistry.kubernetes_namespace_schema()
 
 
-def get_cluster_name_property(required_for_kuberay: bool = True) -> Dict[str, Any]:
-    """Get cluster name property schema."""
-    description = "Name of the Ray cluster"
-    if required_for_kuberay:
-        description += " (required for KubeRay clusters, ignored for local clusters)"
-
-    return {
-        "type": "string",
-        "description": description,
-    }
-
-
-def get_gke_project_id_property() -> Dict[str, Any]:
-    """Get GKE project ID property schema."""
-    return {
-        "type": "string",
-        "description": "Google Cloud project ID (GKE only)",
-    }
-
-
-def get_gke_zone_property() -> Dict[str, Any]:
-    """Get GKE zone property schema."""
-    return {
-        "type": "string",
-        "description": "Zone of the cluster (GKE only)",
-    }
-
-
-def get_port_property(
-    min_port: int = 1000, max_port: int = 65535, allow_null: bool = True
+def get_string_property(
+    description: str, default: Optional[str] = None, **kwargs
 ) -> Dict[str, Any]:
-    """Get port property schema with validation."""
-    schema = {
-        "type": "integer" if not allow_null else ["integer", "null"],
-        "minimum": min_port,
-        "maximum": max_port,
-    }
+    """Get basic string property schema with description."""
+    schema = {"type": "string", "description": description}
+    if default is not None:
+        schema["default"] = default
+    schema.update(kwargs)
     return schema
 
 
-def get_resource_requests_limits_schema() -> Dict[str, Any]:
-    """Get standard Kubernetes resource requests/limits schema."""
-    return {
-        "type": "object",
-        "properties": {
-            "cpu": {
-                "type": "string",
-                "description": "CPU request/limit (e.g., '500m', '1', '2')",
-            },
-            "memory": {
-                "type": "string",
-                "description": "Memory request/limit (e.g., '1Gi', '512Mi')",
-            },
-            "nvidia.com/gpu": {
-                "type": "string",
-                "description": "GPU request/limit (e.g., '1', '2')",
-            },
-        },
-    }
-
-
-def get_kubernetes_resources_schema() -> Dict[str, Any]:
-    """Get complete Kubernetes resources schema with requests and limits."""
-    return {
-        "type": "object",
-        "properties": {
-            "requests": get_resource_requests_limits_schema(),
-            "limits": get_resource_requests_limits_schema(),
-        },
-    }
-
-
-def get_tolerations_schema() -> Dict[str, Any]:
-    """Get Kubernetes tolerations schema."""
-    return {
-        "type": "array",
-        "description": "Tolerations for pod scheduling",
-        "items": {
-            "type": "object",
-            "properties": {
-                "key": {"type": "string"},
-                "operator": {"type": "string"},
-                "value": {"type": "string"},
-                "effect": {"type": "string"},
-                "tolerationSeconds": {"type": "integer"},
-            },
-        },
-    }
-
-
-def get_node_selector_schema() -> Dict[str, Any]:
-    """Get Kubernetes node selector schema."""
-    return {
-        "type": "object",
-        "description": "Node selector for pod scheduling",
-    }
-
-
-def get_service_type_schema() -> Dict[str, Any]:
-    """Get Kubernetes service type schema."""
-    return {
-        "type": "string",
-        "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
-        "default": "LoadBalancer",
-        "description": "Kubernetes service type for Ray head service. 'LoadBalancer' exposes dashboard externally (recommended for cloud), 'NodePort' exposes on node ports, 'ClusterIP' is cluster-internal only",
-    }
-
-
-def get_integer_with_min(
-    minimum: int, description: str, default: Optional[int] = None
+def get_integer_property(
+    description: str,
+    minimum: Optional[int] = None,
+    maximum: Optional[int] = None,
+    default: Optional[int] = None,
+    **kwargs,
 ) -> Dict[str, Any]:
-    """Get integer property with minimum value validation."""
-    schema = {
-        "type": "integer",
-        "minimum": minimum,
-        "description": description,
-    }
+    """Get integer property schema with optional constraints."""
+    schema: Dict[str, Any] = {"type": "integer", "description": description}
+    if minimum is not None:
+        schema["minimum"] = minimum
+    if maximum is not None:
+        schema["maximum"] = maximum
     if default is not None:
         schema["default"] = default
+    schema.update(kwargs)
     return schema
 
 
 def get_boolean_property(
-    description: str, default: Optional[bool] = None
+    description: str, default: Optional[bool] = None, **kwargs
 ) -> Dict[str, Any]:
-    """Get boolean property schema."""
-    schema: Dict[str, Any] = {
-        "type": "boolean",
-        "description": description,
-    }
+    """Get boolean property schema with optional default."""
+    schema: Dict[str, Any] = {"type": "boolean", "description": description}
     if default is not None:
         schema["default"] = default
+    schema.update(kwargs)
     return schema
 
 
-def get_string_property(
-    description: str, default: Optional[str] = None
+def get_array_property(
+    description: str, items_schema: Optional[Dict[str, Any]] = None, **kwargs
 ) -> Dict[str, Any]:
-    """Get string property schema."""
-    schema = {
-        "type": "string",
-        "description": description,
-    }
-    if default is not None:
-        schema["default"] = default
+    """Get array property schema with optional item constraints."""
+    schema: Dict[str, Any] = {"type": "array", "description": description}
+    if items_schema:
+        schema["items"] = items_schema
+    schema.update(kwargs)
     return schema
 
 
-def build_basic_cluster_schema(
-    additional_properties: Optional[Dict[str, Any]] = None,
+def get_object_property(
+    description: str, properties: Optional[Dict[str, Any]] = None, **kwargs
 ) -> Dict[str, Any]:
-    """Build basic cluster schema with common properties."""
-    properties = {
-        "cluster_name": get_cluster_name_property(),
-        "cluster_type": get_cluster_type_property(),
-        "namespace": get_kubernetes_namespace_property(),
-    }
+    """Get object property schema with optional property definitions."""
+    schema: Dict[str, Any] = {"type": "object", "description": description}
+    if properties:
+        schema["properties"] = properties
+    schema.update(kwargs)
+    return schema
 
-    if additional_properties:
-        properties.update(additional_properties)
 
-    return {
-        "type": "object",
-        "properties": properties,
-    }
+def get_port_property(allow_null: bool = True, min_port: int = 1000) -> Dict[str, Any]:
+    """Get port property schema."""
+    return SchemaRegistry.port_schema(min_port=min_port, allow_null=allow_null)
+
+
+def get_kubernetes_resources_property() -> Dict[str, Any]:
+    """Get Kubernetes resources property schema."""
+    return SchemaRegistry.kubernetes_resources_schema()
+
+
+def get_tolerations_property() -> Dict[str, Any]:
+    """Get Kubernetes tolerations property schema."""
+    return SchemaRegistry.tolerations_schema()
+
+
+def get_node_selector_property() -> Dict[str, Any]:
+    """Get Kubernetes node selector property schema."""
+    return SchemaRegistry.node_selector_schema()
+
+
+def get_job_type_property(include_all: bool = False) -> Dict[str, Any]:
+    """Get job type property schema."""
+    return SchemaRegistry.job_type_schema(include_all=include_all)
+
+
+def get_runtime_env_property() -> Dict[str, Any]:
+    """Get Ray runtime environment property schema."""
+    return SchemaRegistry.runtime_env_schema()
+
+
+def get_kubernetes_config_property() -> Dict[str, Any]:
+    """Get Kubernetes configuration property schema."""
+    return SchemaRegistry.kubernetes_config_schema()
+
+
+def get_pagination_properties() -> Dict[str, Any]:
+    """Get pagination properties schema."""
+    return SchemaRegistry.pagination_schema()
+
+
+def get_log_retrieval_properties() -> Dict[str, Any]:
+    """Get log retrieval properties schema."""
+    return SchemaRegistry.log_retrieval_schema()
+
+
+# Legacy functions for backward compatibility during refactoring
+def get_integer_with_min(
+    minimum: int, description: str, default: Optional[int] = None, **kwargs
+) -> Dict[str, Any]:
+    """Get integer property with minimum constraint."""
+    return get_integer_property(description, minimum=minimum, default=default, **kwargs)
 
 
 def build_cloud_provider_schema(
     additional_properties: Optional[Dict[str, Any]] = None,
+    required_provider: bool = False,
     include_all: bool = False,
-    required_provider: bool = True,
 ) -> Dict[str, Any]:
-    """Build basic cloud provider schema with common properties."""
-    properties = {
-        "provider": get_cloud_provider_property(include_all=include_all),
+    """Build cloud provider schema with additional properties."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "provider": get_cloud_provider_property(include_all=include_all)
+        },
+        "additionalProperties": False,
     }
 
     if additional_properties:
-        properties.update(additional_properties)
-
-    schema = {
-        "type": "object",
-        "properties": properties,
-    }
+        schema["properties"].update(additional_properties)
 
     if required_provider:
         schema["required"] = ["provider"]
@@ -251,40 +176,67 @@ def build_gke_cluster_schema(
     additional_properties: Optional[Dict[str, Any]] = None,
     required_cluster_name: bool = False,
 ) -> Dict[str, Any]:
-    """Build GKE cluster schema with common GKE properties."""
+    """Build GKE cluster schema with additional properties."""
     properties = {
-        "provider": get_cloud_provider_property(),
-        "cluster_name": get_string_property("Name of the cluster"),
-        "project_id": get_gke_project_id_property(),
-        "zone": get_gke_zone_property(),
+        "cluster_name": get_string_property("Name of the GKE cluster"),
+        "project_id": get_string_property("Google Cloud project ID"),
+        "zone": get_string_property("GKE cluster zone"),
+        "region": get_string_property("GKE cluster region"),
     }
 
     if additional_properties:
         properties.update(additional_properties)
 
-    required = ["provider"]
+    schema = {"type": "object", "properties": properties, "additionalProperties": False}
+
     if required_cluster_name:
-        required.append("cluster_name")
+        schema["required"] = ["cluster_name"]
 
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": required,
-    }
+    return schema
 
 
-def build_job_type_schema(include_all: bool = False) -> Dict[str, Any]:
-    """Build job type schema for job-related tools."""
-    enum_values = ["local", "kubernetes", "k8s", "auto"]
-    description = "Type of job: 'local' for local Ray clusters, 'kubernetes'/'k8s' for KubeRay jobs, 'auto' for automatic detection"
+# Additional legacy functions needed by cluster_tools.py
+def get_kubernetes_resources_schema() -> Dict[str, Any]:
+    """Get Kubernetes resources schema."""
+    return SchemaRegistry.kubernetes_resources_schema()
 
-    if include_all:
-        enum_values.append("all")
-        description += ", 'all' for all job types"
 
+def get_node_selector_schema() -> Dict[str, Any]:
+    """Get node selector schema."""
+    return SchemaRegistry.node_selector_schema()
+
+
+def get_resource_requests_limits_schema() -> Dict[str, Any]:
+    """Get resource requests and limits schema."""
+    return SchemaRegistry.kubernetes_resources_schema()
+
+
+def get_service_type_schema() -> Dict[str, Any]:
+    """Get Kubernetes service type schema."""
     return {
         "type": "string",
-        "enum": enum_values,
-        "default": "auto",
-        "description": description,
+        "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+        "default": "LoadBalancer",
+        "description": "Kubernetes service type for Ray head node",
     }
+
+
+def get_tolerations_schema() -> Dict[str, Any]:
+    """Get tolerations schema."""
+    return SchemaRegistry.tolerations_schema()
+
+
+def build_basic_cluster_schema(
+    additional_properties: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Build basic cluster schema."""
+    properties = {
+        "cluster_type": get_cluster_type_property(),
+        "cluster_name": get_string_property("Name of the cluster"),
+        "namespace": get_kubernetes_namespace_property(),
+    }
+
+    if additional_properties:
+        properties.update(additional_properties)
+
+    return {"type": "object", "properties": properties, "additionalProperties": True}
