@@ -69,11 +69,7 @@ class CRDOperationsClient(ResourceManager, ManagedComponent):
         )
 
         # Clean up existing API client if it exists
-        if self._api_client:
-            try:
-                self._api_client.close()
-            except Exception:
-                pass  # Ignore cleanup errors
+        self._cleanup_api_client()
 
         self._kubernetes_config = kubernetes_config
         # Reset the clients so they get recreated with the new config
@@ -84,6 +80,29 @@ class CRDOperationsClient(ResourceManager, ManagedComponent):
             "crd_operations_set_k8s_config",
             "Successfully reset CRD operations client configuration",
         )
+
+    def _cleanup_api_client(self) -> None:
+        """Clean up the API client with proper error handling."""
+        if self._api_client:
+            try:
+                self._api_client.close()
+                self._LoggingUtility.log_info(
+                    "crd_operations_cleanup",
+                    "Successfully closed API client",
+                )
+            except Exception as e:
+                self._LoggingUtility.log_warning(
+                    "crd_operations_cleanup",
+                    f"Failed to close API client: {str(e)}",
+                )
+
+    def __del__(self) -> None:
+        """Destructor to ensure proper cleanup of API client."""
+        try:
+            self._cleanup_api_client()
+        except Exception:
+            # Suppress exceptions in destructor to avoid issues during shutdown
+            pass
 
     async def _ensure_client(self) -> None:
         """Ensure custom objects API client is initialized."""
@@ -100,11 +119,26 @@ class CRDOperationsClient(ResourceManager, ManagedComponent):
                     "crd_operations_ensure_client",
                     f"Using pre-configured Kubernetes client (host: {getattr(self._kubernetes_config, 'host', 'unknown')})",
                 )
-                # Create a persistent API client that won't be closed
-                self._api_client = self._client.ApiClient(self._kubernetes_config)
-                self._custom_objects_api = self._client.CustomObjectsApi(
-                    self._api_client
-                )
+                try:
+                    # Create a persistent API client that won't be closed
+                    api_client = self._client.ApiClient(self._kubernetes_config)
+                    custom_objects_api = self._client.CustomObjectsApi(api_client)
+
+                    # Only assign if both are successfully created
+                    self._api_client = api_client
+                    self._custom_objects_api = custom_objects_api
+                except Exception as e:
+                    # Clean up partially created client if necessary
+                    if "api_client" in locals():
+                        try:
+                            api_client.close()
+                        except Exception:
+                            pass
+                    self._LoggingUtility.log_error(
+                        "crd_operations_ensure_client",
+                        f"Failed to create pre-configured Kubernetes client: {str(e)}",
+                    )
+                    raise
             else:
                 # Fall back to default Kubernetes configuration
                 self._LoggingUtility.log_warning(
