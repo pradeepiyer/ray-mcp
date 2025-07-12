@@ -6,6 +6,8 @@ from ray_mcp.cloud.providers.cloud_provider_manager import CloudProviderManager
 from ray_mcp.kubernetes.managers.kubernetes_manager import KubernetesManager
 
 from ..foundation.interfaces import CloudProvider
+from ..foundation.job_type_detector import JobTypeDetector
+from ..foundation.log_processor_strategy import LogProcessorStrategy
 from ..kubernetes.managers.kuberay_cluster_manager import KubeRayClusterManager
 from ..kubernetes.managers.kuberay_job_manager import KubeRayJobManager
 from .cluster_manager import ClusterManager
@@ -141,138 +143,30 @@ class RayUnifiedManager:
         **kwargs,
     ) -> Dict[str, Any]:
         """Unified log retrieval that supports both local and KubeRay jobs."""
-        import re
+        system_state = self._state_manager.get_state()
 
-        # Detect job type based on identifier patterns and system state
-        job_type = await self._detect_job_type_from_identifier(identifier)
-
-        if job_type == "local":
-            # Use local Ray log manager
-            return await self._log_manager.retrieve_logs(
-                identifier,
-                log_type,
-                num_lines,
-                include_errors,
-                max_size_mb,
-                page,
-                page_size,
-                **kwargs,
-            )
-        elif job_type == "kuberay":
-            # Use KubeRay log retrieval
-            kuberay_result = await self._kuberay_job_manager.get_ray_job_logs(
-                identifier, namespace
-            )
-
-            # Process the result to match the expected format
-            if kuberay_result.get("status") == "success":
-                raw_logs = kuberay_result.get("logs", "")
-
-                # Apply pagination and processing similar to local logs
-                from ..foundation.logging_utils import LogProcessor
-
-                log_processor = LogProcessor()
-
-                try:
-                    if page is not None:
-                        # Use pagination
-                        if page_size is None:
-                            page_size = 100
-
-                        paginated_result = (
-                            await log_processor.stream_logs_with_pagination(
-                                raw_logs, page, page_size, max_size_mb
-                            )
-                        )
-
-                        if paginated_result.get("status") == "error":
-                            return paginated_result
-
-                        # Merge with KubeRay-specific information
-                        final_result = {
-                            **kuberay_result,
-                            **paginated_result,
-                            "log_type": log_type,
-                            "identifier": identifier,
-                        }
-
-                    else:
-                        # Use simple line/size limits
-                        processed_logs = log_processor.stream_logs_with_limits(
-                            raw_logs, num_lines, max_size_mb
-                        )
-
-                        final_result = {
-                            **kuberay_result,
-                            "logs": processed_logs,
-                            "log_type": log_type,
-                            "identifier": identifier,
-                            "num_lines_retrieved": len(processed_logs.split("\n")),
-                            "max_size_mb": max_size_mb,
-                        }
-
-                    # Add error analysis if requested
-                    if include_errors and final_result.get("logs"):
-                        from ..foundation.logging_utils import LogAnalyzer
-
-                        final_result["error_analysis"] = (
-                            LogAnalyzer.analyze_logs_for_errors(final_result["logs"])
-                        )
-
-                    return final_result
-
-                except Exception as e:
-                    from ..foundation.logging_utils import ResponseFormatter
-
-                    return ResponseFormatter().format_error_response(
-                        "process kuberay logs", e
-                    )
-            else:
-                return kuberay_result
-        else:
-            from ..foundation.logging_utils import ResponseFormatter
-
-            return ResponseFormatter().format_error_response(
-                "retrieve logs unified",
-                Exception(f"Unable to determine job type for identifier: {identifier}"),
-            )
+        return await LogProcessorStrategy.process_unified_logs(
+            identifier=identifier,
+            system_state=system_state,
+            log_type=log_type,
+            num_lines=num_lines,
+            include_errors=include_errors,
+            max_size_mb=max_size_mb,
+            page=page,
+            page_size=page_size,
+            namespace=namespace,
+            local_log_manager=self._log_manager,
+            kuberay_job_manager=self._kuberay_job_manager,
+            **kwargs,
+        )
 
     async def _detect_job_type_from_identifier(self, identifier: str) -> str:
         """Detect job type based on identifier patterns and system state."""
-        import re
+        system_state = self._state_manager.get_state()
+        job_type = JobTypeDetector.detect_from_identifier(identifier, system_state)
 
-        # UUID-like format suggests local Ray job
-        if re.match(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
-            identifier,
-        ):
-            return "local"
-
-        # Ray job submission format
-        if identifier.startswith("raysubmit_"):
-            return "local"
-
-        # Kubernetes resource name format suggests KubeRay job
-        if (
-            re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", identifier)
-            and len(identifier) <= 63
-        ):
-            return "kuberay"
-
-        # Fall back to system state detection
-        state = self._state_manager.get_state()
-        gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
-
-        if gke_connection.get("connected", False):
-            return "kuberay"
-        if state.get("kubernetes_connected", False):
-            return "kuberay"
-        if hasattr(self, "kuberay_clusters") and self.kuberay_clusters:
-            return "kuberay"
-        if hasattr(self, "is_initialized") and self.is_initialized:
-            return "local"
-
-        return "local"  # Default to local
+        # Convert "kubernetes" to "kuberay" for backward compatibility
+        return "kuberay" if job_type == "kubernetes" else job_type
 
     # Port management methods (for internal use)
     async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:

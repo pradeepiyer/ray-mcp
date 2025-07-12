@@ -198,11 +198,11 @@ class PortManager:
                     os.kill(pid, 0)  # Check if process exists
                     current_time = int(time.time())
                     lock_age = current_time - timestamp
-                    
+
                     # Consider lock stale if older than 5 minutes or if process is dead
                     if lock_age > 300:  # 5 minutes
                         return False
-                    
+
                     return True
                 except OSError:
                     # Process doesn't exist, lock is stale
@@ -271,7 +271,7 @@ class PortManager:
                     # Got the lock, now check content
                     content = f.read().strip()
                     is_stale = not self._is_content_active_lock(content)
-                    
+
                     # If stale, also check if the file is very old (more than 1 hour)
                     if is_stale:
                         try:
@@ -281,7 +281,7 @@ class PortManager:
                                 return True
                         except (OSError, IOError):
                             pass
-                    
+
                     return is_stale
                 except OSError:
                     # Lock is held by another process, not stale

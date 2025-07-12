@@ -400,7 +400,9 @@ class TestPortManagerRaceConditions:
                 ):
                     with patch.object(port_manager, "_log_info") as mock_log:
                         port_manager._cleanup_stale_lock_files()
-                        assert mock_log.call_count == 3  # Two individual files + one summary
+                        assert (
+                            mock_log.call_count == 3
+                        )  # Two individual files + one summary
 
     def test_cleanup_stale_lock_files_with_errors(self):
         """Test cleanup of stale lock files with errors."""

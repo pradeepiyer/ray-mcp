@@ -4,12 +4,14 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from mcp.types import Tool
 
+from .foundation.job_type_detector import JobTypeDetector
+from .foundation.log_processor_strategy import LogProcessorStrategy
 from .foundation.logging_utils import ResponseFormatter
+from .foundation.validation_mixin import ValidationMixin
 from .managers.unified_manager import RayUnifiedManager
 from .tools import cloud_tools, cluster_tools, job_tools, log_tools
 
@@ -243,49 +245,76 @@ class ToolRegistry:
 
     async def _stop_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for unified stop_ray_cluster tool supporting both local and KubeRay clusters."""
+        return await self._handle_cluster_operation(
+            kwargs, "deletion", self._stop_cluster_by_type, requires_name_for_k8s=True
+        )
+
+    async def _inspect_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for unified inspect_ray_cluster tool supporting both local and KubeRay clusters."""
+        return await self._handle_cluster_operation(
+            kwargs,
+            "inspection",
+            self._inspect_cluster_by_type,
+            requires_name_for_k8s=True,
+        )
+
+    async def _handle_cluster_operation(
+        self,
+        kwargs: Dict[str, Any],
+        operation_name: str,
+        operation_func,
+        requires_name_for_k8s: bool = False,
+    ) -> Dict[str, Any]:
+        """Common handler for cluster operations."""
         cluster_name = kwargs.get("cluster_name")
         cluster_type = await self._detect_cluster_type_from_name(
             cluster_name, kwargs.get("cluster_type", "auto")
         )
         namespace = kwargs.get("namespace", "default")
 
+        # Validate cluster name for Kubernetes operations if required
+        if (
+            cluster_type in ["kubernetes", "k8s"]
+            and requires_name_for_k8s
+            and not cluster_name
+        ):
+            return ResponseFormatter.format_validation_error(
+                f"cluster_name is required for KubeRay cluster {operation_name}"
+            )
+
+        return await operation_func(cluster_name, cluster_type, namespace)
+
+    async def _stop_cluster_by_type(
+        self, cluster_name: str, cluster_type: str, namespace: str
+    ) -> Dict[str, Any]:
+        """Stop cluster based on its type."""
         if cluster_type == "local":
             return await self.ray_manager.stop_cluster()
         elif cluster_type in ["kubernetes", "k8s"]:
-            if not cluster_name:
-                return ResponseFormatter.format_validation_error(
-                    "cluster_name is required for KubeRay cluster deletion"
-                )
             await self._ensure_gke_coordination()
             return await self.ray_manager.delete_kuberay_cluster(
                 cluster_name, namespace
             )
         else:
-            return ResponseFormatter.format_validation_error(
-                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
-            )
+            return self._format_invalid_cluster_type_error(cluster_type)
 
-    async def _inspect_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for unified inspect_ray_cluster tool supporting both local and KubeRay clusters."""
-        cluster_name = kwargs.get("cluster_name")
-        cluster_type = await self._detect_cluster_type_from_name(
-            cluster_name, kwargs.get("cluster_type", "auto")
-        )
-        namespace = kwargs.get("namespace", "default")
-
+    async def _inspect_cluster_by_type(
+        self, cluster_name: str, cluster_type: str, namespace: str
+    ) -> Dict[str, Any]:
+        """Inspect cluster based on its type."""
         if cluster_type == "local":
             return await self.ray_manager.inspect_ray_cluster()
         elif cluster_type in ["kubernetes", "k8s"]:
-            if not cluster_name:
-                return ResponseFormatter.format_validation_error(
-                    "cluster_name is required for KubeRay cluster inspection"
-                )
             await self._ensure_gke_coordination()
             return await self.ray_manager.get_kuberay_cluster(cluster_name, namespace)
         else:
-            return ResponseFormatter.format_validation_error(
-                f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
-            )
+            return self._format_invalid_cluster_type_error(cluster_type)
+
+    def _format_invalid_cluster_type_error(self, cluster_type: str) -> Dict[str, Any]:
+        """Format validation error for invalid cluster type."""
+        return ResponseFormatter.format_validation_error(
+            f"Invalid cluster_type: {cluster_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+        )
 
     async def _scale_ray_cluster_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for scale_ray_cluster tool."""
@@ -349,119 +378,155 @@ class ToolRegistry:
 
     async def _submit_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for submit_ray_job tool with support for both local and Kubernetes jobs."""
-        job_type = kwargs.get("job_type", "auto").lower()
-
-        if job_type == "auto":
-            job_type = await self._detect_job_type()
+        job_type = await self._resolve_job_type(kwargs.get("job_type", "auto"))
 
         if job_type == "local":
-            # Filter kwargs for local job submission
-            local_kwargs = {
-                k: v
-                for k, v in kwargs.items()
-                if k
-                not in [
-                    "job_type",
-                    "kubernetes_config",
-                    "image",
-                    "tolerations",
-                    "node_selector",
-                    "service_account",
-                    "environment",
-                ]
-            }
-
-            # Pass all local_kwargs to Ray's submit_ray_job method - let Ray handle parameter validation
-            # This avoids the issue where inspect.signature() filters out valid parameters
-            # that might be accepted through **kwargs in the underlying method
-            return await self.ray_manager.submit_ray_job(**local_kwargs)
-
+            return await self._submit_local_job(kwargs)
         elif job_type in ["kubernetes", "k8s"]:
-            await self._ensure_gke_coordination()
-            return await self._create_kuberay_job(**kwargs)
-
+            return await self._submit_kubernetes_job(kwargs)
         else:
-            return ResponseFormatter.format_validation_error(
-                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
-            )
+            return self._format_invalid_job_type_error(job_type)
+
+    async def _resolve_job_type(self, job_type: str) -> str:
+        """Resolve job type, handling 'auto' detection."""
+        job_type = job_type.lower()
+        if job_type == "auto":
+            return await self._detect_job_type()
+        return job_type
+
+    async def _submit_local_job(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit job to local Ray cluster."""
+        # Filter kwargs for local job submission
+        local_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k
+            not in [
+                "job_type",
+                "kubernetes_config",
+                "image",
+                "tolerations",
+                "node_selector",
+                "service_account",
+                "environment",
+            ]
+        }
+        return await self.ray_manager.submit_ray_job(**local_kwargs)
+
+    async def _submit_kubernetes_job(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit job to KubeRay cluster."""
+        await self._ensure_gke_coordination()
+        return await self._create_kuberay_job(**kwargs)
+
+    def _format_invalid_job_type_error(self, job_type: str) -> Dict[str, Any]:
+        """Format validation error for invalid job type."""
+        return ResponseFormatter.format_validation_error(
+            f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
+        )
 
     async def _list_ray_jobs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for list_ray_jobs tool."""
-        job_type = kwargs.get("job_type", "auto").lower()
+        job_type = await self._resolve_job_type(kwargs.get("job_type", "auto"))
         namespace = kwargs.get("namespace", "default")
 
-        if job_type == "auto":
-            job_type = await self._detect_job_type()
-
         if job_type == "local":
-            return await self.ray_manager.list_ray_jobs()
+            return await self._list_local_jobs()
         elif job_type in ["kubernetes", "k8s"]:
-            await self._ensure_gke_coordination()
-            return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
+            return await self._list_kubernetes_jobs(namespace)
         elif job_type == "all":
-            # Combine local and Kubernetes jobs
-            local_result = await self.ray_manager.list_ray_jobs()
-            k8s_result = await self.ray_manager.list_kuberay_jobs(namespace=namespace)
-
-            jobs = []
-            if local_result.get("status") == "success":
-                jobs.extend(local_result.get("jobs", []))
-            if k8s_result.get("status") == "success":
-                jobs.extend(k8s_result.get("jobs", []))
-
-            return ResponseFormatter.format_success_response(
-                jobs=jobs, total_count=len(jobs)
-            )
+            return await self._list_all_jobs(namespace)
         else:
-            return ResponseFormatter.format_validation_error(
-                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', 'auto', or 'all'"
-            )
+            return self._format_invalid_job_type_error_with_all(job_type)
+
+    async def _list_local_jobs(self) -> Dict[str, Any]:
+        """List jobs from local Ray cluster."""
+        return await self.ray_manager.list_ray_jobs()
+
+    async def _list_kubernetes_jobs(self, namespace: str) -> Dict[str, Any]:
+        """List jobs from KubeRay cluster."""
+        await self._ensure_gke_coordination()
+        return await self.ray_manager.list_kuberay_jobs(namespace=namespace)
+
+    async def _list_all_jobs(self, namespace: str) -> Dict[str, Any]:
+        """List jobs from both local and Kubernetes clusters."""
+        local_result = await self.ray_manager.list_ray_jobs()
+        k8s_result = await self.ray_manager.list_kuberay_jobs(namespace=namespace)
+
+        jobs = []
+        if local_result.get("status") == "success":
+            jobs.extend(local_result.get("jobs", []))
+        if k8s_result.get("status") == "success":
+            jobs.extend(k8s_result.get("jobs", []))
+
+        return ResponseFormatter.format_success_response(
+            jobs=jobs, total_count=len(jobs)
+        )
+
+    def _format_invalid_job_type_error_with_all(self, job_type: str) -> Dict[str, Any]:
+        """Format validation error for invalid job type including 'all' option."""
+        return ResponseFormatter.format_validation_error(
+            f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', 'auto', or 'all'"
+        )
 
     async def _inspect_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for inspect_ray_job tool."""
+        return await self._handle_job_operation(
+            kwargs, "inspection", self._inspect_job_by_type
+        )
+
+    async def _cancel_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
+        """Handler for cancel_ray_job tool."""
+        return await self._handle_job_operation(
+            kwargs, "cancellation", self._cancel_job_by_type
+        )
+
+    async def _handle_job_operation(
+        self, kwargs: Dict[str, Any], operation_name: str, operation_func
+    ) -> Dict[str, Any]:
+        """Common handler for job operations that require job_id."""
         job_id = kwargs.get("job_id")
+
+        # Validate required job_id parameter
         if not job_id:
             return ResponseFormatter.format_validation_error(
-                "job_id is required for job inspection"
+                f"job_id is required for job {operation_name}"
             )
+
+        # Validate job_id format
+        validation_error = ValidationMixin.validate_job_id_with_response(job_id)
+        if validation_error:
+            return validation_error
 
         job_type = await self._detect_job_type_from_id(
             job_id, kwargs.get("job_type", "auto")
         )
         namespace = kwargs.get("namespace", "default")
 
+        return await operation_func(job_id, job_type, namespace)
+
+    async def _inspect_job_by_type(
+        self, job_id: str, job_type: str, namespace: str
+    ) -> Dict[str, Any]:
+        """Inspect job based on its type."""
         if job_type == "local":
             return await self.ray_manager.inspect_ray_job(job_id)
         elif job_type in ["kubernetes", "k8s"]:
             await self._ensure_gke_coordination()
             return await self.ray_manager.get_kuberay_job(job_id, namespace)
         else:
-            return ResponseFormatter.format_validation_error(
-                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
-            )
+            return self._format_invalid_job_type_error(job_type)
 
-    async def _cancel_ray_job_handler(self, **kwargs) -> Dict[str, Any]:
-        """Handler for cancel_ray_job tool."""
-        job_id = kwargs.get("job_id")
-        if not job_id:
-            return ResponseFormatter.format_validation_error(
-                "job_id is required for job cancellation"
-            )
-
-        job_type = await self._detect_job_type_from_id(
-            job_id, kwargs.get("job_type", "auto")
-        )
-        namespace = kwargs.get("namespace", "default")
-
+    async def _cancel_job_by_type(
+        self, job_id: str, job_type: str, namespace: str
+    ) -> Dict[str, Any]:
+        """Cancel job based on its type."""
         if job_type == "local":
             return await self.ray_manager.cancel_ray_job(job_id)
         elif job_type in ["kubernetes", "k8s"]:
             await self._ensure_gke_coordination()
             return await self.ray_manager.delete_kuberay_job(job_id, namespace)
         else:
-            return ResponseFormatter.format_validation_error(
-                f"Invalid job_type: {job_type}. Must be 'local', 'kubernetes', 'k8s', or 'auto'"
-            )
+            return self._format_invalid_job_type_error(job_type)
 
     async def _retrieve_logs_handler(self, **kwargs) -> Dict[str, Any]:
         """Handler for retrieve_logs tool."""
@@ -526,64 +591,24 @@ class ToolRegistry:
         self, kuberay_result: Dict[str, Any], raw_logs: str, **kwargs
     ) -> Dict[str, Any]:
         """Process KubeRay logs with pagination and filtering similar to local logs."""
-        identifier = kwargs.get("identifier")
+        identifier = kwargs.get("identifier", "")
         num_lines = kwargs.get("num_lines", 100)
         include_errors = kwargs.get("include_errors", False)
         max_size_mb = kwargs.get("max_size_mb", 10)
         page = kwargs.get("page")
         page_size = kwargs.get("page_size", 100)
 
-        # Import log processor to handle pagination and size limits
-        from .foundation.logging_utils import LogProcessor
-
-        log_processor = LogProcessor()
-
-        try:
-            # Apply size and line limits
-            if page is not None:
-                # Use pagination
-                paginated_result = await log_processor.stream_logs_with_pagination(
-                    raw_logs, page, page_size, max_size_mb
-                )
-
-                if paginated_result.get("status") == "error":
-                    return paginated_result
-
-                # Merge with KubeRay-specific information
-                final_result = {
-                    **kuberay_result,
-                    **paginated_result,
-                    "log_type": "job",
-                    "identifier": identifier,
-                }
-
-            else:
-                # Use simple line/size limits
-                processed_logs = log_processor.stream_logs_with_limits(
-                    raw_logs, num_lines, max_size_mb
-                )
-
-                final_result = {
-                    **kuberay_result,
-                    "logs": processed_logs,
-                    "log_type": "job",
-                    "identifier": identifier,
-                    "num_lines_retrieved": len(processed_logs.split("\n")),
-                    "max_size_mb": max_size_mb,
-                }
-
-            # Add error analysis if requested
-            if include_errors and final_result.get("logs"):
-                from .foundation.logging_utils import LogAnalyzer
-
-                final_result["error_analysis"] = LogAnalyzer.analyze_logs_for_errors(
-                    final_result["logs"]
-                )
-
-            return final_result
-
-        except Exception as e:
-            return ResponseFormatter.format_error_response("process kuberay logs", e)
+        return await LogProcessorStrategy.process_kuberay_logs(
+            kuberay_result,
+            raw_logs,
+            identifier,
+            num_lines,
+            include_errors,
+            max_size_mb,
+            page,
+            page_size,
+            **kwargs,
+        )
 
     # Cloud provider handlers
     async def _detect_cloud_provider_handler(self, **kwargs) -> Dict[str, Any]:
@@ -662,91 +687,23 @@ class ToolRegistry:
 
     async def _detect_job_type(self) -> str:
         """Detect job type based on cluster state."""
-        try:
-            state = self.ray_manager.state_manager.get_state()
-            gke_connection = state.get("cloud_provider_connections", {}).get("gke", {})
-
-            # Priority 1: Check for active cloud provider connections (GKE, etc.)
-            if gke_connection.get("connected", False):
-                return "kubernetes"
-
-            # Priority 2: Check for general Kubernetes connection
-            if state.get("kubernetes_connected", False):
-                return "kubernetes"
-
-            # Priority 3: Check for existing KubeRay clusters
-            if (
-                hasattr(self.ray_manager, "kuberay_clusters")
-                and self.ray_manager.kuberay_clusters
-            ):
-                return "kubernetes"
-
-            # Priority 4: If we have any indication of Kubernetes/GKE availability,
-            # prefer kubernetes (for ephemeral cluster creation) over local
-            if gke_connection or state.get("cloud_provider_connections", {}).get("gke"):
-                return "kubernetes"
-
-            # Priority 5: Check if local Ray is initialized
-            if (
-                hasattr(self.ray_manager, "is_initialized")
-                and self.ray_manager.is_initialized
-            ):
-                return "local"
-
-            return "local"
-        except Exception:
-            return "local"
+        system_state = self.ray_manager.state_manager.get_state()
+        return JobTypeDetector.detect_from_system_state(system_state)
 
     async def _detect_job_type_from_id(
         self, job_id: str, explicit_job_type: str = "auto"
     ) -> str:
         """Detect job type based on job ID patterns and explicit type."""
-        import re
-
-        if explicit_job_type and explicit_job_type.lower() != "auto":
-            return explicit_job_type.lower()
-
-        # If no job_id provided, fall back to general detection
-        if not job_id:
-            return await self._detect_job_type()
-
-        # UUID-like format suggests local Ray job
-        if re.match(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", job_id
-        ):
-            return "local"
-
-        # Ray job submission format
-        if job_id.startswith("raysubmit_"):
-            return "local"
-
-        # Kubernetes resource name format suggests KubeRay job
-        if re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", job_id) and len(job_id) <= 63:
-            return "kubernetes"
-
-        return await self._detect_job_type()
+        system_state = self.ray_manager.state_manager.get_state()
+        return JobTypeDetector.detect_from_id(job_id, system_state, explicit_job_type)
 
     async def _detect_cluster_type_from_name(
         self, cluster_name: Optional[str] = None, explicit_cluster_type: str = "auto"
     ) -> str:
         """Detect cluster type based on cluster name and explicit type."""
-        import re
-
-        if explicit_cluster_type and explicit_cluster_type.lower() != "auto":
-            return explicit_cluster_type.lower()
-
-        if not cluster_name:
-            return "local"
-
-        # Kubernetes resource name format suggests KubeRay cluster
-        if (
-            re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", cluster_name)
-            and len(cluster_name) <= 63
-        ):
-            return "kubernetes"
-
-        # Default to local cluster type if no patterns match
-        return "local"
+        return JobTypeDetector.detect_cluster_type_from_name(
+            cluster_name, explicit_cluster_type
+        )
 
     async def _create_kuberay_cluster(self, **kwargs) -> Dict[str, Any]:
         """Create a KubeRay cluster from init_ray parameters."""

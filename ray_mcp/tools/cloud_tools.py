@@ -6,6 +6,7 @@ from .schema_utils import (
     build_cloud_provider_schema,
     build_gke_cluster_schema,
     get_cloud_provider_property,
+    get_integer_property,
     get_integer_with_min,
     get_string_property,
 )
