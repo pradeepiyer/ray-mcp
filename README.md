@@ -8,28 +8,12 @@
 
 ## ✨ Key Features
 
-🚀 **Unified Ray Management** - Seamless operation across local Ray clusters and Kubernetes via KubeRay  
+🚀 **Ray Management** - Seamless operation across local Ray clusters and Kubernetes via KubeRay  
 ☁️ **Cloud Provider Support** - Native integration with Google Kubernetes Engine (GKE) and local Kubernetes  
-🎯 **Intelligent Job Management** - Automatic detection between local and KubeRay job types  
-📊 **Advanced Monitoring** - Comprehensive logging, debugging, and cluster health monitoring  
-⚡ **Auto-scaling** - Dynamic worker scaling and resource management  
-🔒 **Production Ready** - RBAC, service accounts, and enterprise security features
+🎯 **Job Management** - Automatic detection between local and KubeRay job types  
+📊 **Monitoring** - Comprehensive logging, debugging, and cluster health monitoring  
 
 ## 🚀 Quick Start
-
-### Installation
-
-```bash
-# Basic installation
-uv add ray-mcp
-# or
-pip install ray-mcp
-
-# With cloud provider support
-uv add "ray-mcp[cloud]"
-# or  
-pip install "ray-mcp[cloud]"
-```
 
 ### Configure MCP Client
 
@@ -99,14 +83,6 @@ init_ray_cluster(
     }]
 )
 
-# Scale workers dynamically
-scale_ray_cluster(
-    cluster_name="ml-cluster",
-    worker_group_name="workers",
-    replicas=10
-)
-```
-
 ### Cloud Provider Integration
 
 ```python
@@ -129,7 +105,7 @@ create_kubernetes_cluster(
 )
 ```
 
-### Advanced Job Management
+### Job Management
 
 ```python
 # Job with runtime environment
@@ -285,7 +261,3 @@ Built on top of:
 - [**Ray**](https://docs.ray.io/) - Distributed computing framework
 - [**KubeRay**](https://ray-project.github.io/kuberay/) - Ray on Kubernetes operator
 - [**MCP**](https://modelcontextprotocol.io/) - Model Context Protocol
-
----
-
-⭐ **Star this repo** if Ray MCP helps with your distributed computing workflows! 

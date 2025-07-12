@@ -79,7 +79,7 @@ kubectl get pods -n kuberay-system
 
 ## Architecture Overview
 
-Ray MCP uses a modular, layered architecture supporting both local Ray clusters and Kubernetes-based deployments.
+Ray MCP uses a modular architecture supporting both local Ray clusters and Kubernetes-based deployments.
 
 ### Directory Structure
 
@@ -157,15 +157,6 @@ ray_mcp/
 - **Schema Definitions** - JSON schemas for all MCP tools
 - **Validation** - Parameter validation and type checking
 - **Documentation** - Schema-driven tool documentation
-
-### Design Principles
-
-- **Modular Architecture** - Clear separation of concerns with focused components
-- **Protocol-Driven** - Type-safe interfaces using Python protocols
-- **Unified Interface** - Single API supporting local and Kubernetes environments
-- **Cloud Agnostic** - Pluggable cloud provider support
-- **Comprehensive Testing** - Unit, integration, and end-to-end test coverage
-- **Graceful Degradation** - Features work even with missing optional dependencies
 
 ## Development Workflow
 
@@ -532,55 +523,6 @@ export RAY_MCP_LOG_LEVEL=DEBUG
 uv run ray-mcp
 ```
 
-#### Kubernetes Debugging
-
-```bash
-# Debug KubeRay operator
-kubectl logs -n kuberay-system deployment/kuberay-operator -f
-
-# Debug Ray clusters
-kubectl get rayclusters -A
-kubectl describe rayc CLUSTER_NAME -n NAMESPACE
-
-# Debug Ray jobs
-kubectl get rayjobs -A
-kubectl describe rayjob JOB_NAME -n NAMESPACE
-```
-
-### Common Development Issues
-
-#### Import Errors
-
-```python
-# Test optional dependencies
-try:
-    from google.cloud import container_v1
-    print("GKE client available")
-except ImportError:
-    print("Install with: uv sync --extra gke")
-
-try:
-    from kubernetes import client
-    print("Kubernetes client available")
-except ImportError:
-    print("Install with: uv sync --extra all")
-```
-
-#### Kubernetes Connection Issues
-
-```bash
-# Verify kubectl configuration
-kubectl cluster-info
-
-# Test Python client
-python -c "
-from kubernetes import client, config
-config.load_kube_config()
-v1 = client.CoreV1Api()
-print('Kubernetes connection successful')
-"
-```
-
 ## Contributing Guidelines
 
 ### Pull Request Process
@@ -598,6 +540,7 @@ print('Kubernetes connection successful')
    make test-fast  # Quick validation
    make lint       # Code quality
    make test       # Full test suite
+   make format
    ```
 
 3. **Documentation Updates**
@@ -609,97 +552,3 @@ print('Kubernetes connection successful')
    - Clear description of changes
    - Link to related issues
    - Include test coverage information
-
-### Code Review Guidelines
-
-#### Required for All PRs
-- **Tests** - Unit tests for all new functionality
-- **Documentation** - User-facing documentation updates
-- **Type Hints** - Complete type annotations
-- **Error Handling** - Comprehensive exception handling
-- **Backward Compatibility** - Maintain existing API contracts
-
-#### Architecture Guidelines
-- **Single Responsibility** - Components should have focused purposes
-- **Dependency Injection** - Use constructor injection for dependencies
-- **Protocol Compliance** - Implement defined interfaces correctly
-- **Error Propagation** - Use structured error responses
-- **Resource Cleanup** - Proper cleanup in finally blocks
-
-### Issue Reporting
-
-Include in bug reports:
-- **Environment Details** - Python version, Ray version, OS
-- **Configuration** - MCP client config, environment variables
-- **Full Error Logs** - Complete stack traces with debug logging
-- **Reproduction Steps** - Minimal example to reproduce
-- **Expected vs Actual** - Clear description of the problem
-
-### Testing Requirements
-
-#### For New Features
-- **Unit Tests** - Test component behavior in isolation
-- **Integration Tests** - Test component interactions
-- **End-to-End Tests** - Test complete user workflows
-- **Documentation Tests** - Verify examples work correctly
-
-#### For Bug Fixes
-- **Regression Tests** - Prevent the bug from recurring
-- **Edge Case Tests** - Test boundary conditions
-- **Error Handling Tests** - Verify proper error responses
-
-### Release Process
-
-1. **Version Bump** - Update version in `pyproject.toml`
-2. **Changelog** - Document all changes
-3. **Tag Release** - Create Git tag
-4. **Documentation** - Ensure docs are current
-5. **Testing** - Full test suite on multiple environments
-
-## Advanced Development Topics
-
-### Performance Optimization
-
-#### Async Best Practices
-```python
-# Use async context managers
-async with self._get_client() as client:
-    result = await client.operation()
-
-# Batch operations when possible
-tasks = [self._process_item(item) for item in items]
-results = await asyncio.gather(*tasks)
-```
-
-#### Resource Management
-```python
-# Proper cleanup patterns
-try:
-    resource = await self._acquire_resource()
-    return await self._use_resource(resource)
-finally:
-    await self._release_resource(resource)
-```
-
-### Security Considerations
-
-#### Credential Handling
-```python
-# Never log sensitive data
-self._logger.debug(f"Authenticating with project: {project_id}")
-# NOT: self._logger.debug(f"Using key: {service_account_key}")
-
-# Use environment variables for secrets
-credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-```
-
-#### Input Validation
-```python
-# Validate all external inputs
-def validate_cluster_name(name: str) -> str:
-    if not re.match(r'^[a-z0-9-]+$', name):
-        raise ValueError("Invalid cluster name format")
-    return name
-```
-
-This development guide provides comprehensive coverage of the current Ray MCP architecture with KubeRay integration, cloud provider support, and modern development practices. It serves as both a getting-started guide for new contributors and a reference for advanced development scenarios. 
