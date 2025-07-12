@@ -287,20 +287,6 @@ class TestPortManagerRaceConditions:
                             )
                             assert port >= 10001
 
-    def test_safely_remove_lock_file_success(self):
-        """Test successful lock file removal."""
-        port_manager = PortManager()
-
-        with patch(
-            "builtins.open", mock_open(read_data="12345,1234567890")
-        ) as mock_file:
-            with patch("fcntl.flock"):
-                with patch("os.getpid", return_value=12345):
-                    with patch("os.unlink") as mock_unlink:
-                        result = port_manager._safely_remove_lock_file("/tmp/test.lock")
-                        assert result is True
-                        mock_unlink.assert_called_once_with("/tmp/test.lock")
-
     def test_safely_remove_lock_file_in_use(self):
         """Test lock file removal when file is in use."""
         port_manager = PortManager()
@@ -333,20 +319,16 @@ class TestPortManagerRaceConditions:
                     assert result is True
 
     def test_is_stale_lock_file_with_active_process(self):
-        """Test stale lock file detection with active process."""
+        """Test stale lock file detection when lock is held by active process."""
         port_manager = PortManager()
 
-        current_time = int(time.time())
-        with patch(
-            "builtins.open", mock_open(read_data=f"99999,{current_time}")
-        ) as mock_file:
-            with patch("fcntl.flock"):
-                with patch("os.kill", return_value=None):  # Process exists
-                    with patch(
-                        "time.time", return_value=current_time + 60
-                    ):  # Recent lock
-                        result = port_manager._is_stale_lock_file("/tmp/test.lock")
-                        assert result is False
+        with patch("builtins.open", mock_open()) as mock_file:
+            with patch(
+                "fcntl.flock", side_effect=OSError("Resource temporarily unavailable")
+            ):
+                # If flock() fails, it means the lock is held by another process
+                result = port_manager._is_stale_lock_file("/tmp/test.lock")
+                assert result is False
 
     def test_is_stale_lock_file_with_lock_held(self):
         """Test stale lock file detection when lock is held."""
@@ -441,41 +423,24 @@ class TestPortManagerRaceConditions:
                 port2 = await port_manager.find_free_port(start_port=10002, max_tries=5)
                 assert port2 == 10002
 
-    def test_safely_remove_lock_file_retry_logic(self):
-        """Test retry logic in safely_remove_lock_file."""
+    def test_safely_remove_lock_file_success(self):
+        """Test successful lock file removal."""
         port_manager = PortManager()
 
-        # First two attempts fail, third succeeds
-        open_call_count = 0
-
-        def mock_open_side_effect(*args, **kwargs):
-            nonlocal open_call_count
-            open_call_count += 1
-            if open_call_count < 3:
-                raise OSError("Temporary failure")
-            return mock_open(read_data="12345,1234567890")(*args, **kwargs)
-
-        with patch("builtins.open", side_effect=mock_open_side_effect):
-            with patch("fcntl.flock"):
-                with patch("os.getpid", return_value=12345):
-                    with patch("os.unlink") as mock_unlink:
-                        with patch("time.sleep"):  # Speed up test
-                            result = port_manager._safely_remove_lock_file(
-                                "/tmp/test.lock"
-                            )
-                            assert result is True
-                            mock_unlink.assert_called_once_with("/tmp/test.lock")
-
-    def test_safely_remove_lock_file_max_retries_exceeded(self):
-        """Test safely_remove_lock_file when max retries exceeded."""
-        port_manager = PortManager()
-
-        with patch("builtins.open", side_effect=OSError("Persistent failure")):
-            with patch.object(port_manager, "_log_warning") as mock_log:
-                with patch("time.sleep"):  # Speed up test
+        with patch("builtins.open", mock_open()) as mock_file:
+            with patch("fcntl.flock"):  # Lock acquired successfully
+                with patch("os.unlink") as mock_unlink:
                     result = port_manager._safely_remove_lock_file("/tmp/test.lock")
-                    assert result is False
-                    mock_log.assert_called_once()
+                    assert result is True
+                    mock_unlink.assert_called_once_with("/tmp/test.lock")
+
+    def test_safely_remove_lock_file_open_failure(self):
+        """Test safely_remove_lock_file when file cannot be opened."""
+        port_manager = PortManager()
+
+        with patch("builtins.open", side_effect=OSError("File not accessible")):
+            result = port_manager._safely_remove_lock_file("/tmp/test.lock")
+            assert result is False
 
 
 from unittest.mock import mock_open

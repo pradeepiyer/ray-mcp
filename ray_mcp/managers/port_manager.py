@@ -79,58 +79,33 @@ class PortManager:
     def _safely_remove_lock_file(self, lock_file_path: str) -> bool:
         """Safely remove a lock file using atomic operations.
 
+        Uses file locking as the single source of truth. If we can acquire
+        the lock, the original process is guaranteed dead and the file is stale.
+
         Args:
             lock_file_path: Path to the lock file to remove
 
         Returns:
             bool: True if file was removed, False if it was already gone or in use
         """
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                # Try to acquire lock before removing to avoid race conditions
-                with open(lock_file_path, "r+") as lock_file:
-                    try:
-                        # Try to acquire exclusive lock (non-blocking)
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-                        # Read the content to check if it's our lock
-                        lock_file.seek(0)
-                        content = lock_file.read().strip()
-
-                        # Only remove if it's our process or stale
-                        if not content or not self._is_content_active_lock(content):
-                            # Safe to remove - truncate first then remove file
-                            lock_file.seek(0)
-                            lock_file.truncate()
-                            # Lock will be released when file is closed
-
-                        # Remove the file outside the context manager
-                        break
-                    except OSError:
-                        # Lock is held by another process, file is in use
-                        return False
-
-            except FileNotFoundError:
-                # File doesn't exist, nothing to clean up
-                return False
-            except (OSError, IOError) as e:
-                # Other error occurred, try again
-                if attempt == max_retries - 1:
-                    self._log_warning(
-                        "port_allocation",
-                        f"Failed to safely remove lock file {lock_file_path}: {e}",
-                    )
-                    return False
-                time.sleep(0.01)  # Small delay before retry
-                continue
-
-        # Now actually remove the file
         try:
+            with open(lock_file_path, "r+") as lock_file:
+                try:
+                    # If this succeeds, the original process is guaranteed dead
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # No content validation needed - lock acquisition proves staleness
+                    lock_file.seek(0)
+                    lock_file.truncate()
+                    # File will be unlinked after context exit
+                except OSError:
+                    # Lock held by active process
+                    return False
+
+            # Safe to remove - no active lock holder
             os.unlink(lock_file_path)
             return True
-        except (OSError, IOError):
-            # File was already removed or other error
+        except (OSError, FileNotFoundError):
+            # File doesn't exist or other error
             return False
 
     def _get_temp_dir(self) -> str:
@@ -150,15 +125,7 @@ class PortManager:
                 # Acquire exclusive lock first (atomic operation)
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
-                # Now that we have the lock, check if there's existing active content
-                lock_file.seek(0)
-                existing_content = lock_file.read().strip()
-
-                if existing_content and self._is_content_active_lock(existing_content):
-                    # Another process has an active lock, respect it
-                    return False
-
-                # Clear any stale content and try to bind to the port
+                # Clear any stale content - if we got the lock, any existing content is stale
                 lock_file.seek(0)
                 lock_file.truncate()
 
@@ -176,41 +143,6 @@ class PortManager:
                         return False
         except OSError:
             # Lock is held by another process or other error
-            return False
-
-    def _is_content_active_lock(self, content: str) -> bool:
-        """Check if lock file content represents an active lock from another process."""
-        if not content:
-            return False
-
-        try:
-            if "," in content:
-                pid_str, timestamp_str = content.split(",", 1)
-                pid = int(pid_str)
-                timestamp = int(timestamp_str)
-
-                # Don't consider our own process as blocking
-                if pid == os.getpid():
-                    return False
-
-                # Check if process still exists and lock is recent
-                try:
-                    os.kill(pid, 0)  # Check if process exists
-                    current_time = int(time.time())
-                    lock_age = current_time - timestamp
-
-                    # Consider lock stale if older than 5 minutes or if process is dead
-                    if lock_age > 300:  # 5 minutes
-                        return False
-
-                    return True
-                except OSError:
-                    # Process doesn't exist, lock is stale
-                    return False
-            else:
-                # Old format or invalid content, not an active lock
-                return False
-        except (ValueError, IndexError):
             return False
 
     def _cleanup_stale_lock_files(self) -> None:
@@ -256,6 +188,9 @@ class PortManager:
     def _is_stale_lock_file(self, lock_file_path: str) -> bool:
         """Check if a lock file is stale and safe to remove.
 
+        Uses file locking as the single source of truth. If we can acquire
+        the lock, the file is stale. No content validation needed.
+
         Args:
             lock_file_path: Path to the lock file to check
 
@@ -263,41 +198,19 @@ class PortManager:
             bool: True if the lock file is stale and can be removed
         """
         try:
-            # Try to acquire lock to check if it's in use
             with open(lock_file_path, "r") as f:
                 try:
                     # Try non-blocking lock to see if file is in use
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    # Got the lock, now check content
-                    content = f.read().strip()
-                    is_stale = not self._is_content_active_lock(content)
-
-                    # If stale, also check if the file is very old (more than 1 hour)
-                    if is_stale:
-                        try:
-                            stat_info = os.stat(lock_file_path)
-                            file_age = time.time() - stat_info.st_mtime
-                            if file_age > 3600:  # 1 hour
-                                return True
-                        except (OSError, IOError):
-                            pass
-
-                    return is_stale
+                    return True  # Got lock = stale
                 except OSError:
-                    # Lock is held by another process, not stale
-                    return False
+                    return False  # Lock held = active
         except (OSError, IOError):
-            # Can't read file, consider it stale
-            return True
+            return True  # Can't read = stale
 
     def _is_lock_file_active(self, lock_file_path: str) -> bool:
         """Check if a lock file represents an active lock."""
-        try:
-            with open(lock_file_path, "r") as f:
-                content = f.read().strip()
-                return self._is_content_active_lock(content)
-        except (OSError, IOError):
-            return False
+        return not self._is_stale_lock_file(lock_file_path)
 
     def _remove_stale_lock(self, lock_file_path: str) -> None:
         """Remove a stale lock file."""
