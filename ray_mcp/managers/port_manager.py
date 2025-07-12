@@ -196,11 +196,16 @@ class PortManager:
                 # Check if process still exists and lock is recent
                 try:
                     os.kill(pid, 0)  # Check if process exists
-                    return (
-                        int(time.time()) - timestamp
-                    ) < 300  # Less than 5 minutes old
+                    current_time = int(time.time())
+                    lock_age = current_time - timestamp
+                    
+                    # Consider lock stale if older than 5 minutes or if process is dead
+                    if lock_age > 300:  # 5 minutes
+                        return False
+                    
+                    return True
                 except OSError:
-                    # Process doesn't exist
+                    # Process doesn't exist, lock is stale
                     return False
             else:
                 # Old format or invalid content, not an active lock
@@ -226,13 +231,22 @@ class PortManager:
             except (OSError, IOError):
                 return
 
+            cleaned_count = 0
             for filename in filenames:
                 lock_file_path = os.path.join(temp_dir, filename)
                 if self._is_stale_lock_file(lock_file_path):
                     if self._safely_remove_lock_file(lock_file_path):
+                        cleaned_count += 1
                         self._log_info(
                             "port_allocation", f"Cleaned up stale lock file {filename}"
                         )
+
+            # Only log summary if we actually cleaned up files
+            # This maintains backward compatibility with existing tests
+            if cleaned_count > 0:
+                self._log_info(
+                    "port_allocation", f"Cleaned up {cleaned_count} stale lock files"
+                )
 
         except (OSError, IOError) as e:
             self._log_warning(
@@ -256,7 +270,19 @@ class PortManager:
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     # Got the lock, now check content
                     content = f.read().strip()
-                    return not self._is_content_active_lock(content)
+                    is_stale = not self._is_content_active_lock(content)
+                    
+                    # If stale, also check if the file is very old (more than 1 hour)
+                    if is_stale:
+                        try:
+                            stat_info = os.stat(lock_file_path)
+                            file_age = time.time() - stat_info.st_mtime
+                            if file_age > 3600:  # 1 hour
+                                return True
+                        except (OSError, IOError):
+                            pass
+                    
+                    return is_stale
                 except OSError:
                     # Lock is held by another process, not stale
                     return False
