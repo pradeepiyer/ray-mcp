@@ -52,43 +52,95 @@ class LogProcessor:
 
     @staticmethod
     def _stream_log_lines(
-        log_source: Union[str, List[str]], max_line_size_bytes: int = 1024 * 1024
+        log_source: Union[str, List[str]],
+        max_line_size_bytes: int = 1024 * 1024,
+        max_total_chars: int = 50
+        * 1024
+        * 1024,  # 50MB char limit to prevent infinite loops
+        timeout_seconds: int = 30,  # Processing timeout
     ):
-        """Generator that yields log lines one by one to prevent memory exhaustion.
+        """Generator that yields log lines with comprehensive protection against infinite loops.
 
         Args:
             log_source: String or list of log lines to process
             max_line_size_bytes: Maximum size per line in bytes to prevent memory exhaustion
+            max_total_chars: Maximum total characters to process to prevent infinite loops
+            timeout_seconds: Maximum processing time in seconds
 
         Yields:
             Individual lines from the log source
+
+        Raises:
+            RuntimeError: If processing limits are exceeded
         """
+        import time
+
+        start_time = time.time()
+        chars_processed = 0
+
         if isinstance(log_source, str):
-            # For strings, use a character-by-character approach to avoid loading all lines in memory
+            # Use chunked processing instead of character-by-character to prevent infinite loops
+            chunk_size = min(8192, max_line_size_bytes)  # Process in safe chunks
             current_line = ""
             current_line_bytes = 0
             line_truncated = False
+            position = 0
 
-            for char in log_source:
-                if char == "\n":
-                    # End of line - yield what we have and reset
-                    if line_truncated:
-                        yield current_line + "... (line truncated due to size limit)"
-                    else:
-                        yield current_line
-                    current_line = ""
-                    current_line_bytes = 0
-                    line_truncated = False
-                else:
-                    # Only add character if we haven't already truncated this line
-                    if not line_truncated:
-                        char_bytes = len(char.encode("utf-8"))
-                        if current_line_bytes + char_bytes > max_line_size_bytes:
-                            # Line is too long, mark as truncated but don't add more characters
-                            line_truncated = True
+            while position < len(log_source):
+                # Timeout protection
+                if time.time() - start_time > timeout_seconds:
+                    yield "... (processing terminated due to timeout)"
+                    raise RuntimeError(
+                        f"Log processing exceeded {timeout_seconds}s timeout"
+                    )
+
+                # Character limit protection
+                if chars_processed >= max_total_chars:
+                    yield "... (processing terminated due to character limit)"
+                    raise RuntimeError(
+                        f"Log processing exceeded {max_total_chars} character limit"
+                    )
+
+                # Process chunk safely
+                end_pos = min(position + chunk_size, len(log_source))
+                chunk = log_source[position:end_pos]
+                chars_processed += len(chunk)
+
+                # Process characters in chunk
+                for char in chunk:
+                    if char == "\n":
+                        # End of line - yield what we have and reset
+                        if line_truncated:
+                            yield current_line + "... (line truncated due to size limit)"
                         else:
-                            current_line += char
-                            current_line_bytes += char_bytes
+                            yield current_line
+                        current_line = ""
+                        current_line_bytes = 0
+                        line_truncated = False
+                    else:
+                        # Only add character if we haven't already truncated this line
+                        if not line_truncated:
+                            # Efficient byte counting - avoid encoding each character
+                            char_bytes = (
+                                1 if ord(char) < 128 else len(char.encode("utf-8"))
+                            )
+                            if current_line_bytes + char_bytes > max_line_size_bytes:
+                                # Line is too long, mark as truncated but don't add more characters
+                                line_truncated = True
+                            else:
+                                current_line += char
+                                current_line_bytes += char_bytes
+
+                position = end_pos
+
+                # Malformed data detection - if we've processed a lot without newlines, abort
+                if current_line_bytes > max_line_size_bytes * 2:
+                    yield current_line[
+                        :1000
+                    ] + "... (malformed data detected, processing terminated)"
+                    raise RuntimeError(
+                        "Malformed log data detected - excessive line length without newlines"
+                    )
 
             # Don't forget the last line if it doesn't end with newline
             if current_line or line_truncated:
@@ -97,19 +149,78 @@ class LogProcessor:
                 else:
                     yield current_line
         else:
-            # For lists, check each line's size and truncate if necessary
-            for line in log_source:
+            # For lists, check each line's size and truncate with guaranteed convergence
+            for line_idx, line in enumerate(log_source):
+                # Timeout protection
+                if time.time() - start_time > timeout_seconds:
+                    yield "... (processing terminated due to timeout)"
+                    raise RuntimeError(
+                        f"Log processing exceeded {timeout_seconds}s timeout"
+                    )
+
+                # Character limit protection
+                chars_processed += len(line)
+                if chars_processed >= max_total_chars:
+                    yield "... (processing terminated due to character limit)"
+                    raise RuntimeError(
+                        f"Log processing exceeded {max_total_chars} character limit"
+                    )
+
+                # Safe truncation with guaranteed convergence
                 line_bytes = len(line.encode("utf-8"))
                 if line_bytes > max_line_size_bytes:
-                    # Truncate the line to fit within the size limit
-                    truncated_line = line
-                    while (
-                        len(truncated_line.encode("utf-8")) > max_line_size_bytes - 50
-                    ):  # Leave space for truncation marker
-                        truncated_line = truncated_line[:-1]
+                    # Use binary search approach for efficient truncation
+                    target_size = (
+                        max_line_size_bytes - 50
+                    )  # Leave space for truncation marker
+                    truncated_line = LogProcessor._safe_truncate_line(line, target_size)
                     yield truncated_line + "... (line truncated due to size limit)"
                 else:
                     yield line
+
+    @staticmethod
+    def _safe_truncate_line(line: str, target_bytes: int) -> str:
+        """Safely truncate a line to target byte size using binary search.
+
+        Uses binary search to efficiently find the maximum number of characters
+        that fit within the target byte size, preventing infinite truncation loops.
+
+        Args:
+            line: The line to truncate
+            target_bytes: Target size in bytes
+
+        Returns:
+            Truncated line that fits within target_bytes
+        """
+        if not line:
+            return line
+
+        # Binary search for the maximum length that fits
+        left, right = 0, len(line)
+        best_length = 0
+
+        # Limit iterations to prevent infinite loops
+        max_iterations = 20  # log2(1M) < 20, so this covers very large lines
+        iteration = 0
+
+        while left <= right and iteration < max_iterations:
+            iteration += 1
+            mid = (left + right) // 2
+
+            try:
+                test_line = line[:mid]
+                test_bytes = len(test_line.encode("utf-8"))
+
+                if test_bytes <= target_bytes:
+                    best_length = mid
+                    left = mid + 1
+                else:
+                    right = mid - 1
+            except (UnicodeError, MemoryError):
+                # On any encoding error, use conservative approach
+                right = mid - 1
+
+        return line[:best_length]
 
     @staticmethod
     def stream_logs_with_limits(
@@ -117,14 +228,16 @@ class LogProcessor:
         max_lines: int = 100,
         max_size_mb: int = 10,
         max_line_size_kb: int = 1024,  # Add per-line size limit (1MB default)
+        timeout_seconds: int = 30,  # Processing timeout to prevent infinite loops
     ) -> str:
-        """Stream logs with line and size limits to prevent memory exhaustion.
+        """Stream logs with comprehensive protection against infinite loops and malformed data.
 
         Args:
             log_source: String or list of log lines to process
             max_lines: Maximum number of lines to return
             max_size_mb: Maximum total size in MB
             max_line_size_kb: Maximum size per line in KB to prevent memory exhaustion
+            timeout_seconds: Maximum processing time in seconds to prevent infinite loops
 
         Returns:
             Processed log string with appropriate truncation messages
@@ -133,26 +246,39 @@ class LogProcessor:
         current_size = 0
         max_size_bytes = max_size_mb * 1024 * 1024
         max_line_bytes = max_line_size_kb * 1024
+        # Calculate conservative character limit (assume average 2 bytes per char for safety)
+        max_total_chars = min(max_size_bytes * 2, 50 * 1024 * 1024)
 
         try:
-            # Use streaming approach to process logs line by line
+            # Use streaming approach with comprehensive safety limits
             for line_idx, line in enumerate(
-                LogProcessor._stream_log_lines(log_source, max_line_size_kb * 1024)
+                LogProcessor._stream_log_lines(
+                    log_source, max_line_bytes, max_total_chars, timeout_seconds
+                )
             ):
                 # Early exit if we've reached the line limit
                 if len(lines) >= max_lines:
                     lines.append(f"... (truncated at {max_lines} lines)")
                     break
 
-                # Check total size limit
-                line_bytes = line.encode("utf-8")
-                if current_size + len(line_bytes) > max_size_bytes:
-                    lines.append(f"... (truncated at {max_size_mb}MB limit)")
-                    break
+                # Check total size limit with safe encoding
+                try:
+                    line_bytes = line.encode("utf-8")
+                    if current_size + len(line_bytes) > max_size_bytes:
+                        lines.append(f"... (truncated at {max_size_mb}MB limit)")
+                        break
 
-                lines.append(line.rstrip())
-                current_size += len(line_bytes)
+                    lines.append(line.rstrip())
+                    current_size += len(line_bytes)
+                except (UnicodeError, MemoryError):
+                    # Handle encoding errors gracefully
+                    lines.append("... (line skipped due to encoding error)")
+                    continue
 
+        except RuntimeError as e:
+            # Handle timeout and limit exceptions from _stream_log_lines
+            LoggingUtility.log_warning("streaming logs", str(e))
+            lines.append(f"Processing terminated: {str(e)}")
         except Exception as e:
             LoggingUtility.log_error("streaming logs", e)
             lines.append(f"Error reading logs: {str(e)}")
@@ -165,8 +291,9 @@ class LogProcessor:
         max_lines: int = 100,
         max_size_mb: int = 10,
         max_line_size_kb: int = 1024,
+        timeout_seconds: int = 30,
     ) -> str:
-        """Async version of log streaming for better performance with large logs."""
+        """Async version of log streaming with timeout protection against infinite loops."""
         return await asyncio.get_event_loop().run_in_executor(
             None,
             LogProcessor.stream_logs_with_limits,
@@ -174,6 +301,7 @@ class LogProcessor:
             max_lines,
             max_size_mb,
             max_line_size_kb,
+            timeout_seconds,
         )
 
     @staticmethod
@@ -183,6 +311,7 @@ class LogProcessor:
         page_size: int = 100,
         max_size_mb: int = 10,
         max_line_size_kb: int = 1024,
+        timeout_seconds: int = 30,
     ) -> Dict[str, Any]:
         """Stream logs with pagination support for large log files."""
         try:
@@ -224,20 +353,29 @@ class LogProcessor:
             start_idx = (page - 1) * page_size
             end_idx = start_idx + page_size
 
-            # Stream through logs to get the requested page
+            # Stream through logs to get the requested page with safety limits
             current_line_idx = 0
             page_lines = []
+            max_total_chars = min(max_size_mb * 1024 * 1024 * 2, 50 * 1024 * 1024)
 
-            for line in LogProcessor._stream_log_lines(
-                log_source, max_line_size_kb * 1024
-            ):
-                if current_line_idx >= end_idx:
-                    break
+            try:
+                for line in LogProcessor._stream_log_lines(
+                    log_source,
+                    max_line_size_kb * 1024,
+                    max_total_chars,
+                    timeout_seconds,
+                ):
+                    if current_line_idx >= end_idx:
+                        break
 
-                if current_line_idx >= start_idx:
-                    page_lines.append(line)
+                    if current_line_idx >= start_idx:
+                        page_lines.append(line)
 
-                current_line_idx += 1
+                    current_line_idx += 1
+            except RuntimeError as e:
+                # Handle timeout and processing limit exceptions
+                LoggingUtility.log_warning("stream logs with pagination", str(e))
+                page_lines.append(f"Processing terminated: {str(e)}")
 
             # Apply size limits to the page with per-line size checking
             current_size = 0
@@ -245,14 +383,21 @@ class LogProcessor:
             limited_lines = []
 
             for line in page_lines:
-                # Check total size limit
-                line_bytes = line.encode("utf-8")
-                if current_size + len(line_bytes) > max_size_bytes:
-                    limited_lines.append(f"... (truncated at {max_size_mb}MB limit)")
-                    break
+                # Check total size limit with safe encoding
+                try:
+                    line_bytes = line.encode("utf-8")
+                    if current_size + len(line_bytes) > max_size_bytes:
+                        limited_lines.append(
+                            f"... (truncated at {max_size_mb}MB limit)"
+                        )
+                        break
 
-                limited_lines.append(line.rstrip())
-                current_size += len(line_bytes)
+                    limited_lines.append(line.rstrip())
+                    current_size += len(line_bytes)
+                except (UnicodeError, MemoryError):
+                    # Handle encoding errors gracefully
+                    limited_lines.append("... (line skipped due to encoding error)")
+                    continue
 
             return ResponseFormatter.format_success_response(
                 logs="\n".join(limited_lines),
