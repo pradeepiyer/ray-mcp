@@ -87,6 +87,9 @@ class TestTools:
         mock_manager.list_ray_jobs = AsyncMock(
             return_value={"status": "success", "jobs": []}
         )
+        mock_manager.create_kuberay_job = AsyncMock(
+            return_value={"status": "success", "job_id": "test_job"}
+        )
 
         handlers = RayHandlers(mock_manager)
 

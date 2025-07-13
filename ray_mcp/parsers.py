@@ -16,8 +16,8 @@ class ActionParser:
     CLUSTER_LIST = r"(?:list|show).+cluster"
 
     # Job operations
-    JOB_SUBMIT = r"(?:submit|run|execute|start).+job"
     JOB_LIST = r"(?:list|show).+job"
+    JOB_SUBMIT = r"(?:submit|execute|start).+job|run\s+job"
     JOB_INSPECT = r"(?:inspect|status|check).+job"
     JOB_LOGS = r"(?:logs?|log).+job|get.+logs?"
     JOB_CANCEL = r"(?:cancel|stop|kill).+job"
@@ -68,15 +68,15 @@ class ActionParser:
         """Parse job action from prompt."""
         prompt_lower = prompt.lower()
 
-        if re.search(cls.JOB_SUBMIT, prompt_lower):
+        if re.search(cls.JOB_LIST, prompt_lower):
+            return {"operation": "list"}
+        elif re.search(cls.JOB_SUBMIT, prompt_lower):
             return {
                 "operation": "submit",
                 "source": cls._extract_source_url(prompt),
                 "script": cls._extract_script_path(prompt),
                 "resources": cls._extract_resources(prompt),
             }
-        elif re.search(cls.JOB_LIST, prompt_lower):
-            return {"operation": "list"}
         elif re.search(cls.JOB_INSPECT, prompt_lower):
             return {"operation": "inspect", "job_id": cls._extract_job_id(prompt)}
         elif re.search(cls.JOB_LOGS, prompt_lower):
