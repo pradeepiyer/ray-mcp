@@ -115,9 +115,6 @@ class GKEManager(ResourceManager, ManagedComponent):
                 "Project ID not found in service account credentials and not provided as parameter"
             )
 
-        # Set environment variable for other Google Cloud libraries
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_path
-
         # Test authentication by initializing clients
         self._ensure_clients()
         self._is_authenticated = True
@@ -304,6 +301,10 @@ class GKEManager(ResourceManager, ManagedComponent):
             raise RuntimeError("Not authenticated with GKE")
 
         if self._gke_client is None:
+            if self._container_v1 is None:
+                raise RuntimeError(
+                    "Google Cloud SDK is not available. Please install google-cloud-container"
+                )
             self._gke_client = self._container_v1.ClusterManagerClient(
                 credentials=self._credentials
             )

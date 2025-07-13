@@ -31,7 +31,7 @@ class ClusterManager(ResourceManager, ManagedComponent):
         ManagedComponent.__init__(self, state_manager)
 
         self._port_manager = port_manager
-        self._head_node_process: Optional[subprocess.Popen] = None
+        self._head_node_process: Optional[asyncio.subprocess.Process] = None
         # Simple worker tracking (replacing WorkerManager)
         self._worker_processes: List[subprocess.Popen] = []
         self._worker_configs: List[Dict[str, Any]] = []
@@ -443,19 +443,23 @@ class ClusterManager(ResourceManager, ManagedComponent):
 
     async def _start_head_node_process(
         self, cmd: List[str]
-    ) -> Optional[subprocess.Popen]:
+    ) -> Optional[asyncio.subprocess.Process]:
         """Start the head node process."""
         try:
             self._LoggingUtility.log_info(
                 "cluster_start", f"Starting head node: {' '.join(cmd)}"
             )
 
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
 
             # Wait for the command to complete (ray start exits after starting the cluster)
-            stdout, stderr = process.communicate()
+            stdout_bytes, stderr_bytes = await process.communicate()
+            stdout = stdout_bytes.decode()
+            stderr = stderr_bytes.decode()
 
             # Check if the command completed successfully
             if process.returncode == 0:
@@ -496,7 +500,8 @@ class ClusterManager(ResourceManager, ManagedComponent):
                 # Try to connect to the dashboard to see if Ray is ready
                 if self._JobSubmissionClient:
                     job_client = self._JobSubmissionClient(dashboard_url)
-                    _ = job_client.list_jobs()  # This will fail if Ray isn't ready
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, job_client.list_jobs)
                     self._LoggingUtility.log_info(
                         "head_node_ready",
                         f"Head node ready after {attempt + 1} seconds",

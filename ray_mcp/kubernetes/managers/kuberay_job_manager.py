@@ -298,14 +298,7 @@ class KubeRayJobManager(ResourceManager, ManagedComponent):
                 )
 
         except Exception as e:
-            # Fallback to mock logs if Kubernetes client fails
-            return self._ResponseFormatter.format_success_response(
-                job_name=name,
-                namespace=namespace,
-                ray_cluster_name=ray_cluster_name,
-                job_status=job_data.get("job_status"),
-                logs="INFO: Job started successfully\nINFO: Processing data\nINFO: Job completed",
-                log_source="job_runner_pods",
-                pod_count=1,
-                message=f"Retrieved logs for job '{name}' from cluster '{ray_cluster_name}'",
+            return self._ResponseFormatter.format_error_response(
+                f"kubernetes logs for job {name}",
+                e,
             )

@@ -294,7 +294,8 @@ class LogProcessor:
         timeout_seconds: int = 30,
     ) -> str:
         """Async version of log streaming with timeout protection against infinite loops."""
-        return await asyncio.get_event_loop().run_in_executor(
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
             None,
             LogProcessor.stream_logs_with_limits,
             log_source,
