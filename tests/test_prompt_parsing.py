@@ -73,13 +73,24 @@ class TestClusterActionParsing:
             ("Stop Ray cluster", {"operation": "stop", "name": None}),
             (
                 "Scale cluster to 5 workers",
-                {"operation": "scale", "workers": 5, "name": "to"},  # Current parser extracts "to" 
+                {
+                    "operation": "scale",
+                    "workers": 5,
+                    "name": "to",
+                },  # Current parser extracts "to"
             ),
             (
                 "Scale cluster named my-cluster to 3 workers",
-                {"operation": "scale", "name": "named", "workers": 3},  # Current parser extracts "named"
+                {
+                    "operation": "scale",
+                    "name": "named",
+                    "workers": 3,
+                },  # Current parser extracts "named"
             ),
-            ("Inspect cluster status", {"operation": "inspect", "name": "status"}),  # Current parser extracts "status"
+            (
+                "Inspect cluster status",
+                {"operation": "inspect", "name": "status"},
+            ),  # Current parser extracts "status"
             ("List all clusters", {"operation": "list"}),
         ]
 
@@ -146,7 +157,9 @@ class TestJobActionParsing:
             ("List all running jobs", {"operation": "list"}),
             (
                 "Show job status for job123",
-                {"operation": "list"},  # Current parser treats "show...job" as list operation
+                {
+                    "operation": "list"
+                },  # Current parser treats "show...job" as list operation
             ),
             ("Get logs for job 456", {"operation": "logs", "job_id": "456"}),
             (
@@ -157,8 +170,10 @@ class TestJobActionParsing:
                 },
             ),
             (
-                "Show logs with errors filtered for job my-job", 
-                {"operation": "list"},  # Current parser treats "show...job" as list operation
+                "Show logs with errors filtered for job my-job",
+                {
+                    "operation": "list"
+                },  # Current parser treats "show...job" as list operation
             ),
         ]
 
@@ -273,7 +288,7 @@ class TestParameterExtraction:
             ("cluster with 4 CPUs", {"cpu": 4}),
             ("8 CPU cluster", {"cpu": 8}),
             ("cluster using 16 cores", {"cpu": 16}),
-            ("a 2 cpu cluster", {"cpu": 2}),  # Changed to work with parser  
+            ("a 2 cpu cluster", {"cpu": 2}),  # Changed to work with parser
         ]
 
         for prompt, expected in test_cases:
@@ -307,9 +322,18 @@ class TestParameterExtraction:
     def test_cluster_name_extraction(self):
         """Test extraction of cluster names."""
         test_cases = [
-            ("cluster named my-cluster", "named"),  # Current parser extracts just "named"
-            ("cluster called test_cluster", "called"),  # Current parser extracts just "called"
-            ("cluster named production-ray-cluster", "named"),  # Current parser extracts just "named"
+            (
+                "cluster named my-cluster",
+                "named",
+            ),  # Current parser extracts just "named"
+            (
+                "cluster called test_cluster",
+                "called",
+            ),  # Current parser extracts just "called"
+            (
+                "cluster named production-ray-cluster",
+                "named",
+            ),  # Current parser extracts just "named"
         ]
 
         for phrase, expected in test_cases:

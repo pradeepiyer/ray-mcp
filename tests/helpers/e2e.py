@@ -64,25 +64,27 @@ async def _wait_for_cluster_ready(
         AssertionError: If cluster doesn't become ready within max_wait seconds
     """
     print("Waiting for Ray cluster to be fully ready...")
-    
+
     # Since the cluster start was successful, we'll just give it a moment to stabilize
     # rather than trying complex status checks that might route incorrectly
     await asyncio.sleep(2)
-    
+
     # Try a simple job list operation to verify cluster is responsive
     try:
         job_list_result = await call_tool("ray_job", {"prompt": "list all jobs"})
         job_list_data = parse_tool_result(job_list_result)
-        
+
         if job_list_data.get("status") == "success":
             print("✅ Ray cluster is fully ready!")
             return
         else:
-            print(f"Cluster not quite ready: {job_list_data.get('message', 'Job listing failed')}")
-            
+            print(
+                f"Cluster not quite ready: {job_list_data.get('message', 'Job listing failed')}"
+            )
+
     except Exception as e:
         print(f"Cluster readiness check failed: {e}")
-    
+
     # Give it a bit more time if needed
     await asyncio.sleep(1)
     print("✅ Ray cluster should be ready now!")
@@ -178,7 +180,9 @@ async def stop_ray_cluster() -> Dict[str, Any]:
 
     # Verify cluster is stopped
     print("Verifying cluster is stopped...")
-    final_status_result = await call_tool("ray_cluster", {"prompt": "inspect cluster status"})
+    final_status_result = await call_tool(
+        "ray_cluster", {"prompt": "inspect cluster status"}
+    )
     final_status_data = parse_tool_result(final_status_result)
     # Check for either "not_running" or "error" status when cluster is stopped
     assert final_status_data["status"] in ["not_running", "error"]
@@ -239,7 +243,10 @@ async def submit_and_wait_for_job(
         if runtime_env is not None:
             job_args["runtime_env"] = runtime_env
 
-        job_result = await call_tool("ray_job", {"prompt": f"submit job with entrypoint {job_args['entrypoint']}"})
+        job_result = await call_tool(
+            "ray_job",
+            {"prompt": f"submit job with entrypoint {job_args['entrypoint']}"},
+        )
         job_data = parse_tool_result(job_result)
 
         assert job_data["status"] == "success"
