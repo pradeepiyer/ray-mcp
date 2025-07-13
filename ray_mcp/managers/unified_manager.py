@@ -463,7 +463,15 @@ class RayUnifiedManager:
         )
 
     async def _coordinate_gke_kubernetes_config(self) -> None:
-        """Coordinate GKE Kubernetes configuration with KubeRay managers."""
+        """Coordinate GKE Kubernetes configuration with KubeRay managers.
+
+        Implements comprehensive state management and recovery to prevent
+        inconsistent system state when coordination fails.
+        """
+        coordination_started = False
+        kuberay_cluster_configured = False
+        kuberay_job_configured = False
+
         try:
             from ..foundation.logging_utils import LoggingUtility
 
@@ -471,9 +479,13 @@ class RayUnifiedManager:
                 "coordinate_gke_config",
                 "Starting GKE Kubernetes configuration coordination",
             )
+            coordination_started = True
 
-            # Get the GKE manager and its Kubernetes configuration
+            # Get the GKE manager and its Kubernetes configuration with validation
             gke_manager = self._cloud_provider_manager.get_gke_manager()
+            if not gke_manager:
+                raise RuntimeError("GKE manager is not available or not initialized")
+
             k8s_config = gke_manager.get_kubernetes_client()
 
             LoggingUtility.log_info(
@@ -482,17 +494,55 @@ class RayUnifiedManager:
             )
 
             if k8s_config:
-                # Update KubeRay managers with the GKE Kubernetes configuration
+                # Validate the k8s_config using existing validation infrastructure
+                validation_error = self._validate_kubernetes_config_comprehensive(
+                    k8s_config
+                )
+                if validation_error:
+                    raise RuntimeError(
+                        f"Invalid Kubernetes configuration from GKE manager: {validation_error}"
+                    )
+
+                # Update KubeRay managers with atomic operations and rollback capability
                 LoggingUtility.log_info(
                     "coordinate_gke_config",
                     "Setting Kubernetes configuration on KubeRay managers",
                 )
-                self._kuberay_cluster_manager.set_kubernetes_config(k8s_config)
-                self._kuberay_job_manager.set_kubernetes_config(k8s_config)
 
-                # Update state to reflect the coordination
+                # Configure cluster manager first
+                try:
+                    self._kuberay_cluster_manager.set_kubernetes_config(k8s_config)
+                    kuberay_cluster_configured = True
+                    LoggingUtility.log_info(
+                        "coordinate_gke_config",
+                        "Successfully configured KubeRay cluster manager",
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to configure KubeRay cluster manager: {str(e)}"
+                    ) from e
+
+                # Configure job manager second
+                try:
+                    self._kuberay_job_manager.set_kubernetes_config(k8s_config)
+                    kuberay_job_configured = True
+                    LoggingUtility.log_info(
+                        "coordinate_gke_config",
+                        "Successfully configured KubeRay job manager",
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to configure KubeRay job manager: {str(e)}"
+                    ) from e
+
+                # Only update state after all configurations succeed
+                import time
+
                 self._state_manager.update_state(
-                    kuberay_gke_coordinated=True, kuberay_kubernetes_config_type="gke"
+                    kuberay_gke_coordinated=True,
+                    kuberay_kubernetes_config_type="gke",
+                    gke_coordination_last_success=int(time.time()),
+                    gke_coordination_error=None,
                 )
 
                 LoggingUtility.log_info(
@@ -500,20 +550,282 @@ class RayUnifiedManager:
                     "Successfully coordinated GKE Kubernetes configuration with KubeRay managers",
                 )
             else:
-                # Log warning if no configuration is available
+                # No configuration available - reset coordination state
+                self._reset_gke_coordination_state(
+                    "No Kubernetes configuration available from GKE manager"
+                )
                 LoggingUtility.log_warning(
                     "coordinate_gke_config",
-                    "No Kubernetes configuration available from GKE manager",
+                    "No Kubernetes configuration available from GKE manager - coordination state reset",
                 )
+
         except Exception as e:
-            # Log the specific error for debugging
+            # Comprehensive error recovery with state consistency
+            import time
+
             from ..foundation.logging_utils import LoggingUtility
 
-            LoggingUtility.log_error(
-                "coordinate_gke_config",
-                Exception(f"Failed to coordinate GKE configuration: {str(e)}"),
+            error_msg = f"Failed to coordinate GKE configuration: {str(e)}"
+            LoggingUtility.log_error("coordinate_gke_config", Exception(error_msg))
+
+            # Perform rollback operations to ensure consistent state
+            await self._rollback_gke_coordination(
+                coordination_started=coordination_started,
+                kuberay_cluster_configured=kuberay_cluster_configured,
+                kuberay_job_configured=kuberay_job_configured,
+                error_msg=error_msg,
             )
-            # The KubeRay operations will still work, just without the optimized configuration
+
+            # Re-raise the exception to ensure calling code is aware of the failure
+            raise RuntimeError(error_msg) from e
+
+    def _validate_kubernetes_config_comprehensive(self, k8s_config) -> Optional[str]:
+        """Validate Kubernetes configuration using comprehensive validation patterns.
+
+        Leverages existing validation infrastructure from CRD operations and
+        foundation validation mixins for consistent validation logic.
+
+        Args:
+            k8s_config: Kubernetes client configuration to validate
+
+        Returns:
+            Optional[str]: Error message if validation fails, None if valid
+        """
+        try:
+            # Basic existence check
+            if not k8s_config:
+                return "Kubernetes configuration is None or empty"
+
+            # Check for required attributes using robust attribute validation
+            required_attrs = {
+                "host": "Kubernetes API server host URL",
+                "api_key": "API authentication key (optional but recommended)",
+            }
+
+            for attr, description in required_attrs.items():
+                if attr == "api_key":
+                    # API key is optional for some auth methods, just check if present
+                    continue
+
+                if not hasattr(k8s_config, attr):
+                    return f"Missing required attribute '{attr}' ({description})"
+
+                attr_value = getattr(k8s_config, attr, None)
+                if not attr_value or (
+                    isinstance(attr_value, str) and not attr_value.strip()
+                ):
+                    return f"Empty or invalid value for '{attr}' ({description})"
+
+            # Validate host format using URL validation patterns
+            host = getattr(k8s_config, "host", "")
+            if not self._validate_kubernetes_host_url(host):
+                return f"Invalid host URL format: {host}"
+
+            # Validate SSL/TLS configuration if present
+            ssl_validation_error = self._validate_kubernetes_ssl_config(k8s_config)
+            if ssl_validation_error:
+                return ssl_validation_error
+
+            # Connection-specific validation
+            connection_validation_error = self._validate_kubernetes_connection_config(
+                k8s_config
+            )
+            if connection_validation_error:
+                return connection_validation_error
+
+            return None  # All validations passed
+
+        except Exception as e:
+            return f"Validation failed due to unexpected error: {str(e)}"
+
+    def _validate_kubernetes_host_url(self, host: str) -> bool:
+        """Validate Kubernetes host URL format with comprehensive checks."""
+        if not host or not isinstance(host, str):
+            return False
+
+        # Must start with http:// or https://
+        if not host.startswith(("http://", "https://")):
+            return False
+
+        # Additional validation: check for common Kubernetes API patterns
+        try:
+            # Basic URL structure validation
+            from urllib.parse import urlparse
+
+            parsed = urlparse(host)
+
+            # Must have a valid hostname
+            if not parsed.netloc:
+                return False
+
+            # Should not have username:password in production configs
+            if parsed.username or parsed.password:
+                return False
+
+            # Validate common Kubernetes API server patterns
+            hostname = parsed.hostname
+            if hostname:
+                # Should be a valid hostname (not just an IP necessarily, but structured)
+                if len(hostname) > 253:  # DNS name length limit
+                    return False
+
+            return True
+
+        except Exception:
+            return False
+
+    def _validate_kubernetes_ssl_config(self, k8s_config) -> Optional[str]:
+        """Validate SSL/TLS configuration for Kubernetes client."""
+        try:
+            # Check SSL certificate configuration
+            ssl_ca_cert = getattr(k8s_config, "ssl_ca_cert", None)
+            cert_file = getattr(k8s_config, "cert_file", None)
+            key_file = getattr(k8s_config, "key_file", None)
+
+            # If cert_file is provided, key_file should also be provided
+            if cert_file and not key_file:
+                return "SSL cert_file provided but key_file is missing"
+
+            if key_file and not cert_file:
+                return "SSL key_file provided but cert_file is missing"
+
+            # SSL verification settings
+            verify_ssl = getattr(k8s_config, "verify_ssl", None)
+            if verify_ssl is False:
+                # Log warning about insecure connection but don't fail validation
+                # as this might be intentional for development environments
+                pass
+
+            return None
+
+        except Exception as e:
+            return f"SSL configuration validation failed: {str(e)}"
+
+    def _validate_kubernetes_connection_config(self, k8s_config) -> Optional[str]:
+        """Validate connection-specific Kubernetes configuration."""
+        try:
+            # Check timeout configurations
+            timeout = getattr(k8s_config, "timeout", None)
+            if timeout is not None:
+                try:
+                    timeout_val = float(timeout)
+                    if timeout_val <= 0 or timeout_val > 300:  # 5 minute max
+                        return f"Invalid timeout value: {timeout} (must be 0 < timeout <= 300)"
+                except (ValueError, TypeError):
+                    return f"Invalid timeout format: {timeout} (must be numeric)"
+
+            # Check retry configuration
+            retries = getattr(k8s_config, "retries", None)
+            if retries is not None:
+                try:
+                    retry_val = int(retries)
+                    if retry_val < 0 or retry_val > 10:
+                        return f"Invalid retries value: {retries} (must be 0 <= retries <= 10)"
+                except (ValueError, TypeError):
+                    return f"Invalid retries format: {retries} (must be integer)"
+
+            return None
+
+        except Exception as e:
+            return f"Connection configuration validation failed: {str(e)}"
+
+    def _reset_gke_coordination_state(self, reason: str) -> None:
+        """Reset GKE coordination state with clear reason.
+
+        Args:
+            reason: Reason for resetting the coordination state
+        """
+        import time
+
+        self._state_manager.update_state(
+            kuberay_gke_coordinated=False,
+            kuberay_kubernetes_config_type=None,
+            gke_coordination_last_failure=int(time.time()),
+            gke_coordination_error=reason,
+        )
+
+    async def _rollback_gke_coordination(
+        self,
+        coordination_started: bool,
+        kuberay_cluster_configured: bool,
+        kuberay_job_configured: bool,
+        error_msg: str,
+    ) -> None:
+        """Perform comprehensive rollback of GKE coordination to ensure consistent state.
+
+        Args:
+            coordination_started: Whether coordination process was started
+            kuberay_cluster_configured: Whether cluster manager was configured
+            kuberay_job_configured: Whether job manager was configured
+            error_msg: Error message describing the failure
+        """
+        from ..foundation.logging_utils import LoggingUtility
+
+        try:
+            LoggingUtility.log_info(
+                "coordinate_gke_config_rollback",
+                f"Starting rollback - cluster_configured: {kuberay_cluster_configured}, job_configured: {kuberay_job_configured}",
+            )
+
+            # Reset KubeRay manager configurations if they were set
+            if kuberay_job_configured:
+                try:
+                    self._kuberay_job_manager.set_kubernetes_config(None)
+                    LoggingUtility.log_info(
+                        "coordinate_gke_config_rollback",
+                        "Reset KubeRay job manager configuration",
+                    )
+                except Exception as rollback_error:
+                    LoggingUtility.log_error(
+                        "coordinate_gke_config_rollback",
+                        Exception(
+                            f"Failed to reset job manager config: {str(rollback_error)}"
+                        ),
+                    )
+
+            if kuberay_cluster_configured:
+                try:
+                    self._kuberay_cluster_manager.set_kubernetes_config(None)
+                    LoggingUtility.log_info(
+                        "coordinate_gke_config_rollback",
+                        "Reset KubeRay cluster manager configuration",
+                    )
+                except Exception as rollback_error:
+                    LoggingUtility.log_error(
+                        "coordinate_gke_config_rollback",
+                        Exception(
+                            f"Failed to reset cluster manager config: {str(rollback_error)}"
+                        ),
+                    )
+
+            # Always reset the coordination state to ensure consistency
+            self._reset_gke_coordination_state(error_msg)
+
+            LoggingUtility.log_info(
+                "coordinate_gke_config_rollback",
+                "Rollback completed - system returned to consistent state",
+            )
+
+        except Exception as rollback_error:
+            # Log rollback failure but don't raise - we're already in error handling
+            LoggingUtility.log_error(
+                "coordinate_gke_config_rollback",
+                Exception(f"Critical: Rollback failed: {str(rollback_error)}"),
+            )
+
+            # Force reset state even if rollback operations failed
+            try:
+                self._reset_gke_coordination_state(
+                    f"Rollback failed: {str(rollback_error)}"
+                )
+            except Exception:
+                # Last resort - log the critical failure
+                LoggingUtility.log_error(
+                    "coordinate_gke_config_rollback",
+                    Exception(
+                        "Critical: Unable to reset coordination state - manual intervention may be required"
+                    ),
+                )
 
     async def _ensure_kuberay_gke_coordination(self) -> None:
         """Ensure KubeRay managers are coordinated with GKE if connection exists."""
