@@ -120,7 +120,9 @@ class LogManager(ResourceManager, ManagedComponent):
                 "log_type": "job",
                 "identifier": job_id,
                 "logs": processed_logs,
-                "num_lines_retrieved": len(processed_logs.split("\n")),
+                "num_lines_retrieved": (
+                    0 if not processed_logs else len(processed_logs.splitlines())
+                ),
                 "max_size_mb": max_size_mb,
             }
 

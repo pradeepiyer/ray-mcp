@@ -160,14 +160,6 @@ class RayUnifiedManager:
             **kwargs,
         )
 
-    async def _detect_job_type_from_identifier(self, identifier: str) -> str:
-        """Detect job type based on identifier patterns and system state."""
-        system_state = self._state_manager.get_state()
-        job_type = JobTypeDetector.detect_from_identifier(identifier, system_state)
-
-        # Convert "kubernetes" to "kuberay" for backward compatibility
-        return "kuberay" if job_type == "kubernetes" else job_type
-
     # Port management methods (for internal use)
     async def find_free_port(self, start_port: int = 10001, max_tries: int = 50) -> int:
         """Find a free port."""
@@ -237,7 +229,13 @@ class RayUnifiedManager:
                 }
 
             if provider:
-                provider_enum = CloudProvider(provider)
+                try:
+                    provider_enum = CloudProvider(provider)
+                except ValueError:
+                    return {
+                        "status": "error",
+                        "message": f"Unsupported cloud provider: {provider}",
+                    }
                 result = await self._cloud_provider_manager.connect_cloud_cluster(
                     provider_enum, cluster_name, **kwargs
                 )
@@ -255,7 +253,13 @@ class RayUnifiedManager:
                 detection_result = await self.detect_cloud_provider()
                 detected_provider = detection_result.get("detected_provider")
                 if detected_provider:
-                    provider_enum = CloudProvider(detected_provider)
+                    try:
+                        provider_enum = CloudProvider(detected_provider)
+                    except ValueError:
+                        return {
+                            "status": "error",
+                            "message": f"Unsupported cloud provider: {detected_provider}",
+                        }
                     result = await self._cloud_provider_manager.connect_cloud_cluster(
                         provider_enum, cluster_name, **kwargs
                     )
@@ -300,7 +304,13 @@ class RayUnifiedManager:
         For local contexts: Omit provider or use provider='local'
         """
         if provider and provider != "local":
-            provider_enum = CloudProvider(provider)
+            try:
+                provider_enum = CloudProvider(provider)
+            except ValueError:
+                return {
+                    "status": "error",
+                    "message": f"Unsupported cloud provider: {provider}",
+                }
             return await self._cloud_provider_manager.list_cloud_clusters(
                 provider_enum, **kwargs
             )
@@ -312,7 +322,13 @@ class RayUnifiedManager:
             detection_result = await self.detect_cloud_provider()
             detected_provider = detection_result.get("detected_provider")
             if detected_provider:
-                provider_enum = CloudProvider(detected_provider)
+                try:
+                    provider_enum = CloudProvider(detected_provider)
+                except ValueError:
+                    return {
+                        "status": "error",
+                        "message": f"Unsupported cloud provider: {detected_provider}",
+                    }
                 return await self._cloud_provider_manager.list_cloud_clusters(
                     provider_enum, **kwargs
                 )
