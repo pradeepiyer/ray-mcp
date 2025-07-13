@@ -1023,36 +1023,27 @@ class TestManagerWorkflows:
         mock_client.submit_job.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_tool_registry_parameter_filtering_fix(self):
-        """Test that tool registry properly filters parameters."""
-        from ray_mcp.tool_registry import ToolRegistry
+    async def test_handlers_parameter_handling(self):
+        """Test that handlers properly handle parameters."""
+        from ray_mcp.handlers import RayHandlers
 
         # Create a mock ray manager
         mock_ray_manager = Mock()
-        mock_job_manager = Mock()
-        mock_job_manager.submit_job = AsyncMock(
-            return_value={"status": "success", "job_id": "job_123"}
-        )
-        mock_ray_manager.get_job_manager.return_value = mock_job_manager
-        mock_ray_manager.submit_ray_job = AsyncMock(
+        mock_ray_manager.create_kuberay_job = AsyncMock(
             return_value={"status": "success", "job_id": "job_123"}
         )
 
-        registry = ToolRegistry(mock_ray_manager)
+        handlers = RayHandlers(mock_ray_manager)
 
-        # Test parameter filtering in submit_ray_job tool
-        result = await registry._submit_ray_job_handler(
-            entrypoint="python script.py",
-            runtime_env={"pip": ["numpy"]},
-            num_cpus=2,
-            job_type="local",
+        # Test job submission with natural language
+        result = await handlers.handle_job(
+            "Submit training job from https://github.com/user/repo/train.py"
         )
 
         assert result["status"] == "success"
-        assert result["job_id"] == "job_123"
 
         # Verify job manager was called
-        mock_ray_manager.submit_ray_job.assert_called_once()
+        mock_ray_manager.create_kuberay_job.assert_called_once()
 
 
 if __name__ == "__main__":

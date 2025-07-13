@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent
 
-from ray_mcp.tool_registry import ToolRegistry
+from ray_mcp.handlers import RayHandlers
+from ray_mcp.managers.unified_manager import RayUnifiedManager
 
 
 # E2E Test Environment Configuration
@@ -57,12 +58,20 @@ async def call_tool(
 ) -> List[TextContent]:
     """Helper function to call tools using the ToolRegistry architecture."""
     # Use the same RayManager instance that the MCP tools use
-    from ray_mcp.main import ray_manager
+    from ray_mcp.main import handlers
 
-    registry = ToolRegistry(ray_manager)
-
-    # Execute the tool
-    result = await registry.execute_tool(tool_name, arguments or {})
+    # Convert tool name and arguments to prompt format
+    if tool_name == "ray_cluster":
+        prompt = arguments.get("prompt", "list clusters")
+        result = await handlers.handle_cluster(prompt)
+    elif tool_name == "ray_job":
+        prompt = arguments.get("prompt", "list jobs")
+        result = await handlers.handle_job(prompt)
+    elif tool_name == "cloud":
+        prompt = arguments.get("prompt", "check environment")
+        result = await handlers.handle_cloud(prompt)
+    else:
+        result = {"status": "error", "message": f"Unknown tool: {tool_name}"}
 
     # Convert the result to the expected MCP format
     result_text = json.dumps(result, indent=2)

@@ -14,9 +14,9 @@ from mcp.types import ServerCapabilities, TextContent, Tool
 from . import __version__
 from .foundation.import_utils import is_ray_available
 from .foundation.logging_utils import LoggingUtility
-from .tools import get_ray_tools
 from .handlers import RayHandlers
 from .managers.unified_manager import RayUnifiedManager
+from .tools import get_ray_tools
 
 # Check Ray availability
 RAY_AVAILABLE = is_ray_available()
@@ -40,11 +40,15 @@ async def list_tools() -> List[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: Optional[dict] = None) -> List[TextContent]:
     """Handle tool calls with natural language prompts."""
-    if not arguments or 'prompt' not in arguments:
-        return [TextContent(type="text", text='{"status": "error", "message": "prompt required"}')]
-    
-    prompt = arguments['prompt']
-    
+    if not arguments or "prompt" not in arguments:
+        return [
+            TextContent(
+                type="text", text='{"status": "error", "message": "prompt required"}'
+            )
+        ]
+
+    prompt = arguments["prompt"]
+
     try:
         if name == "ray_cluster":
             result = await handlers.handle_cluster(prompt)
@@ -54,9 +58,9 @@ async def call_tool(name: str, arguments: Optional[dict] = None) -> List[TextCon
             result = await handlers.handle_cloud(prompt)
         else:
             result = {"status": "error", "message": f"Unknown tool: {name}"}
-            
+
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        
+
     except Exception as e:
         error_result = {"status": "error", "message": str(e)}
         return [TextContent(type="text", text=json.dumps(error_result, indent=2))]

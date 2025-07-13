@@ -16,169 +16,89 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from ray_mcp.handlers import RayHandlers
 from ray_mcp.managers.unified_manager import RayUnifiedManager
-from ray_mcp.tool_registry import ToolRegistry
+from ray_mcp.tools import get_ray_tools
 
 
 @pytest.mark.fast
-class TestToolRegistry:
-    """Test tool registry core functionality and MCP integration."""
+class TestTools:
+    """Test tool definitions and structure."""
 
     def setup_method(self):
         """Set up test fixtures."""
         self.mock_ray_manager = Mock()
-        self.registry = ToolRegistry(self.mock_ray_manager)
+        self.handlers = RayHandlers(self.mock_ray_manager)
 
-    def test_tool_registry_initialization_and_structure(self):
-        """Test that tool registry initializes correctly with proper structure."""
-        # Test basic initialization
-        assert self.registry.ray_manager == self.mock_ray_manager
-        assert len(self.registry._tools) > 0
-
+    def test_tool_definitions_structure(self):
+        """Test that tools are properly defined with correct structure."""
         # Test tool discovery
-        tools = self.registry.get_tool_list()
-        assert len(tools) > 0
+        tools = get_ray_tools()
+        assert len(tools) == 3
 
-        # Test tool handler access
-        handler = self.registry.get_tool_handler("init_ray_cluster")
-        assert handler is not None
-        assert callable(handler)
+        # Check that we have the expected tools
+        tool_names = [tool.name for tool in tools]
+        expected_tools = ["ray_cluster", "ray_job", "cloud"]
+        assert set(tool_names) == set(expected_tools)
 
-        # Test unknown tool handling
-        handler = self.registry.get_tool_handler("unknown_tool")
-        assert handler is None
+        # Verify each tool has required schema structure
+        for tool in tools:
+            assert tool.inputSchema is not None
+            assert "properties" in tool.inputSchema
+            assert "prompt" in tool.inputSchema["properties"]
+            assert tool.inputSchema["required"] == ["prompt"]
 
     def test_mcp_schema_validation(self):
         """Test that all tools have valid MCP schemas."""
-        tools = self.registry.get_tool_list()
+        tools = get_ray_tools()
 
-        # Core tools that must be present
-        expected_tools = [
-            "init_ray_cluster",
-            "stop_ray_cluster",
-            "inspect_ray_cluster",
-            "submit_ray_job",
-            "list_ray_jobs",
-            "inspect_ray_job",
-            "cancel_ray_job",
-            "retrieve_logs",
-        ]
-
-        tool_names = [tool.name for tool in tools]
-        for expected_tool in expected_tools:
-            assert (
-                expected_tool in tool_names
-            ), f"Missing critical tool: {expected_tool}"
-
-        # Validate MCP schema structure
+        # Verify all tools have proper MCP schema structure
         for tool in tools:
-            assert hasattr(tool, "inputSchema")
-            assert isinstance(tool.inputSchema, dict)
-            assert tool.inputSchema["type"] == "object"
             assert hasattr(tool, "name")
             assert hasattr(tool, "description")
+            assert hasattr(tool, "inputSchema")
+
+            # Check schema structure
+            schema = tool.inputSchema
+            assert schema["type"] == "object"
+            assert "properties" in schema
+            assert "prompt" in schema["properties"]
+            assert schema["properties"]["prompt"]["type"] == "string"
+
+    def test_prompt_based_tool_functionality(self):
+        """Test that tools use prompt-based interfaces."""
+        tools = get_ray_tools()
+
+        # All tools should have natural language prompts
+        for tool in tools:
+            properties = tool.inputSchema["properties"]
+            assert "prompt" in properties
+            prompt_prop = properties["prompt"]
+            assert prompt_prop["type"] == "string"
+            assert "description" in prompt_prop
+            assert len(prompt_prop["description"]) > 50  # Should have detailed examples
 
     @pytest.mark.asyncio
-    async def test_tool_execution_workflow(self):
-        """Test complete tool execution workflow including error handling."""
-        # Test unknown tool handling
-        result = await self.registry.execute_tool("unknown_tool", {})
-        assert result["status"] == "error"
-        assert "Unknown tool" in result["message"]
-
-        # Test successful tool execution
-        self.mock_ray_manager.init_cluster = AsyncMock(
-            return_value={
-                "status": "success",
-                "result_type": "connected",
-                "cluster_address": "127.0.0.1:10001",
-            }
+    async def test_handlers_integration(self):
+        """Test that handlers work with mock manager."""
+        # Mock manager for testing
+        mock_manager = Mock(spec=RayUnifiedManager)
+        mock_manager.init_cluster = AsyncMock(return_value={"status": "success"})
+        mock_manager.list_ray_jobs = AsyncMock(
+            return_value={"status": "success", "jobs": []}
         )
 
-        result = await self.registry.execute_tool("init_ray_cluster", {"num_cpus": 4})
+        handlers = RayHandlers(mock_manager)
+
+        # Test cluster action
+        result = await handlers.handle_cluster("Create a local Ray cluster with 4 CPUs")
         assert result["status"] == "success"
-        assert result.get("result_type") == "connected"
-        self.mock_ray_manager.init_cluster.assert_called_once()
+        mock_manager.init_cluster.assert_called_once()
 
-        # Test exception handling in tool execution
-        self.mock_ray_manager.init_cluster = AsyncMock(
-            side_effect=Exception("Test error")
-        )
-        result = await self.registry.execute_tool("init_ray_cluster", {})
-        assert result["status"] == "error"
-        assert "Test error" in result["message"]
-
-    def test_tool_extensions_and_unified_functionality(self):
-        """Test that tool extensions for KubeRay are properly integrated."""
-        tools = self.registry.get_tool_list()
-        tool_names = self.registry.list_tool_names()
-
-        # Test unified tools are present
-        unified_tools = ["list_ray_clusters", "scale_ray_cluster"]
-        for tool_name in unified_tools:
-            assert tool_name in tool_names
-
-        # Test init_ray_cluster has KubeRay extensions
-        init_tool = next(tool for tool in tools if tool.name == "init_ray_cluster")
-        properties = init_tool.inputSchema["properties"]
-
-        assert "cluster_type" in properties
-        assert "kubernetes_config" in properties
-        assert properties["cluster_type"]["enum"] == ["local", "kubernetes", "k8s"]
-
-        # Test submit_ray_job has KubeRay extensions
-        submit_tool = next(tool for tool in tools if tool.name == "submit_ray_job")
-        properties = submit_tool.inputSchema["properties"]
-
-        assert "job_type" in properties
-        assert "kubernetes_config" in properties
-        assert properties["job_type"]["enum"] == ["local", "kubernetes", "k8s", "auto"]
-
-    @pytest.mark.asyncio
-    async def test_kuberay_integration_behavior(self):
-        """Test KubeRay integration behavior through tool registry."""
-        # Mock manager for KubeRay functionality
-        manager = Mock(spec=RayUnifiedManager)
-        manager.is_initialized = False
-        manager.is_kubernetes_connected = False
-        manager.kuberay_clusters = {}
-        manager.kuberay_jobs = {}
-        manager.init_cluster = AsyncMock(return_value={"status": "success"})
-        manager.create_kuberay_cluster = AsyncMock(return_value={"status": "success"})
-        manager.create_kuberay_job = AsyncMock(return_value={"status": "success"})
-
-        registry = ToolRegistry(manager)
-
-        # Test local cluster initialization
-        result = await registry.execute_tool(
-            "init_ray_cluster", {"cluster_type": "local", "num_cpus": 4}
-        )
-        manager.init_cluster.assert_called_once_with(num_cpus=4)
+        # Test job action
+        result = await handlers.handle_job("List all running jobs")
         assert result["status"] == "success"
-
-        # Test KubeRay cluster creation
-        result = await registry.execute_tool(
-            "init_ray_cluster",
-            {
-                "cluster_type": "kubernetes",
-                "kubernetes_config": {"namespace": "ray-system"},
-                "num_cpus": 4,
-            },
-        )
-        manager.create_kuberay_cluster.assert_called_once()
-        assert result["status"] == "success"
-
-        # Test KubeRay job submission
-        result = await registry.execute_tool(
-            "submit_ray_job",
-            {
-                "entrypoint": "python script.py",
-                "job_type": "kubernetes",
-                "kubernetes_config": {"namespace": "ray-system"},
-            },
-        )
-        manager.create_kuberay_job.assert_called_once()
-        assert result["status"] == "success"
+        mock_manager.list_ray_jobs.assert_called_once()
 
 
 @pytest.mark.fast
@@ -312,39 +232,32 @@ class TestSystemInterfaces:
     async def test_system_workflow_integration(self):
         """Test that core system workflows integrate properly."""
         manager = RayUnifiedManager()
-        registry = ToolRegistry(manager)
+        handlers = RayHandlers(manager)
 
         # Mock manager methods for workflow testing
         manager.init_cluster = AsyncMock(
             return_value={"status": "success", "cluster_address": "127.0.0.1:10001"}
         )
 
-        # Create a proper async mock for submit_ray_job with signature inspection support
-        async def mock_submit_ray_job(
-            entrypoint, runtime_env=None, job_id=None, metadata=None, **kwargs
-        ):
-            return {"status": "success", "job_id": "job_123"}
-
-        manager.submit_ray_job = mock_submit_ray_job
-
-        # Mock the actual method that list_ray_jobs tool calls
-        manager._job_manager = Mock()
-        manager._job_manager.list_jobs = AsyncMock(
+        # Mock methods for testing
+        manager.create_kuberay_job = AsyncMock(
+            return_value={"status": "success", "job_id": "job_123"}
+        )
+        manager.list_ray_jobs = AsyncMock(
             return_value={"status": "success", "jobs": [{"job_id": "job_123"}]}
         )
 
         # Test complete workflow: init -> submit -> list
-        init_result = await registry.execute_tool("init_ray_cluster", {"num_cpus": 2})
+        init_result = await handlers.handle_cluster(
+            "Create a local Ray cluster with 2 CPUs"
+        )
         assert init_result["status"] == "success"
 
-        submit_result = await registry.execute_tool(
-            "submit_ray_job", {"entrypoint": "python script.py"}
-        )
+        submit_result = await handlers.handle_job("Submit job from GitHub repo")
         assert submit_result["status"] == "success"
 
-        list_result = await registry.execute_tool("list_ray_jobs", {})
+        list_result = await handlers.handle_job("List all running jobs")
         assert list_result["status"] == "success"
-        assert len(list_result["jobs"]) > 0
 
     def test_backward_compatibility_interface(self):
         """Test that unified manager maintains backward compatibility."""
