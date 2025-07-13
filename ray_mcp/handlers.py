@@ -124,7 +124,8 @@ class RayHandlers:
     async def _inspect_cluster(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Inspect cluster status."""
         cluster_name = action.get("name")
-        if cluster_name:
+        # Don't route generic status words to KubeRay - only actual cluster names
+        if cluster_name and cluster_name not in ["status", "cluster", "state", "info"]:
             return await self.ray_manager.get_kuberay_cluster(cluster_name)
         else:
             return await self.ray_manager.inspect_ray_cluster()

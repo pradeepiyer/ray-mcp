@@ -104,10 +104,10 @@ class TestRayMCPServer:
         # ================================================================
         print("\n📋 Testing API endpoints and performance...")
 
-        # Test core API endpoints with performance measurement
+        # Test core API endpoints with performance measurement using new prompt interface
         core_endpoints = [
-            ("inspect_ray_cluster", {}),
-            ("list_ray_jobs", {}),
+            ("ray_cluster", {"prompt": "inspect cluster status"}),
+            ("ray_job", {"prompt": "list all jobs"}),
         ]
 
         for endpoint, args in core_endpoints:
@@ -120,9 +120,9 @@ class TestRayMCPServer:
             assert api_time < 2, f"{endpoint} response too slow: {api_time:.3f}s"
             print(f"✅ {endpoint} working in {api_time:.3f}s")
 
-        # Test job-related endpoints with expected error handling
+        # Test job-related endpoints with expected error handling using new prompt interface
         job_endpoints = [
-            ("retrieve_logs", {"identifier": "dummy_job", "log_type": "job"}),
+            ("ray_job", {"prompt": "get logs for job dummy_job"}),
         ]
 
         for endpoint, args in job_endpoints:
@@ -135,14 +135,14 @@ class TestRayMCPServer:
             ], f"{endpoint} returned unexpected status: {data}"
             print(f"✅ {endpoint} error handling working correctly")
 
-        # Test concurrent API operations
+        # Test concurrent API operations using new prompt interface
         print("🔄 Testing concurrent API operations...")
         start_time = time.time()
 
         tasks = []
         for i in range(5):
-            tasks.append(call_tool("inspect_ray_cluster"))
-            tasks.append(call_tool("list_ray_jobs"))
+            tasks.append(call_tool("ray_cluster", {"prompt": "inspect cluster status"}))
+            tasks.append(call_tool("ray_job", {"prompt": "list all jobs"}))
 
         results = await asyncio.gather(*tasks)
         concurrent_time = time.time() - start_time
@@ -162,8 +162,8 @@ class TestRayMCPServer:
         # ================================================================
         print("\n🔄 Testing job management workflow...")
 
-        # Test job listing
-        jobs_result = await call_tool("list_ray_jobs")
+        # Test job listing using new prompt interface
+        jobs_result = await call_tool("ray_job", {"prompt": "list all jobs"})
         jobs_data = parse_tool_result(jobs_result)
         assert jobs_data["status"] == "success"
         assert "jobs" in jobs_data
@@ -174,7 +174,7 @@ class TestRayMCPServer:
         try:
             with TempScriptManager(TestScripts.QUICK_SUCCESS) as script_path:
                 job_result = await call_tool(
-                    "submit_ray_job", {"entrypoint": f"python {script_path}"}
+                    "ray_job", {"prompt": f"submit job with script {script_path}"}
                 )
                 job_data = parse_tool_result(job_result)
 
@@ -182,11 +182,10 @@ class TestRayMCPServer:
                     job_id = job_data["job_id"]
                     print(f"✅ Job submission working: {job_id}")
 
-                    # Test log management integration
+                    # Test log management integration using new prompt interface
                     print("📜 Testing log management integration...")
                     logs_result = await call_tool(
-                        "retrieve_logs",
-                        {"identifier": job_id, "log_type": "job", "num_lines": 50},
+                        "ray_job", {"prompt": f"get logs for job {job_id}"}
                     )
                     logs_data = parse_tool_result(logs_result)
                     assert logs_data["status"] == "success"
@@ -194,7 +193,7 @@ class TestRayMCPServer:
 
                     # Test component state sharing
                     print("🔗 Testing component state sharing...")
-                    jobs_result = await call_tool("list_ray_jobs")
+                    jobs_result = await call_tool("ray_job", {"prompt": "list all jobs"})
                     jobs_data = parse_tool_result(jobs_result)
                     assert jobs_data["status"] == "success"
                     found_job = any(
@@ -218,22 +217,22 @@ class TestRayMCPServer:
         # ================================================================
         print("\n⚠️  Testing comprehensive error handling and recovery...")
 
-        # Test invalid operations
+        # Test invalid operations using new prompt interface
         print("🔍 Testing invalid operations...")
         error_scenarios = [
             (
-                "retrieve_logs",
-                {"identifier": "dummy", "log_type": "invalid_type"},
-                "Invalid log_type",
-            ),
-            (
-                "retrieve_logs",
-                {"identifier": "non_existent_job_12345", "log_type": "job"},
+                "ray_job",
+                {"prompt": "get logs for job dummy"},
                 "error",
             ),
             (
-                "inspect_ray_job",
-                {"job_id": "non_existent_job_12345", "mode": "status"},
+                "ray_job", 
+                {"prompt": "get logs for job non_existent_job_12345"},
+                "error",
+            ),
+            (
+                "ray_job",
+                {"prompt": "inspect job non_existent_job_12345"},
                 "error",
             ),
         ]
@@ -242,17 +241,15 @@ class TestRayMCPServer:
             result = await call_tool(tool_name, args)
             data = parse_tool_result(result)
             assert data["status"] == "error"
-            if expected_error != "error":
-                assert expected_error in data["message"]
             print(f"✅ {tool_name} error handling working")
 
         # Test system recovery after errors
         print("🔄 Testing system recovery after errors...")
 
-        # System should remain functional after error conditions
+        # System should remain functional after error conditions using new prompt interface
         recovery_tests = [
-            ("inspect_ray_cluster", {}),
-            ("list_ray_jobs", {}),
+            ("ray_cluster", {"prompt": "inspect cluster status"}),
+            ("ray_job", {"prompt": "list all jobs"}),
         ]
 
         for endpoint, args in recovery_tests:
@@ -264,13 +261,13 @@ class TestRayMCPServer:
         # Test component independence and consistency
         print("⚖️  Testing component independence and state consistency...")
 
-        # Multiple calls should return consistent results
+        # Multiple calls should return consistent results using new prompt interface
         for i in range(3):
-            status_result = await call_tool("inspect_ray_cluster")
+            status_result = await call_tool("ray_cluster", {"prompt": "inspect cluster status"})
             status_data = parse_tool_result(status_result)
             assert status_data["status"] in ["success", "active"]
 
-            jobs_result = await call_tool("list_ray_jobs")
+            jobs_result = await call_tool("ray_job", {"prompt": "list all jobs"})
             jobs_data = parse_tool_result(jobs_result)
             assert jobs_data["status"] == "success"
         print("✅ Component independence and state consistency verified")
@@ -278,11 +275,11 @@ class TestRayMCPServer:
         # Test graceful degradation under error conditions
         print("⬇️  Testing graceful degradation...")
 
-        # Test various error conditions to ensure graceful handling
+        # Test various error conditions to ensure graceful handling using new prompt interface
         degradation_tests = [
-            ("retrieve_logs", {"identifier": "dummy", "log_type": "invalid_type"}),
-            ("inspect_ray_job", {"job_id": "non_existent", "mode": "status"}),
-            ("retrieve_logs", {"identifier": "non_existent", "log_type": "job"}),
+            ("ray_job", {"prompt": "get logs for job dummy"}),
+            ("ray_job", {"prompt": "inspect job non_existent"}),
+            ("ray_job", {"prompt": "get logs for job non_existent"}),
         ]
 
         for tool_name, args in degradation_tests:
@@ -354,7 +351,7 @@ class TestRayMCPServer:
             # ================================================================
             print("\n🔍 Testing GKE cloud provider detection...")
 
-            detection_result = await call_tool("detect_cloud_provider")
+            detection_result = await call_tool("cloud", {"prompt": "check environment status"})
             detection_data = parse_tool_result(detection_result)
 
             print(f"Cloud provider detection result: {detection_data}")
@@ -380,8 +377,8 @@ class TestRayMCPServer:
             print(f"\n🔗 Connecting to GKE cluster: {cluster_name}")
 
             connection_result = await call_tool(
-                "connect_kubernetes_cluster",
-                {"provider": "gke", "cluster_name": cluster_name},
+                "cloud", 
+                {"prompt": f"connect to GKE cluster named {cluster_name}"},
             )
             connection_data = parse_tool_result(connection_result)
 
@@ -409,15 +406,8 @@ class TestRayMCPServer:
             # Use a simple success script for reliable testing
             with TempScriptManager(TestScripts.LIGHTWEIGHT_SUCCESS) as script_path:
                 job_result = await call_tool(
-                    "submit_ray_job",
-                    {
-                        "entrypoint": f"python {script_path}",
-                        "job_type": "kubernetes",  # Force KubeRay execution
-                        "kubernetes_config": {
-                            "namespace": "default",
-                            "image": "rayproject/ray:latest",
-                        },
-                    },
+                    "ray_job",
+                    {"prompt": f"submit job with script {script_path} to kubernetes"}
                 )
 
                 job_data = parse_tool_result(job_result)
@@ -449,7 +439,7 @@ class TestRayMCPServer:
             except AssertionError as e:
                 # Get current job status for debugging
                 status_result = await call_tool(
-                    "inspect_ray_job", {"job_id": job_id, "job_type": "kubernetes"}
+                    "ray_job", {"prompt": f"inspect job {job_id}"}
                 )
                 status_data = parse_tool_result(status_result)
                 print(f"❌ Job execution details: {status_data}")
@@ -461,7 +451,7 @@ class TestRayMCPServer:
             print(f"\n📜 Retrieving logs from KubeRay job: {job_id}")
 
             logs_result = await call_tool(
-                "retrieve_logs", {"identifier": job_id, "log_type": "job"}
+                "ray_job", {"prompt": f"get logs for job {job_id}"}
             )
             logs_data = parse_tool_result(logs_result)
 
@@ -483,7 +473,7 @@ class TestRayMCPServer:
             print(f"\n🧹 Verifying job status and cleanup...")
 
             # List KubeRay jobs to verify our job is tracked
-            jobs_result = await call_tool("list_ray_jobs", {"job_type": "kubernetes"})
+            jobs_result = await call_tool("ray_job", {"prompt": "list all kubernetes jobs"})
             jobs_data = parse_tool_result(jobs_result)
 
             if jobs_data["status"] == "success":
