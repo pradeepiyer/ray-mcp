@@ -404,15 +404,14 @@ class ClusterManager(ResourceManager, ManagedComponent):
             )
 
         except Exception as e:
-            # Cleanup on failure - no state changes have been made
-            # Note: The 'ray start' command has already exited, so we just need to clear the reference.
-            # Ray daemon processes (if started) will be cleaned up by the OS or manual intervention.
-            if self._head_node_process:
-                self._LoggingUtility.log_info(
-                    "cluster_cleanup",
-                    "Clearing head node process reference after failure",
+            # Comprehensive cleanup on failure to prevent orphaned processes
+            self._LoggingUtility.log_error("start_cluster", e)
+            try:
+                await self._cleanup_all_processes()
+            except Exception as cleanup_error:
+                self._LoggingUtility.log_warning(
+                    "cluster_cleanup", f"Error during failure cleanup: {cleanup_error}"
                 )
-                self._head_node_process = None
             return self._ResponseFormatter.format_error_response("start cluster", e)
 
     async def _build_head_node_command(
@@ -551,29 +550,85 @@ class ClusterManager(ResourceManager, ManagedComponent):
     async def _start_worker_nodes(
         self, worker_configs: List[Dict[str, Any]], head_node_address: str
     ) -> List[Dict[str, Any]]:
-        """Start multiple worker nodes with simplified management."""
+        """Start multiple worker nodes with rollback on critical failures."""
         worker_results = []
+        started_workers_count = len(self._worker_processes)  # Track initial count
+        critical_failure = False
 
-        for i, config in enumerate(worker_configs):
-            try:
-                node_name = config.get("node_name", f"worker-{i+1}")
-                worker_result = await self._start_single_worker(
-                    config, head_node_address, node_name
-                )
-                worker_results.append(worker_result)
+        try:
+            for i, config in enumerate(worker_configs):
+                try:
+                    node_name = config.get("node_name", f"worker-{i+1}")
+                    worker_result = await self._start_single_worker(
+                        config, head_node_address, node_name
+                    )
+                    worker_results.append(worker_result)
 
-                # Small delay between worker starts
-                if i < len(worker_configs) - 1:
-                    await asyncio.sleep(0.5)
+                    # Small delay between worker starts
+                    if i < len(worker_configs) - 1:
+                        await asyncio.sleep(0.5)
 
-            except Exception as e:
-                self._LoggingUtility.log_error(f"start worker node {i+1}", e)
-                worker_results.append(
-                    {
+                except Exception as e:
+                    self._LoggingUtility.log_error(f"start worker node {i+1}", e)
+                    error_result = {
                         "status": "error",
                         "node_name": config.get("node_name", f"worker-{i+1}"),
                         "message": f"Failed to start worker node: {str(e)}",
                     }
+                    worker_results.append(error_result)
+
+                    # Check if this is a critical failure (e.g., system resource exhaustion)
+                    if (
+                        isinstance(e, (OSError, MemoryError))
+                        or "resource" in str(e).lower()
+                    ):
+                        self._LoggingUtility.log_warning(
+                            "worker_start_rollback",
+                            f"Critical failure detected, initiating rollback of {len(self._worker_processes) - started_workers_count} workers",
+                        )
+                        critical_failure = True
+                        break
+
+        except Exception as e:
+            # Unexpected error in the loop itself
+            self._LoggingUtility.log_error("start_worker_nodes", e)
+            critical_failure = True
+
+        # Rollback newly started workers if critical failure occurred
+        if critical_failure and len(self._worker_processes) > started_workers_count:
+            try:
+                # Only rollback workers started in this operation
+                workers_to_rollback = self._worker_processes[started_workers_count:]
+                configs_to_rollback = self._worker_configs[started_workers_count:]
+
+                rollback_tasks = []
+                for i, process in enumerate(workers_to_rollback):
+                    if process and process.poll() is None:  # Still running
+                        node_name = configs_to_rollback[i].get(
+                            "node_name", f"worker-{started_workers_count + i + 1}"
+                        )
+                        task = self._safely_terminate_process(process, node_name)
+                        rollback_tasks.append(task)
+
+                if rollback_tasks:
+                    await asyncio.wait_for(
+                        asyncio.gather(*rollback_tasks, return_exceptions=True),
+                        timeout=5.0,
+                    )
+
+                # Remove rolled back workers from tracking
+                self._worker_processes = self._worker_processes[:started_workers_count]
+                self._worker_configs = self._worker_configs[:started_workers_count]
+
+                self._LoggingUtility.log_info(
+                    "worker_start_rollback",
+                    f"Rolled back {len(workers_to_rollback)} workers due to critical failure",
+                )
+
+            except Exception as rollback_error:
+                self._LoggingUtility.log_warning(
+                    "worker_start_rollback",
+                    f"Error during worker rollback: {rollback_error}",
                 )
 
         return worker_results
@@ -759,3 +814,127 @@ class ClusterManager(ResourceManager, ManagedComponent):
         self._worker_configs.clear()
 
         return results
+
+    async def _cleanup_all_processes(self) -> None:
+        """Emergency cleanup of all tracked processes to prevent orphaning.
+
+        This method ensures all spawned processes are properly terminated
+        in error scenarios to prevent orphaned processes.
+        """
+        cleanup_tasks = []
+
+        # Clean up all worker processes
+        if self._worker_processes:
+            self._LoggingUtility.log_warning(
+                "process_cleanup",
+                f"Emergency cleanup of {len(self._worker_processes)} worker processes",
+            )
+
+            for i, process in enumerate(self._worker_processes):
+                if process and process.poll() is None:  # Still running
+                    node_name = (
+                        self._worker_configs[i].get("node_name", f"worker-{i+1}")
+                        if i < len(self._worker_configs)
+                        else f"worker-{i+1}"
+                    )
+                    task = self._safely_terminate_process(process, node_name)
+                    cleanup_tasks.append(task)
+
+        # Execute all cleanup tasks concurrently with timeout
+        if cleanup_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*cleanup_tasks, return_exceptions=True),
+                    timeout=10.0,  # Maximum 10 seconds for cleanup
+                )
+            except asyncio.TimeoutError:
+                self._LoggingUtility.log_warning(
+                    "process_cleanup",
+                    "Process cleanup timed out, some processes may remain",
+                )
+            except Exception as e:
+                self._LoggingUtility.log_warning(
+                    "process_cleanup", f"Error during emergency process cleanup: {e}"
+                )
+
+        # Force clear all tracking regardless of cleanup success
+        self._worker_processes.clear()
+        self._worker_configs.clear()
+
+        # Clear head node reference
+        if self._head_node_process:
+            self._head_node_process = None
+
+        self._LoggingUtility.log_info(
+            "process_cleanup", "Emergency process cleanup completed"
+        )
+
+    def _reset_state(self) -> None:
+        """Reset state with comprehensive process cleanup.
+
+        Overrides parent method to ensure processes are cleaned up
+        before state is reset to prevent orphaned processes.
+        """
+        # First, clean up any remaining processes synchronously
+        if self._worker_processes or self._head_node_process:
+            self._LoggingUtility.log_warning(
+                "state_reset",
+                f"Cleaning up {len(self._worker_processes)} workers and head node before state reset",
+            )
+
+            # Force terminate any remaining worker processes
+            for i, process in enumerate(self._worker_processes):
+                if process and process.poll() is None:  # Still running
+                    try:
+                        process.terminate()
+                        # Give process 1 second to terminate gracefully
+                        try:
+                            process.wait(timeout=1.0)
+                        except subprocess.TimeoutExpired:
+                            # Force kill if it doesn't terminate
+                            process.kill()
+                            process.wait()
+                        self._LoggingUtility.log_info(
+                            "state_reset",
+                            f"Terminated worker process {i+1} (PID: {process.pid})",
+                        )
+                    except Exception as e:
+                        self._LoggingUtility.log_warning(
+                            "state_reset",
+                            f"Error terminating worker process {i+1}: {e}",
+                        )
+
+            # Clear process tracking
+            self._worker_processes.clear()
+            self._worker_configs.clear()
+            self._head_node_process = None
+
+        # Call parent reset_state method
+        try:
+            super()._reset_state()
+        except AttributeError:
+            # If parent doesn't have _reset_state, reset our state manager directly
+            if hasattr(self, "_external_state_manager"):
+                self._external_state_manager.reset_state()
+            elif hasattr(self, "state_manager"):
+                self.state_manager.reset_state()
+
+        self._LoggingUtility.log_info(
+            "state_reset", "State reset completed with process cleanup"
+        )
+
+    def __del__(self):
+        """Destructor to ensure processes are cleaned up on manager destruction."""
+        if hasattr(self, "_worker_processes") and self._worker_processes:
+            # Emergency cleanup in destructor - cannot use async
+            for process in self._worker_processes:
+                if process and process.poll() is None:
+                    try:
+                        process.terminate()
+                        process.wait(timeout=1.0)
+                    except Exception:
+                        try:
+                            process.kill()
+                            process.wait()
+                        except Exception:
+                            pass  # Last resort - we tried
