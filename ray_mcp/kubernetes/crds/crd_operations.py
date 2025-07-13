@@ -177,19 +177,403 @@ class CRDOperationsClient(ResourceManager, ManagedComponent):
 
         return self.RESOURCE_MAPPINGS[resource_type_lower]
 
+    async def _validate_resource_spec(
+        self,
+        resource_type: str,
+        resource_spec: Dict[str, Any],
+        namespace: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Comprehensive validation of resource specification to prevent cluster failures.
+
+        Validates resource structure, security requirements, and limits before creation.
+
+        Args:
+            resource_type: Type of resource (raycluster, rayjob)
+            resource_spec: Resource specification to validate
+            namespace: Target namespace
+
+        Returns:
+            None if validation passes, error response dict if validation fails
+        """
+        try:
+            # 1. Basic structure validation
+            structure_error = self._validate_basic_structure(resource_spec)
+            if structure_error:
+                return structure_error
+
+            # 2. Namespace validation
+            namespace_error = self._validate_namespace(namespace)
+            if namespace_error:
+                return namespace_error
+
+            # 3. Resource size validation (prevent overwhelming API server)
+            size_error = self._validate_resource_size(resource_spec)
+            if size_error:
+                return size_error
+
+            # 4. Resource-specific validation
+            resource_error = await self._validate_resource_specific(
+                resource_type, resource_spec
+            )
+            if resource_error:
+                return resource_error
+
+            # 5. Security validation
+            security_error = self._validate_security_requirements(resource_spec)
+            if security_error:
+                return security_error
+
+            # 6. Resource limits validation
+            limits_error = self._validate_resource_limits(resource_spec)
+            if limits_error:
+                return limits_error
+
+            return None  # Validation passed
+
+        except Exception as e:
+            self._LoggingUtility.log_error("validate resource spec", e)
+            return self._ResponseFormatter.format_error_response(
+                "validate resource spec",
+                Exception(f"Validation failed due to internal error: {str(e)}"),
+            )
+
+    def _validate_basic_structure(
+        self, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate basic Kubernetes resource structure."""
+        # Check if resource_spec is valid dict
+        if not isinstance(resource_spec, dict):
+            return self._ResponseFormatter.format_validation_error(
+                "Resource specification must be a dictionary"
+            )
+
+        # Check for required top-level fields
+        required_fields = ["apiVersion", "kind", "metadata", "spec"]
+        for field in required_fields:
+            if field not in resource_spec:
+                return self._ResponseFormatter.format_validation_error(
+                    f"Missing required field: {field}"
+                )
+
+        # Validate metadata structure
+        metadata = resource_spec.get("metadata", {})
+        if not isinstance(metadata, dict):
+            return self._ResponseFormatter.format_validation_error(
+                "metadata must be a dictionary"
+            )
+
+        # Validate required metadata fields
+        if "name" not in metadata:
+            return self._ResponseFormatter.format_validation_error(
+                "metadata.name is required"
+            )
+
+        # Validate resource name format (Kubernetes naming requirements)
+        name = metadata["name"]
+        if not self._is_valid_kubernetes_name(name):
+            return self._ResponseFormatter.format_validation_error(
+                f"Invalid resource name '{name}': must be a valid DNS-1123 subdomain"
+            )
+
+        return None
+
+    def _validate_namespace(self, namespace: str) -> Optional[Dict[str, Any]]:
+        """Validate namespace safety and format."""
+        if not namespace or not isinstance(namespace, str):
+            return self._ResponseFormatter.format_validation_error(
+                "Namespace must be a non-empty string"
+            )
+
+        # Validate namespace name format
+        if not self._is_valid_kubernetes_name(namespace):
+            return self._ResponseFormatter.format_validation_error(
+                f"Invalid namespace '{namespace}': must be a valid DNS-1123 label"
+            )
+
+        # Check for potentially dangerous namespaces
+        dangerous_namespaces = {
+            "kube-system",
+            "kube-public",
+            "kube-node-lease",
+            "kubernetes-dashboard",
+            "cert-manager",
+            "istio-system",
+        }
+        if namespace in dangerous_namespaces:
+            return self._ResponseFormatter.format_validation_error(
+                f"Cannot create resources in system namespace '{namespace}'"
+            )
+
+        return None
+
+    def _validate_resource_size(
+        self, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate resource specification size to prevent API server overload."""
+        import json
+
+        try:
+            # Calculate serialized size
+            serialized = json.dumps(resource_spec, default=str)
+            size_bytes = len(serialized.encode("utf-8"))
+
+            # Kubernetes etcd default limit is ~1.5MB, we use 1MB as safe limit
+            max_size_bytes = 1024 * 1024  # 1MB
+
+            if size_bytes > max_size_bytes:
+                return self._ResponseFormatter.format_validation_error(
+                    f"Resource specification too large: {size_bytes} bytes (max: {max_size_bytes} bytes)"
+                )
+
+            return None
+
+        except Exception as e:
+            return self._ResponseFormatter.format_validation_error(
+                f"Failed to validate resource size: {str(e)}"
+            )
+
+    async def _validate_resource_specific(
+        self, resource_type: str, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate resource-specific requirements for Ray CRDs."""
+        resource_type_lower = resource_type.lower()
+
+        if resource_type_lower == "raycluster":
+            return self._validate_ray_cluster_spec(resource_spec)
+        elif resource_type_lower == "rayjob":
+            return self._validate_ray_job_spec(resource_spec)
+
+        return None
+
+    def _validate_ray_cluster_spec(
+        self, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate RayCluster-specific requirements."""
+        spec = resource_spec.get("spec", {})
+
+        # Validate head group
+        head_group_spec = spec.get("headGroupSpec", {})
+        if not head_group_spec:
+            return self._ResponseFormatter.format_validation_error(
+                "RayCluster requires headGroupSpec"
+            )
+
+        # Validate head group has required fields
+        if "rayStartParams" not in head_group_spec:
+            return self._ResponseFormatter.format_validation_error(
+                "headGroupSpec requires rayStartParams"
+            )
+
+        # Validate worker groups if present
+        worker_group_specs = spec.get("workerGroupSpecs", [])
+        for i, worker_spec in enumerate(worker_group_specs):
+            if "groupName" not in worker_spec:
+                return self._ResponseFormatter.format_validation_error(
+                    f"workerGroupSpecs[{i}] requires groupName"
+                )
+
+        return None
+
+    def _validate_ray_job_spec(
+        self, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate RayJob-specific requirements."""
+        spec = resource_spec.get("spec", {})
+
+        # Validate entrypoint
+        if "entrypoint" not in spec:
+            return self._ResponseFormatter.format_validation_error(
+                "RayJob requires entrypoint in spec"
+            )
+
+        entrypoint = spec["entrypoint"]
+        if not isinstance(entrypoint, str) or not entrypoint.strip():
+            return self._ResponseFormatter.format_validation_error(
+                "RayJob entrypoint must be a non-empty string"
+            )
+
+        return None
+
+    def _validate_security_requirements(
+        self, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate security-related requirements to prevent privilege escalation."""
+        # Check for potentially dangerous security contexts
+        dangerous_patterns = [
+            ("spec.headGroupSpec.template.spec.securityContext.runAsUser", 0),
+            (
+                "spec.headGroupSpec.template.spec.containers[*].securityContext.privileged",
+                True,
+            ),
+            ("spec.headGroupSpec.template.spec.hostNetwork", True),
+            ("spec.headGroupSpec.template.spec.hostPID", True),
+        ]
+
+        for pattern_path, dangerous_value in dangerous_patterns:
+            if self._check_nested_value(resource_spec, pattern_path, dangerous_value):
+                return self._ResponseFormatter.format_validation_error(
+                    f"Security violation: {pattern_path} cannot be set to {dangerous_value}"
+                )
+
+        return None
+
+    def _validate_resource_limits(
+        self, resource_spec: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Validate resource requests and limits for sanity."""
+        # Define reasonable limits to prevent cluster resource exhaustion
+        max_cpu_cores = 32  # Max CPU cores per container
+        max_memory_gi = 64  # Max memory in GiB per container
+
+        # Check head group resources
+        head_spec = resource_spec.get("spec", {}).get("headGroupSpec", {})
+        head_error = self._validate_container_resources(
+            head_spec, max_cpu_cores, max_memory_gi, "headGroup"
+        )
+        if head_error:
+            return head_error
+
+        # Check worker group resources
+        worker_specs = resource_spec.get("spec", {}).get("workerGroupSpecs", [])
+        for i, worker_spec in enumerate(worker_specs):
+            worker_error = self._validate_container_resources(
+                worker_spec, max_cpu_cores, max_memory_gi, f"workerGroup[{i}]"
+            )
+            if worker_error:
+                return worker_error
+
+        return None
+
+    def _validate_container_resources(
+        self, group_spec: Dict[str, Any], max_cpu: int, max_memory: int, context: str
+    ) -> Optional[Dict[str, Any]]:
+        """Validate container resource requests and limits."""
+        template = group_spec.get("template", {})
+        pod_spec = template.get("spec", {})
+        containers = pod_spec.get("containers", [])
+
+        for i, container in enumerate(containers):
+            resources = container.get("resources", {})
+
+            # Check resource requests and limits
+            for resource_type in ["requests", "limits"]:
+                resource_values = resources.get(resource_type, {})
+
+                # Validate CPU
+                cpu = resource_values.get("cpu")
+                if cpu and self._parse_cpu_value(cpu) > max_cpu:
+                    return self._ResponseFormatter.format_validation_error(
+                        f"{context}.container[{i}].resources.{resource_type}.cpu exceeds maximum {max_cpu} cores"
+                    )
+
+                # Validate memory
+                memory = resource_values.get("memory")
+                if (
+                    memory and self._parse_memory_value(memory) > max_memory * 1024**3
+                ):  # Convert GiB to bytes
+                    return self._ResponseFormatter.format_validation_error(
+                        f"{context}.container[{i}].resources.{resource_type}.memory exceeds maximum {max_memory}Gi"
+                    )
+
+        return None
+
+    def _is_valid_kubernetes_name(self, name: str) -> bool:
+        """Validate Kubernetes resource name format."""
+        import re
+
+        # DNS-1123 subdomain format: lowercase alphanumeric, '-', and '.'
+        # Must start and end with alphanumeric character
+        pattern = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        return bool(re.match(pattern, name)) and len(name) <= 253
+
+    def _check_nested_value(
+        self, obj: Dict[str, Any], path: str, target_value: Any
+    ) -> bool:
+        """Check if a nested path contains a dangerous value."""
+        try:
+            # Simple path traversal for security checks
+            current = obj
+            parts = path.split(".")
+
+            for part in parts:
+                if "[*]" in part:
+                    # Handle array notation for containers
+                    field = part.replace("[*]", "")
+                    if field in current and isinstance(current[field], list):
+                        for item in current[field]:
+                            if isinstance(item, dict) and self._check_nested_value(
+                                item,
+                                ".".join(parts[parts.index(part) + 1 :]),
+                                target_value,
+                            ):
+                                return True
+                    return False
+                elif part in current:
+                    current = current[part]
+                else:
+                    return False
+
+            return current == target_value
+        except Exception:
+            return False
+
+    def _parse_cpu_value(self, cpu_str: str) -> float:
+        """Parse Kubernetes CPU value to number of cores."""
+        try:
+            if cpu_str.endswith("m"):
+                return float(cpu_str[:-1]) / 1000  # millicores to cores
+            else:
+                return float(cpu_str)
+        except (ValueError, TypeError):
+            return 0
+
+    def _parse_memory_value(self, memory_str: str) -> int:
+        """Parse Kubernetes memory value to bytes."""
+        try:
+            memory_str = memory_str.upper()
+            multipliers = {
+                "KI": 1024,
+                "MI": 1024**2,
+                "GI": 1024**3,
+                "TI": 1024**4,
+                "K": 1000,
+                "M": 1000**2,
+                "G": 1000**3,
+                "T": 1000**4,
+            }
+
+            for suffix, multiplier in multipliers.items():
+                if memory_str.endswith(suffix):
+                    return int(float(memory_str[: -len(suffix)]) * multiplier)
+
+            return int(memory_str)  # Assume bytes if no suffix
+        except (ValueError, TypeError):
+            return 0
+
     async def create_resource(
         self,
         resource_type: str,
         resource_spec: Dict[str, Any],
         namespace: str = "default",
     ) -> Dict[str, Any]:
-        """Create a custom resource with retry logic."""
+        """Create a custom resource with comprehensive validation and retry logic.
+
+        Validates resource specification against security and structural requirements
+        before sending to Kubernetes to prevent cluster failures or invalid resources.
+        """
         try:
             if not self._KUBERNETES_AVAILABLE:
                 return self._ResponseFormatter.format_error_response(
                     "create custom resource",
                     Exception("Kubernetes client library is not available"),
                 )
+
+            # Comprehensive resource validation before creation
+            validation_result = await self._validate_resource_spec(
+                resource_type, resource_spec, namespace
+            )
+            if validation_result is not None:
+                return validation_result  # Return validation error
 
             resource_info = self._get_resource_info(resource_type)
 
@@ -198,7 +582,7 @@ class CRDOperationsClient(ResourceManager, ManagedComponent):
                 try:
                     await self._ensure_client()
 
-                    # Create the resource
+                    # Create the resource (only after successful validation)
                     result = await asyncio.to_thread(
                         self._custom_objects_api.create_namespaced_custom_object,
                         group=resource_info["group"],
