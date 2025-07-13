@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from mcp.types import Tool
 
+from .foundation.import_utils import get_logging_utils
 from .foundation.job_type_detector import JobTypeDetector
 from .foundation.log_processor_strategy import LogProcessorStrategy
 from .foundation.logging_utils import ResponseFormatter
@@ -25,6 +26,11 @@ class ToolRegistry:
         self.ray_manager = ray_manager
         self._tools: Dict[str, Dict[str, Any]] = {}
         self.response_formatter = ResponseFormatter()
+
+        # Initialize logging utilities
+        logging_utils = get_logging_utils()
+        self._LoggingUtility = logging_utils["LoggingUtility"]
+
         self._register_all_tools()
 
     def _register_all_tools(self) -> None:
@@ -876,7 +882,20 @@ class ToolRegistry:
 
     def _wrap_with_system_prompt(self, tool_name: str, result: Dict[str, Any]) -> str:
         """Wrap tool output with a system prompt for LLM enhancement."""
-        result_json = json.dumps(result, indent=2)
+        try:
+            result_json = json.dumps(result, indent=2)
+        except (TypeError, ValueError) as e:
+            # Handle non-serializable objects by converting to string representation
+            self._LoggingUtility.log_warning(
+                f"wrap_system_prompt_{tool_name}",
+                f"Result not JSON serializable: {e}, using string representation",
+            )
+            try:
+                # Try to serialize with default=str to handle non-serializable objects
+                result_json = json.dumps(result, indent=2, default=str)
+            except Exception:
+                # Last resort: use string representation
+                result_json = str(result)
 
         system_prompt = f"""You are an AI assistant helping with Ray cluster management. A user just called 
 the '{tool_name}' tool and received the following response:
@@ -907,6 +926,17 @@ Quick reference of commonly used Ray MCP tools: {', '.join(self.list_tool_names(
         self, name: str, arguments: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Execute a tool by name with the given arguments."""
+        # Input validation layer
+        if not name or not isinstance(name, str):
+            return ResponseFormatter.format_validation_error(
+                "Tool name must be a non-empty string"
+            )
+
+        if arguments is not None and not isinstance(arguments, dict):
+            return ResponseFormatter.format_validation_error(
+                "Arguments must be a dictionary"
+            )
+
         handler = self.get_tool_handler(name)
         if not handler:
             return ResponseFormatter.format_validation_error(f"Unknown tool: {name}")
@@ -924,17 +954,47 @@ Quick reference of commonly used Ray MCP tools: {', '.join(self.list_tool_names(
                     f"Missing required parameters for tool '{name}': {', '.join(missing_params)}"
                 )
 
-        # Execute the handler
-        result = await handler(**args)
+        # Execute the handler with additional error handling
+        try:
+            result = await handler(**args)
+        except Exception as e:
+            # Handler-specific exception handling
+            self._LoggingUtility.log_error(f"execute_tool_handler_{name}", e)
+            return ResponseFormatter.format_error_response(f"execute tool '{name}'", e)
+
+        # Handler response validation layer
+        if result is None:
+            self._LoggingUtility.log_warning(
+                f"execute_tool_{name}",
+                f"Handler returned None, using default error response",
+            )
+            return ResponseFormatter.format_error_response(
+                f"execute tool '{name}'", Exception("Tool handler returned None")
+            )
+
+        if not isinstance(result, dict):
+            self._LoggingUtility.log_warning(
+                f"execute_tool_{name}",
+                f"Handler returned non-dict type: {type(result)}, wrapping in success response",
+            )
+            return ResponseFormatter.format_success_response(result=result)
 
         # Check if enhanced output is enabled
         use_enhanced_output = (
             os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower() == "true"
         )
         if use_enhanced_output:
-            enhanced_response = self._wrap_with_system_prompt(name, result)
-            return ResponseFormatter.format_success_response(
-                enhanced_output=enhanced_response, raw_result=result
-            )
+            try:
+                enhanced_response = self._wrap_with_system_prompt(name, result)
+                return ResponseFormatter.format_success_response(
+                    enhanced_output=enhanced_response, raw_result=result
+                )
+            except Exception as e:
+                # Enhanced output failed, fall back to raw result
+                self._LoggingUtility.log_warning(
+                    f"execute_tool_enhanced_{name}",
+                    f"Enhanced output generation failed: {e}, falling back to raw result",
+                )
+                return result
         else:
             return result
