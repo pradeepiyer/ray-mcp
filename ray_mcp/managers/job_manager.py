@@ -72,7 +72,7 @@ class JobManager(ResourceManager, ManagedComponent):
         metadata: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Execute job submission operation."""
+        """Execute job submission operation with thread-safe client access."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_ray_initialized()
 
@@ -81,20 +81,25 @@ class JobManager(ResourceManager, ManagedComponent):
         if validation_error:
             return validation_error
 
-        # Get or create job client
-        job_client = await self._get_or_create_job_client("submit job")
-        if not job_client:
-            raise RuntimeError("Failed to initialize job client")
+        # Execute job submission with thread-safe client access
+        async def _execute_submit():
+            job_client = await self._get_or_create_job_client("submit job")
+            if not job_client:
+                raise RuntimeError("Failed to initialize job client")
 
-        # Pass all kwargs to Ray's submit_job method - let Ray handle parameter validation
-        # This avoids the issue where inspect.signature() filters out valid parameters
-        # that are accepted through **kwargs in Ray's JobSubmissionClient.submit_job method
-        submitted_job_id = job_client.submit_job(
-            entrypoint=entrypoint,
-            runtime_env=runtime_env,
-            job_id=job_id,
-            metadata=metadata,
-            **kwargs,
+            # Pass all kwargs to Ray's submit_job method - let Ray handle parameter validation
+            # This avoids the issue where inspect.signature() filters out valid parameters
+            # that are accepted through **kwargs in Ray's JobSubmissionClient.submit_job method
+            return job_client.submit_job(
+                entrypoint=entrypoint,
+                runtime_env=runtime_env,
+                job_id=job_id,
+                metadata=metadata,
+                **kwargs,
+            )
+
+        submitted_job_id = await self._execute_with_client_lock(
+            _execute_submit, "submit job"
         )
 
         return {
@@ -106,15 +111,19 @@ class JobManager(ResourceManager, ManagedComponent):
         }
 
     async def _list_jobs_operation(self) -> Dict[str, Any]:
-        """Execute list jobs operation."""
+        """Execute list jobs operation with thread-safe client access."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_ray_initialized()
 
-        job_client = await self._get_or_create_job_client("list jobs")
-        if not job_client:
-            raise RuntimeError("Failed to initialize job client")
+        # Execute job listing with thread-safe client access
+        async def _execute_list():
+            job_client = await self._get_or_create_job_client("list jobs")
+            if not job_client:
+                raise RuntimeError("Failed to initialize job client")
 
-        jobs = job_client.list_jobs()
+            return job_client.list_jobs()
+
+        jobs = await self._execute_with_client_lock(_execute_list, "list jobs")
 
         formatted_jobs = []
         for job in jobs:
@@ -128,7 +137,7 @@ class JobManager(ResourceManager, ManagedComponent):
         }
 
     async def _cancel_job_operation(self, job_id: str) -> Dict[str, Any]:
-        """Execute cancel job operation."""
+        """Execute cancel job operation with thread-safe client access."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_ray_initialized()
 
@@ -137,11 +146,15 @@ class JobManager(ResourceManager, ManagedComponent):
         if validation_error:
             return validation_error
 
-        job_client = await self._get_or_create_job_client("cancel job")
-        if not job_client:
-            raise RuntimeError("Failed to initialize job client")
+        # Execute job cancellation with thread-safe client access
+        async def _execute_cancel():
+            job_client = await self._get_or_create_job_client("cancel job")
+            if not job_client:
+                raise RuntimeError("Failed to initialize job client")
 
-        success = job_client.stop_job(job_id)
+            return job_client.stop_job(job_id)
+
+        success = await self._execute_with_client_lock(_execute_cancel, "cancel job")
 
         if success:
             return {
@@ -155,7 +168,7 @@ class JobManager(ResourceManager, ManagedComponent):
     async def _inspect_job_operation(
         self, job_id: str, mode: str = "status"
     ) -> Dict[str, Any]:
-        """Execute inspect job operation."""
+        """Execute inspect job operation with thread-safe client access."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_ray_initialized()
 
@@ -164,12 +177,29 @@ class JobManager(ResourceManager, ManagedComponent):
         if validation_error:
             return validation_error
 
-        job_client = await self._get_or_create_job_client("inspect job")
-        if not job_client:
-            raise RuntimeError("Failed to initialize job client")
+        # Execute job inspection with thread-safe client access
+        async def _execute_inspect():
+            job_client = await self._get_or_create_job_client("inspect job")
+            if not job_client:
+                raise RuntimeError("Failed to initialize job client")
 
-        # Get job details
-        job_details = job_client.get_job_info(job_id)
+            # Get job details
+            job_details = job_client.get_job_info(job_id)
+
+            # Get logs if needed (within the same lock to ensure consistency)
+            logs = None
+            logs_error = None
+            if mode in ["logs", "debug"]:
+                try:
+                    logs = job_client.get_job_logs(job_id)
+                except Exception as e:
+                    logs_error = str(e)
+
+            return job_details, logs, logs_error
+
+        job_details, logs, logs_error = await self._execute_with_client_lock(
+            _execute_inspect, "inspect job"
+        )
         formatted_job = self._format_job_info(job_details)
 
         result = {
@@ -181,11 +211,10 @@ class JobManager(ResourceManager, ManagedComponent):
 
         # Add mode-specific information
         if mode in ["logs", "debug"]:
-            try:
-                logs = job_client.get_job_logs(job_id)
+            if logs is not None:
                 result["logs"] = logs
-            except Exception as e:
-                result["logs_error"] = str(e)
+            if logs_error is not None:
+                result["logs_error"] = logs_error
 
         if mode == "debug":
             # Add debug-specific information
@@ -197,8 +226,38 @@ class JobManager(ResourceManager, ManagedComponent):
 
         return result
 
+    async def _execute_with_client_lock(self, operation_func, operation_name: str):
+        """Execute operation with comprehensive client lock protection.
+
+        This method ensures thread-safe access to the job client by protecting
+        all client interactions within a single lock boundary, preventing race
+        conditions and ensuring consistency across concurrent operations.
+
+        Args:
+            operation_func: Async function that performs the job client operation
+            operation_name: Name of the operation for logging purposes
+
+        Returns:
+            Result from the operation function
+
+        Raises:
+            RuntimeError: If operation fails or client is unavailable
+        """
+        async with self._job_client_lock:
+            try:
+                return await operation_func()
+            except Exception as e:
+                self._log_error(operation_name, e)
+                raise RuntimeError(
+                    f"Failed to execute {operation_name}: {str(e)}"
+                ) from e
+
     async def _get_or_create_job_client(self, operation_name: str) -> Optional[Any]:
-        """Get or create job submission client."""
+        """Get or create job submission client within existing lock protection.
+
+        This method assumes it's called within the _job_client_lock context
+        and provides client initialization with proper state management.
+        """
         self._ensure_ray_available()
 
         if not self._JobSubmissionClient:
@@ -209,33 +268,28 @@ class JobManager(ResourceManager, ManagedComponent):
             return None
 
         # Return existing client if available
-        if self._get_state_value("job_client"):
-            return self._get_state_value("job_client")
+        existing_client = self._get_state_value("job_client")
+        if existing_client:
+            return existing_client
 
-        # Use lock to synchronize client initialization
-        async with self._job_client_lock:
-            # Double-check pattern - another task might have initialized while waiting
-            if self._get_state_value("job_client"):
-                return self._get_state_value("job_client")
+        # Create new client (already within lock protection)
+        dashboard_url = self._get_state_value("dashboard_url")
+        if not dashboard_url:
+            self._log_warning(
+                operation_name,
+                "Dashboard URL not available, attempting to initialize",
+            )
+            dashboard_url = await self._initialize_job_client_if_available()
 
-            # Create new client
-            dashboard_url = self._get_state_value("dashboard_url")
             if not dashboard_url:
-                self._log_warning(
-                    operation_name,
-                    "Dashboard URL not available, attempting to initialize",
-                )
-                dashboard_url = await self._initialize_job_client_if_available()
+                return None
 
-                if not dashboard_url:
-                    return None
+        # Initialize client with retry logic
+        job_client = await self._initialize_job_client_with_retry(dashboard_url)
+        if job_client:
+            self._update_state(job_client=job_client)
 
-            # Initialize client with retry logic
-            job_client = await self._initialize_job_client_with_retry(dashboard_url)
-            if job_client:
-                self._update_state(job_client=job_client)
-
-            return job_client
+        return job_client
 
     async def _initialize_job_client_with_retry(
         self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
