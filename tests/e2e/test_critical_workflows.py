@@ -28,6 +28,39 @@ from ray_mcp.managers.unified_manager import RayUnifiedManager
 from ray_mcp.tools import get_ray_tools
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_after_all_tests():
+    """Final cleanup after all tests complete."""
+    yield  # This runs after all tests
+    
+    # Final cleanup - kill all Ray processes and close threads
+    try:
+        cleanup_all_ray_processes()
+        
+        # Force thread cleanup with timeout
+        import threading
+        import time
+        
+        # Wait for background threads to finish (with timeout)
+        main_thread = threading.current_thread()
+        for thread in threading.enumerate():
+            if thread is not main_thread and thread.is_alive():
+                try:
+                    thread.join(timeout=0.5)  # Short timeout
+                except:
+                    pass
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
+        # Brief pause to allow cleanup
+        time.sleep(0.2)
+            
+    except:
+        pass
+
+
 class E2ETestConfig:
     """Configuration for end-to-end tests."""
 
@@ -74,8 +107,56 @@ async def cleanup_ray():
         # Kill any remaining Ray processes
         subprocess.run(["pkill", "-f", "ray::"], capture_output=True, check=False)
         subprocess.run(["pkill", "-f", "ray_"], capture_output=True, check=False)
+        subprocess.run(["pkill", "-f", "raylet"], capture_output=True, check=False)
+        subprocess.run(["pkill", "-f", "gcs_server"], capture_output=True, check=False)
+        subprocess.run(["pkill", "-f", "dashboard"], capture_output=True, check=False)
         # Brief wait for process cleanup
         await asyncio.sleep(0.2)
+    except:
+        pass
+
+    # Force cleanup any hanging Python processes related to Ray
+    try:
+        import subprocess
+        
+        # Kill any Python processes that might be hanging from Ray jobs
+        subprocess.run(["pkill", "-f", "python.*ray"], capture_output=True, check=False)
+        # Brief wait for process cleanup
+        await asyncio.sleep(0.1)
+    except:
+        pass
+
+
+def cleanup_all_ray_processes():
+    """Nuclear cleanup option - use only when tests are completely stuck."""
+    try:
+        import subprocess
+        
+        # Kill all Ray-related processes
+        processes_to_kill = [
+            "ray::",
+            "ray_",
+            "raylet",
+            "gcs_server",
+            "dashboard",
+            "python.*ray",
+            "python.*pytest.*e2e",
+        ]
+        
+        for process_pattern in processes_to_kill:
+            try:
+                subprocess.run(["pkill", "-f", process_pattern], 
+                              capture_output=True, check=False, timeout=5)
+            except:
+                pass
+        
+        # Force kill any remaining processes
+        try:
+            subprocess.run(["pkill", "-9", "-f", "ray"], 
+                          capture_output=True, check=False, timeout=5)
+        except:
+            pass
+            
     except:
         pass
 
@@ -136,8 +217,26 @@ class TestCriticalWorkflows:
             os.environ['RAY_LOG_LEVEL'] = self.original_ray_log_level
         else:
             os.environ.pop('RAY_LOG_LEVEL', None)
-            
+        
+        # Aggressive cleanup
         await cleanup_ray()
+        
+        # Force garbage collection to clean up any lingering objects
+        import gc
+        gc.collect()
+        
+        # Clear any remaining asyncio tasks
+        try:
+            import asyncio
+            # Cancel any pending tasks
+            tasks = [task for task in asyncio.all_tasks() if not task.done()]
+            for task in tasks:
+                task.cancel()
+            # Wait briefly for cancellation
+            if tasks:
+                await asyncio.sleep(0.1)
+        except:
+            pass
 
     @pytest.mark.asyncio
     async def test_complete_ray_workflow(self):

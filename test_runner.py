@@ -35,14 +35,23 @@ class TestRunner:
         print("-" * 60)
         
         start_time = time.time()
-        result = subprocess.run(cmd, cwd=self.project_root)
-        duration = time.time() - start_time
         
-        if result.returncode == 0:
-            print(f"✅ {description} completed successfully in {duration:.1f}s")
-            return True
-        else:
-            print(f"❌ {description} failed after {duration:.1f}s")
+        # Set timeout - longer for E2E tests, shorter for others
+        timeout = 300 if "e2e" in description.lower() else 120
+        
+        try:
+            result = subprocess.run(cmd, cwd=self.project_root, timeout=timeout)
+            duration = time.time() - start_time
+            
+            if result.returncode == 0:
+                print(f"✅ {description} completed successfully in {duration:.1f}s")
+                return True
+            else:
+                print(f"❌ {description} failed after {duration:.1f}s")
+                return False
+        except subprocess.TimeoutExpired:
+            duration = time.time() - start_time
+            print(f"⏰ {description} timed out after {duration:.1f}s")
             return False
     
     def run_unit_tests(self) -> bool:
