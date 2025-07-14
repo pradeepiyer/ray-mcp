@@ -1,33 +1,32 @@
 # Configuration Files
 
-This directory contains example configuration files for various MCP clients.
+Example configuration files for MCP clients.
 
 ## Files
 
-### `claude_desktop_config.json`
-Example configuration for Claude Desktop application. Copy and modify for your setup.
+**`claude_desktop_config.json`**
+Example configuration for Claude Desktop application.
 
-### `mcp_server_config.json`
-Generic MCP server configuration that can be adapted for other MCP clients.
+**`mcp_server_config.json`**
+Generic MCP server configuration for other MCP clients.
 
 ## Usage
 
 1. Copy the appropriate config file to your MCP client's configuration directory
-2. Update the `command` path to point to your ray-mcp installation's `.venv/bin/ray-mcp`
-3. **IMPORTANT:** Set the `cwd` path to point to your ray-mcp project root directory
-4. **Google Cloud**: Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable to your service account key file path
-5. Adjust other environment variables as needed for your setup
+2. Update the `command` and `args` to use `uv run ray-mcp`
+3. Set the `cwd` path to your ray-mcp project root directory
+4. Set environment variables as needed for your setup
 
-## Important Configuration Notes
+## Important Notes
 
-- **Working Directory (`cwd`)**: This parameter is crucial for proper operation. Set it to your ray-mcp project root directory.
-- **Command Path**: Use the full path to the ray-mcp executable in your virtual environment (`.venv/bin/ray-mcp`).
-- **Google Cloud Authentication**: Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service account JSON key file for GKE functionality.
-- **Enhanced Output**: Set `RAY_MCP_ENHANCED_OUTPUT` to `"true"` for better debugging and user experience.
+- **Working Directory (`cwd`)**: Set to your ray-mcp project root directory
+- **Command**: Use `uv run ray-mcp` for modern uv-based execution
+- **Google Cloud**: Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+- **Enhanced Output**: Set `RAY_MCP_ENHANCED_OUTPUT` to `"true"` for better debugging
 
-## Client-Specific Locations
+## Client Locations
 
 - **Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Other clients**: Refer to client documentation for configuration file location
+- **Other clients**: Refer to client documentation
 
-See [CONFIGURATION.md](../CONFIGURATION.md) for detailed setup instructions. 
+See [CONFIGURATION.md](../CONFIGURATION.md) for detailed setup instructions.

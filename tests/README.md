@@ -1,223 +1,229 @@
 # Ray MCP Test Suite
 
-A comprehensive test suite for the Ray MCP server, organized for maintainability and efficient development.
+Comprehensive test suite for Ray MCP Server's prompt-driven architecture.
 
-## Test Organization
+## Test Strategy
 
-**Integration over Unit Tests**: Focus on testing workflows and behavior rather than implementation details. This approach provides better bug detection while requiring less maintenance as code evolves.
+### Three-Tier Testing Architecture
 
-**Strategic Coverage**: Test critical system functionality that users depend on, not every getter/setter or utility function.
+**Unit Tests** (`tests/unit/`)
+- 100% mocked for fast execution
+- Tests individual components in isolation
+- Focused on logic validation and edge cases
 
-**Behavior-Driven**: Tests should validate what the system does, not how it does it internally.
+**End-to-End Tests** (`tests/e2e/`)
+- No mocking, real system integration
+- Complete workflows from prompt to result
+- Validates actual Ray/Kubernetes operations
+
+**Smoke Tests** (subset of unit tests)
+- Critical functionality validation
+- Quick system health checks
+- Essential workflow verification
 
 ## Test Structure
 
 ```
 tests/
-├── test_core_functionality.py    # Tool registry, unified manager, system interfaces
-├── test_managers.py              # Manager behavior patterns & cross-integration  
-├── test_kubernetes.py            # Kubernetes/KubeRay operations & workflows
-├── test_mcp_server.py            # End-to-end integration tests
-├── helpers/                      # Reusable test utilities
-│   ├── fixtures.py              # Core test fixtures
-│   ├── utils.py                 # General utilities & test helpers
-│   ├── e2e.py                   # End-to-end testing workflows
-│   └── __init__.py              # Convenient imports
-└── conftest.py                   # Streamlined core fixtures
+├── conftest.py                     # Core test configuration
+├── test_runner.py                  # Unified test runner
+├── unit/                           # Unit tests (100% mocked)
+│   ├── test_prompt_managers.py     # Manager behavior with mocking
+│   ├── test_tool_registry.py       # Tool registry and MCP integration
+│   ├── test_mcp_tools.py          # MCP tool functionality
+│   └── test_parsers_and_formatters.py  # Parsing and formatting logic
+├── e2e/                            # End-to-end tests (no mocking)
+│   └── test_critical_workflows.py  # Critical system workflows
+└── helpers/                        # Test utilities
+    ├── fixtures.py                 # Reusable test fixtures
+    ├── utils.py                    # Test helper functions
+    └── e2e.py                      # End-to-end utilities
 ```
 
 ## Running Tests
 
-### All Tests
+### Quick Development Workflow
+
 ```bash
-pytest
+# Fast unit tests with mocking
+make test-fast
+
+# Critical functionality check
+make test-smoke
+
+# Integration testing
+make test-e2e
+
+# Complete test suite
+make test
 ```
 
-### Fast Tests Only
+### Direct Test Runner
+
 ```bash
-pytest -m fast
+# Run specific test types
+python test_runner.py unit      # Unit tests only
+python test_runner.py e2e       # End-to-end tests only
+python test_runner.py smoke     # Smoke tests only
+python test_runner.py all       # All tests
+
+# With coverage
+python test_runner.py unit --coverage
 ```
 
-### Integration Tests
-```bash
-pytest tests/test_mcp_server.py
-```
+### Traditional pytest
 
-### GKE Integration (requires GKE environment)
 ```bash
-pytest -m gke
-```
+# Run all unit tests
+pytest tests/unit/ -m unit
 
-### Specific Test Files
-```bash
-pytest tests/test_core_functionality.py
-pytest tests/test_managers.py  
-pytest tests/test_kubernetes.py
+# Run all e2e tests
+pytest tests/e2e/ -m e2e
+
+# Run specific test file
+pytest tests/unit/test_prompt_managers.py
 ```
 
 ## Test Categories
 
-### Core Functionality (`test_core_functionality.py`)
-- **Tool Registry**: MCP protocol integration, tool execution workflows
-- **Unified Manager**: Component delegation, architecture validation
-- **System Interfaces**: MCP server startup, workflow integration
-- **Foundation Components**: Critical imports, base managers, utilities
+### Unit Tests (`tests/unit/`)
 
-**Focus**: System-level behavior and contracts that users interact with.
+**test_prompt_managers.py**
+- Tests all manager classes with full mocking
+- Validates prompt parsing and action execution
+- Tests error handling and edge cases
+- Covers ClusterManager, JobManager, UnifiedManager, CloudProviderManager
 
-### Manager Behavior (`test_managers.py`)
-- **Behavior Patterns**: How managers handle common operations
-- **Cross-Manager Integration**: Component interaction and delegation
-- **Error Handling**: Consistent error patterns across managers
-- **State Management**: Manager state coordination and consistency
+**test_tool_registry.py**
+- Tests MCP tool registration and routing
+- Validates tool schema and parameter handling
+- Tests integration with handlers and managers
+- Covers 3-tool architecture validation
 
-**Focus**: Manager contracts and integration patterns, not implementation details.
+**test_mcp_tools.py**
+- Tests MCP tool functionality
+- Validates tool parameter validation
+- Tests tool execution workflows
 
-### Kubernetes Operations (`test_kubernetes.py`)
-- **CRD Operations**: Ray cluster and job custom resource management
-- **KubeRay Workflows**: Complete cluster and job lifecycle testing
-- **Kubernetes Integration**: Cluster connection, authentication, operations
-- **Cloud Provider Coordination**: GKE integration and coordination
-- **Error Handling**: Kubernetes-specific error patterns
+**test_parsers_and_formatters.py**
+- Tests ActionParser natural language processing
+- Validates prompt parsing logic
+- Tests response formatting
 
-**Focus**: End-to-end Kubernetes workflows and KubeRay operator integration.
+### End-to-End Tests (`tests/e2e/`)
 
-### Integration Tests (`test_mcp_server.py`)
-- **GKE + KubeRay Workflow**: Complete end-to-end integration testing
-- **System Integration**: Full workflow validation with real components
-- **Environment Setup**: Test environment configuration and validation
+**test_critical_workflows.py**
+- Tests complete system workflows without mocking
+- Validates real Ray cluster operations
+- Tests actual MCP server integration
+- Covers critical user scenarios
 
-**Focus**: Real-world usage scenarios with minimal mocking.
+## Test Utilities
 
-## Test Utilities (`helpers/`)
+### Fixtures (`tests/helpers/fixtures.py`)
 
-### Fixtures (`helpers/fixtures.py`)
 ```python
-from tests.helpers import e2e_ray_manager
+from tests.helpers import mock_state_manager, mock_ray_cluster
 
-async def test_something(e2e_ray_manager):
-    # Use the configured manager
-    result = await e2e_ray_manager.init_cluster()
+@pytest.fixture
+def mock_cluster_manager(mock_state_manager):
+    """Pre-configured cluster manager with mocks."""
+    return ClusterManager(mock_state_manager)
 ```
 
-### Utilities (`helpers/utils.py`)
+### Utilities (`tests/helpers/utils.py`)
+
 ```python
-from tests.helpers import E2EConfig, TempScriptManager, TestScripts
+from tests.helpers import create_test_job_config, validate_response_format
 
-# Environment configuration
-config = E2EConfig.from_environment()
+# Test data generation
+job_config = create_test_job_config(entrypoint="python test.py")
 
-# Temporary script management
-with TempScriptManager() as script_manager:
-    script_path = script_manager.create_script("print('hello')")
+# Response validation
+assert validate_response_format(response)
 ```
 
-### End-to-End Workflows (`helpers/e2e.py`)
+### End-to-End Helpers (`tests/helpers/e2e.py`)
+
 ```python
-from tests.helpers import E2EWorkflows
+from tests.helpers import E2ETestRunner
 
 # Complete workflow testing
-await E2EWorkflows.start_cluster_and_submit_job(
-    manager, job_script="print('test')"
-)
+runner = E2ETestRunner()
+await runner.test_cluster_lifecycle()
 ```
 
 ## Writing Tests
 
-### Guidelines
+### Unit Test Guidelines
 
-1. **Test Behavior, Not Implementation**
-   ```python
-   # Good: Tests what happens
-   result = await manager.submit_job("python script.py")
-   assert result["status"] == "success"
-   assert "job_id" in result
-   
-   # Avoid: Tests how it's implemented
-   assert manager._internal_method.call_count == 1
-   ```
+```python
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cluster_creation_success():
+    """Test successful cluster creation with mocking."""
+    # Setup comprehensive mocks
+    mock_ray = Mock()
+    mock_ray.init.return_value = Mock()
+    
+    # Test the behavior
+    manager = ClusterManager(mock_state_manager)
+    result = await manager.handle_cluster_request("create a local cluster")
+    
+    # Validate behavior, not implementation
+    assert result["status"] == "success"
+    assert "cluster_info" in result["data"]
+```
 
-2. **Use Integration Over Unit Tests**
-   ```python
-   # Good: Tests real workflow
-   await registry.execute_tool("init_ray_cluster", {"num_cpus": 2})
-   result = await registry.execute_tool("submit_ray_job", {"entrypoint": "python script.py"})
-   
-   # Avoid: Excessive mocking
-   mock_manager.method1.return_value = {...}
-   mock_manager.method2.return_value = {...}
-   ```
+### End-to-End Test Guidelines
 
-3. **Focus on User-Facing Functionality**
-   - Tool execution workflows
-   - Manager delegation patterns  
-   - Error handling and recovery
-   - System integration points
-
-4. **Use Descriptive Test Names**
-   ```python
-   def test_kuberay_cluster_lifecycle_workflow():
-       """Test complete KubeRay cluster creation, scaling, and deletion."""
-   
-   def test_system_workflow_integration():
-       """Test that core system workflows integrate properly."""
-   ```
-
-### Adding New Tests
-
-1. **Choose the Right File**:
-   - Tool/registry behavior → `test_core_functionality.py`
-   - Manager interactions → `test_managers.py`
-   - Kubernetes workflows → `test_kubernetes.py`
-   - Full integration → `test_mcp_server.py`
-
-2. **Use Existing Helpers**:
-   ```python
-   from tests.helpers import e2e_ray_manager, E2EWorkflows
-   ```
-
-3. **Mark Tests Appropriately**:
-   ```python
-   @pytest.mark.fast
-   def test_quick_validation():
-       pass
-   
-   @pytest.mark.gke  
-   def test_gke_integration():
-       pass
-   ```
+```python
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_complete_job_workflow():
+    """Test complete job workflow without mocking."""
+    # Use real components
+    manager = RayUnifiedManager()
+    
+    # Test actual workflow
+    cluster_result = await manager.handle_cluster_request("create a local cluster")
+    assert cluster_result["status"] == "success"
+    
+    job_result = await manager.handle_job_request("submit job with script test.py")
+    assert job_result["status"] == "success"
+```
 
 ## Test Markers
 
-- `@pytest.mark.fast`: Quick tests (default, no external dependencies)
-- `@pytest.mark.gke`: Requires GKE environment and credentials
+- `@pytest.mark.unit`: Unit tests with mocking
+- `@pytest.mark.e2e`: End-to-end tests without mocking
 - `@pytest.mark.asyncio`: Async test functions
 
 ## Environment Requirements
 
-### Basic Tests
+### Unit Tests
 - Python 3.10+
-- Ray MCP dependencies (see `pyproject.toml`)
+- Ray MCP dependencies
+- pytest and mocking libraries
 
-### GKE Integration Tests
-- Google Cloud SDK (`gcloud`)
-- GKE cluster access
-- Service account credentials
-- Environment variables: `GOOGLE_APPLICATION_CREDENTIALS`, `GKE_PROJECT_ID`, `GKE_CLUSTER_NAME`, `GKE_ZONE`
+### End-to-End Tests
+- All unit test requirements
+- Ray cluster capability
+- Optional: Kubernetes cluster for KubeRay tests
+- Optional: GKE credentials for cloud tests
 
-## Benefits of This Structure
+## Benefits
 
-1. **Maintainability**: Fewer files to update when code changes
-2. **Quality**: Tests catch real bugs in user workflows  
-3. **Speed**: Faster test development and execution
-4. **Clarity**: Clear organization by functionality domain
-5. **Strategic Value**: Focus on critical system behavior
+1. **Fast Development**: Unit tests provide immediate feedback
+2. **Reliable Integration**: E2E tests validate real system behavior
+3. **Maintainable**: Clear separation between mocked and real tests
+4. **Focused**: Tests validate critical user workflows
+5. **Scalable**: Easy to add new tests in appropriate categories
 
-## Migration from Legacy Tests
+## Migration Notes
 
-This test suite replaces numerous smaller unit test files with strategic, behavior-focused tests. The new structure provides:
-
-- **64% fewer test files** while maintaining coverage
-- **Integration-focused testing** for better bug detection
-- **Behavior validation** over implementation testing
-- **Faster development cycle** with less brittle tests
+This test suite implements a modern testing strategy:
+- **Unit tests** with 100% mocking for fast execution
+- **End-to-end tests** with no mocking for integration validation
+- **Unified test runner** for consistent execution
+- **Prompt-driven testing** aligned with the 3-tool architecture
