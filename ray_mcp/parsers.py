@@ -24,7 +24,7 @@ class ActionParser:
 
     # Cloud operations
     CLOUD_AUTH = r"(?:auth|login|authenticate).+(?:gcp|google|gke|cloud)"
-    CLOUD_LIST = r"(?:list|show|get).+(?:cluster|k8s|kubernetes)"
+    CLOUD_LIST = r"(?:list|show|get).+(?:cluster|k8s|kubernetes|gke)"
     CLOUD_CONNECT = r"connect.+(?:gke|k8s|kubernetes)"
     CLOUD_CREATE = r"create.+(?:cluster|gke|k8s)"
     CLOUD_CHECK = r"(?:check|verify|test).+(?:env|auth|setup)"

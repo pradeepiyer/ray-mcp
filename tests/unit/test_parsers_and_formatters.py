@@ -205,6 +205,9 @@ class TestActionParser:
             "show kubernetes clusters",
             "list clusters in GCP",
             "get GKE cluster list",
+            "Get GKE clusters",  # Added test case for the reported issue
+            "list gke clusters",  # Added test case with lowercase
+            "show all gke clusters",  # Added test case with 'all'
         ]
 
         for prompt in prompts:
