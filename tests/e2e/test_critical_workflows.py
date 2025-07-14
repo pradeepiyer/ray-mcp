@@ -52,18 +52,30 @@ async def cleanup_ray():
 
         if ray.is_initialized():
             ray.shutdown()
-            # Wait a bit longer for processes to shut down
-            await asyncio.sleep(3)
+            # Reduced wait time for faster cleanup
+            await asyncio.sleep(1)
     except:
         pass
 
-    # Also try command line cleanup
+    # Also try command line cleanup with reduced timeout
     try:
         import subprocess
 
-        subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=10)
-        # Give time for external processes to shut down
-        await asyncio.sleep(1)
+        subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=5)
+        # Reduced wait time for faster cleanup
+        await asyncio.sleep(0.5)
+    except:
+        pass
+
+    # Force cleanup any stubborn Ray processes
+    try:
+        import subprocess
+        
+        # Kill any remaining Ray processes
+        subprocess.run(["pkill", "-f", "ray::"], capture_output=True, check=False)
+        subprocess.run(["pkill", "-f", "ray_"], capture_output=True, check=False)
+        # Brief wait for process cleanup
+        await asyncio.sleep(0.2)
     except:
         pass
 
@@ -111,7 +123,7 @@ class TestCriticalWorkflows:
         self.original_ray_log_level = os.environ.get('RAY_LOG_LEVEL')
         os.environ['RAY_LOG_LEVEL'] = 'CRITICAL'  # Suppress all but critical logs
 
-    async def cleanup_method(self):
+    async def teardown_method(self):
         """Clean up after each test."""
         # Restore original Ray timeout
         if self.original_gcs_timeout is not None:
