@@ -97,6 +97,13 @@ class RayUnifiedManager:
 
     def _is_kubernetes_environment(self, prompt: str) -> bool:
         """Detect if prompt is for Kubernetes/KubeRay operations."""
-        k8s_keywords = ["kubernetes", "k8s", "kuberay", "namespace", "kubectl", "kubeconfig"]
+        k8s_keywords = [
+            "kubernetes",
+            "k8s",
+            "kuberay",
+            "namespace",
+            "kubectl",
+            "kubeconfig",
+        ]
         prompt_lower = prompt.lower()
         return any(keyword in prompt_lower for keyword in k8s_keywords)

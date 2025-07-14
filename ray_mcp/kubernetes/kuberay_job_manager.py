@@ -393,10 +393,12 @@ class KubeRayJobManager(ResourceManager):
     def _ensure_kuberay_ready(self) -> None:
         """Ensure KubeRay operator is available and ready."""
         self._ensure_kubernetes_available()
-        
+
         # Try to connect to kubernetes
         if not self._is_kubernetes_ready():
-            raise RuntimeError("Kubernetes is not available or configured. Please check kubeconfig.")
-        
+            raise RuntimeError(
+                "Kubernetes is not available or configured. Please check kubeconfig."
+            )
+
         # For now, just check if we can connect to K8s
         # Future enhancement: check if KubeRay operator is actually running

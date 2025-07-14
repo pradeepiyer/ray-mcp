@@ -427,9 +427,9 @@ class KubeRayClusterManager(ResourceManager):
     ) -> None:
         """Update cluster state (simple tracking)."""
         # Simple state tracking - store in instance variables
-        if not hasattr(self, '_cluster_states'):
+        if not hasattr(self, "_cluster_states"):
             self._cluster_states = {}
-            
+
         self._cluster_states[f"{namespace}/{cluster_name}"] = {
             "name": cluster_name,
             "namespace": namespace,
@@ -439,7 +439,7 @@ class KubeRayClusterManager(ResourceManager):
 
     def _remove_cluster_state(self, cluster_name: str, namespace: str) -> None:
         """Remove cluster state (simple tracking)."""
-        if hasattr(self, '_cluster_states'):
+        if hasattr(self, "_cluster_states"):
             cluster_key = f"{namespace}/{cluster_name}"
             if cluster_key in self._cluster_states:
                 del self._cluster_states[cluster_key]
@@ -889,10 +889,12 @@ class KubeRayClusterManager(ResourceManager):
     def _ensure_kuberay_ready(self) -> None:
         """Ensure KubeRay operator is available and ready."""
         self._ensure_kubernetes_available()
-        
+
         # Try to connect to kubernetes
         if not self._is_kubernetes_ready():
-            raise RuntimeError("Kubernetes is not available or configured. Please check kubeconfig.")
-        
+            raise RuntimeError(
+                "Kubernetes is not available or configured. Please check kubeconfig."
+            )
+
         # For now, just check if we can connect to K8s
         # Future enhancement: check if KubeRay operator is actually running

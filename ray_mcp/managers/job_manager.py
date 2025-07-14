@@ -252,7 +252,7 @@ class JobManager(ResourceManager):
             # Try to get dashboard URL for job client
             if not self._JobSubmissionClient:
                 return None
-                
+
             dashboard_url = self._get_dashboard_url()
             if dashboard_url:
                 self._job_client = self._JobSubmissionClient(dashboard_url)

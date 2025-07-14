@@ -216,7 +216,9 @@ class KubernetesManager(ResourceManager):
     def _ensure_kubernetes_connected(self) -> None:
         """Ensure Kubernetes is connected and ready."""
         self._ensure_kubernetes_available()
-        
+
         # Try to connect to kubernetes
         if not self._is_kubernetes_ready():
-            raise RuntimeError("Kubernetes is not available or configured. Please check kubeconfig.")
+            raise RuntimeError(
+                "Kubernetes is not available or configured. Please check kubeconfig."
+            )

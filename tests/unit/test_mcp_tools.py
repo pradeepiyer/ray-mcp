@@ -12,14 +12,14 @@ Test Focus:
 """
 
 import json
-import pytest
-from unittest.mock import AsyncMock, Mock, patch
 from typing import List
+from unittest.mock import AsyncMock, Mock, patch
 
 from mcp.types import TextContent
+import pytest
 
-from ray_mcp.tools import get_ray_tools
 from ray_mcp.handlers import RayHandlers
+from ray_mcp.tools import get_ray_tools
 
 
 @pytest.mark.unit
@@ -29,46 +29,49 @@ class TestRayTools:
     def test_get_ray_tools_structure(self):
         """Test that get_ray_tools returns properly structured tools."""
         tools = get_ray_tools()
-        
+
         # Should return exactly 3 tools
         assert len(tools) == 3
-        
+
         # Extract tool names
         tool_names = [tool.name for tool in tools]
         expected_names = ["ray_cluster", "ray_job", "cloud"]
-        
+
         assert set(tool_names) == set(expected_names)
 
     def test_ray_cluster_tool_schema(self):
         """Test ray_cluster tool schema."""
         tools = get_ray_tools()
         cluster_tool = next(tool for tool in tools if tool.name == "ray_cluster")
-        
+
         # Verify basic structure
         assert cluster_tool.name == "ray_cluster"
         assert "cluster" in cluster_tool.description.lower()
-        
+
         # Verify input schema
         schema = cluster_tool.inputSchema
         assert schema["type"] == "object"
         assert "prompt" in schema["properties"]
         assert schema["required"] == ["prompt"]
-        
+
         # Verify prompt property
         prompt_prop = schema["properties"]["prompt"]
         assert prompt_prop["type"] == "string"
         assert "description" in prompt_prop
-        assert "example" in prompt_prop["description"].lower() or "Examples" in prompt_prop["description"]
+        assert (
+            "example" in prompt_prop["description"].lower()
+            or "Examples" in prompt_prop["description"]
+        )
 
     def test_ray_job_tool_schema(self):
         """Test ray_job tool schema."""
         tools = get_ray_tools()
         job_tool = next(tool for tool in tools if tool.name == "ray_job")
-        
+
         # Verify basic structure
         assert job_tool.name == "ray_job"
         assert "job" in job_tool.description.lower()
-        
+
         # Verify input schema follows same pattern
         schema = job_tool.inputSchema
         assert schema["type"] == "object"
@@ -80,11 +83,11 @@ class TestRayTools:
         """Test cloud tool schema."""
         tools = get_ray_tools()
         cloud_tool = next(tool for tool in tools if tool.name == "cloud")
-        
+
         # Verify basic structure
         assert cloud_tool.name == "cloud"
         assert "cloud" in cloud_tool.description.lower()
-        
+
         # Verify input schema follows same pattern
         schema = cloud_tool.inputSchema
         assert schema["type"] == "object"
@@ -95,20 +98,31 @@ class TestRayTools:
     def test_tool_descriptions_contain_examples(self):
         """Test that all tool descriptions contain helpful examples."""
         tools = get_ray_tools()
-        
+
         for tool in tools:
             description = tool.inputSchema["properties"]["prompt"]["description"]
-            
+
             # Should contain examples or example text
-            assert any(keyword in description.lower() for keyword in ["example", "examples"])
-            
+            assert any(
+                keyword in description.lower() for keyword in ["example", "examples"]
+            )
+
             # Should contain practical usage patterns
             if tool.name == "ray_cluster":
-                assert any(keyword in description.lower() for keyword in ["create", "connect", "stop"])
+                assert any(
+                    keyword in description.lower()
+                    for keyword in ["create", "connect", "stop"]
+                )
             elif tool.name == "ray_job":
-                assert any(keyword in description.lower() for keyword in ["submit", "list", "logs", "cancel"])
+                assert any(
+                    keyword in description.lower()
+                    for keyword in ["submit", "list", "logs", "cancel"]
+                )
             elif tool.name == "cloud":
-                assert any(keyword in description.lower() for keyword in ["authenticate", "cluster", "gke"])
+                assert any(
+                    keyword in description.lower()
+                    for keyword in ["authenticate", "cluster", "gke"]
+                )
 
 
 @pytest.mark.unit
@@ -128,23 +142,23 @@ class TestRayHandlers:
         self.unified_manager_mock.handle_cluster_request.return_value = {
             "status": "success",
             "message": "Cluster created successfully",
-            "cluster_address": "localhost:8265"
+            "cluster_address": "localhost:8265",
         }
-        
+
         # Simulate tool call
         arguments = {"prompt": "create a local cluster with 4 CPUs"}
         result = await self.handlers.handle_tool_call("ray_cluster", arguments)
-        
+
         # Verify manager was called correctly
         self.unified_manager_mock.handle_cluster_request.assert_called_once_with(
             "create a local cluster with 4 CPUs"
         )
-        
+
         # Verify response format
         assert isinstance(result, list)
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        
+
         # Parse the JSON response
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "success"
@@ -157,17 +171,17 @@ class TestRayHandlers:
         self.unified_manager_mock.handle_job_request.return_value = {
             "status": "success",
             "job_id": "raysubmit_123",
-            "message": "Job submitted successfully"
+            "message": "Job submitted successfully",
         }
-        
+
         arguments = {"prompt": "submit job with script train.py"}
         result = await self.handlers.handle_tool_call("ray_job", arguments)
-        
+
         # Verify manager was called
         self.unified_manager_mock.handle_job_request.assert_called_once_with(
             "submit job with script train.py"
         )
-        
+
         # Verify response
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "success"
@@ -180,17 +194,17 @@ class TestRayHandlers:
         self.unified_manager_mock.handle_cloud_request.return_value = {
             "status": "success",
             "message": "Authenticated with GCP",
-            "project_id": "ml-experiments"
+            "project_id": "ml-experiments",
         }
-        
+
         arguments = {"prompt": "authenticate with GCP project ml-experiments"}
         result = await self.handlers.handle_tool_call("cloud", arguments)
-        
+
         # Verify manager was called
         self.unified_manager_mock.handle_cloud_request.assert_called_once_with(
             "authenticate with GCP project ml-experiments"
         )
-        
+
         # Verify response
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "success"
@@ -201,7 +215,7 @@ class TestRayHandlers:
         """Test handling calls to invalid tool names."""
         arguments = {"prompt": "some prompt"}
         result = await self.handlers.handle_tool_call("invalid_tool", arguments)
-        
+
         # Should return error
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "error"
@@ -215,15 +229,17 @@ class TestRayHandlers:
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "error"
         assert "arguments required" in response_data["message"].lower()
-        
+
         # Test empty arguments (should proceed to prompt validation)
         result = await self.handlers.handle_tool_call("ray_cluster", {})
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "error"
         assert "prompt required" in response_data["message"].lower()
-        
+
         # Test arguments without prompt
-        result = await self.handlers.handle_tool_call("ray_cluster", {"other_field": "value"})
+        result = await self.handlers.handle_tool_call(
+            "ray_cluster", {"other_field": "value"}
+        )
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "error"
         assert "prompt required" in response_data["message"].lower()
@@ -234,12 +250,12 @@ class TestRayHandlers:
         # Mock manager returning error
         self.unified_manager_mock.handle_cluster_request.return_value = {
             "status": "error",
-            "message": "Ray is not available"
+            "message": "Ray is not available",
         }
-        
+
         arguments = {"prompt": "create cluster"}
         result = await self.handlers.handle_tool_call("ray_cluster", arguments)
-        
+
         # Error should be propagated
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "error"
@@ -249,11 +265,13 @@ class TestRayHandlers:
     async def test_exception_handling_in_handlers(self):
         """Test that exceptions in managers are caught and handled."""
         # Mock manager raising exception
-        self.unified_manager_mock.handle_job_request.side_effect = Exception("Unexpected error")
-        
+        self.unified_manager_mock.handle_job_request.side_effect = Exception(
+            "Unexpected error"
+        )
+
         arguments = {"prompt": "submit job"}
         result = await self.handlers.handle_tool_call("ray_job", arguments)
-        
+
         # Exception should be caught and converted to error response
         response_data = json.loads(result[0].text)
         assert response_data["status"] == "error"
@@ -270,45 +288,53 @@ class TestRayHandlers:
                     "status": "success",
                     "cluster_address": "localhost:8265",
                     "dashboard_url": "http://localhost:8265",
-                    "nodes": [{"id": "node1", "resources": {"CPU": 4}}]
-                }
+                    "nodes": [{"id": "node1", "resources": {"CPU": 4}}],
+                },
             },
             {
-                "tool": "ray_job", 
+                "tool": "ray_job",
                 "mock_response": {
                     "status": "success",
                     "jobs": [
                         {"job_id": "job1", "status": "RUNNING"},
-                        {"job_id": "job2", "status": "SUCCEEDED"}
-                    ]
-                }
+                        {"job_id": "job2", "status": "SUCCEEDED"},
+                    ],
+                },
             },
             {
                 "tool": "cloud",
                 "mock_response": {
                     "status": "error",
                     "message": "Authentication failed",
-                    "details": {"error_code": 401, "retry_after": 60}
-                }
-            }
+                    "details": {"error_code": 401, "retry_after": 60},
+                },
+            },
         ]
-        
+
         for case in test_cases:
             # Set up mock response
             if case["tool"] == "ray_cluster":
-                self.unified_manager_mock.handle_cluster_request.return_value = case["mock_response"]
+                self.unified_manager_mock.handle_cluster_request.return_value = case[
+                    "mock_response"
+                ]
             elif case["tool"] == "ray_job":
-                self.unified_manager_mock.handle_job_request.return_value = case["mock_response"]
+                self.unified_manager_mock.handle_job_request.return_value = case[
+                    "mock_response"
+                ]
             elif case["tool"] == "cloud":
-                self.unified_manager_mock.handle_cloud_request.return_value = case["mock_response"]
-            
+                self.unified_manager_mock.handle_cloud_request.return_value = case[
+                    "mock_response"
+                ]
+
             # Make tool call
-            result = await self.handlers.handle_tool_call(case["tool"], {"prompt": "test"})
-            
+            result = await self.handlers.handle_tool_call(
+                case["tool"], {"prompt": "test"}
+            )
+
             # Verify JSON is valid and parseable
             response_text = result[0].text
             parsed = json.loads(response_text)  # Should not raise exception
-            
+
             # Verify structure matches expectation
             assert parsed == case["mock_response"]
 
@@ -316,7 +342,7 @@ class TestRayHandlers:
         """Test that handlers are properly initialized."""
         manager = Mock()
         handlers = RayHandlers(manager)
-        
+
         # Should store the manager reference
         assert handlers.unified_manager is manager
 
@@ -324,27 +350,36 @@ class TestRayHandlers:
     async def test_concurrent_tool_calls(self):
         """Test that handlers can handle concurrent tool calls."""
         import asyncio
-        
+
         # Mock different responses for different calls
-        self.unified_manager_mock.handle_cluster_request.return_value = {"status": "success", "type": "cluster"}
-        self.unified_manager_mock.handle_job_request.return_value = {"status": "success", "type": "job"}
-        self.unified_manager_mock.handle_cloud_request.return_value = {"status": "success", "type": "cloud"}
-        
+        self.unified_manager_mock.handle_cluster_request.return_value = {
+            "status": "success",
+            "type": "cluster",
+        }
+        self.unified_manager_mock.handle_job_request.return_value = {
+            "status": "success",
+            "type": "job",
+        }
+        self.unified_manager_mock.handle_cloud_request.return_value = {
+            "status": "success",
+            "type": "cloud",
+        }
+
         # Make concurrent calls
         tasks = [
             self.handlers.handle_tool_call("ray_cluster", {"prompt": "cluster prompt"}),
             self.handlers.handle_tool_call("ray_job", {"prompt": "job prompt"}),
-            self.handlers.handle_tool_call("cloud", {"prompt": "cloud prompt"})
+            self.handlers.handle_tool_call("cloud", {"prompt": "cloud prompt"}),
         ]
-        
+
         results = await asyncio.gather(*tasks)
-        
+
         # All should succeed
         assert len(results) == 3
-        
+
         # Parse responses
         responses = [json.loads(result[0].text) for result in results]
-        
+
         # Should have different types as expected
         types = [resp["type"] for resp in responses]
         assert "cluster" in types

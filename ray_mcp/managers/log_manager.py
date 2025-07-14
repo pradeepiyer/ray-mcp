@@ -20,14 +20,16 @@ class LogManager(ResourceManager):
 
     async def execute_request(self, prompt: str) -> Dict[str, Any]:
         """Execute log operations using natural language prompts.
-        
+
         This is a simple log manager that delegates to retrieve_logs.
         For now it just returns an error since log operations are handled
         by job and cluster managers directly.
         """
         return self._ResponseFormatter.format_error_response(
             "log manager execute_request",
-            Exception("Log operations should be handled by job or cluster managers directly")
+            Exception(
+                "Log operations should be handled by job or cluster managers directly"
+            ),
         )
 
     async def retrieve_logs(
@@ -223,11 +225,11 @@ class LogManager(ResourceManager):
         if not self._JobSubmissionClient:
             return None
 
-        job_client = getattr(self, '_job_client', None)
+        job_client = getattr(self, "_job_client", None)
 
         if not job_client:
             # Try to create a basic client if we have dashboard URL
-            dashboard_url = getattr(self, '_dashboard_url', None)
+            dashboard_url = getattr(self, "_dashboard_url", None)
             if dashboard_url:
                 try:
                     job_client = self._JobSubmissionClient(dashboard_url)

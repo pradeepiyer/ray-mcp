@@ -11,11 +11,12 @@ Test Focus:
 - Validation of output schemas
 """
 
-import pytest
 from unittest.mock import Mock, patch
 
-from ray_mcp.parsers import ActionParser
+import pytest
+
 from ray_mcp.foundation.logging_utils import ResponseFormatter
+from ray_mcp.parsers import ActionParser
 
 
 @pytest.mark.unit
@@ -32,31 +33,24 @@ class TestActionParser:
                     "cpus": 4,
                     "gpus": 0,
                     "dashboard_port": 8265,
-                    "include_dashboard": True
-                }
+                    "include_dashboard": True,
+                },
             },
             {
                 "prompt": "create cluster with 8 CPUs and 2 GPUs",
-                "expected": {
-                    "operation": "create", 
-                    "cpus": 8,
-                    "gpus": 2
-                }
+                "expected": {"operation": "create", "cpus": 8, "gpus": 2},
             },
             {
                 "prompt": "start a Ray cluster with dashboard on port 9000",
-                "expected": {
-                    "operation": "create",
-                    "dashboard_port": 9000
-                }
-            }
+                "expected": {"operation": "create", "dashboard_port": 9000},
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_cluster_action(case["prompt"])
-            
+
             assert result["operation"] == case["expected"]["operation"]
-            
+
             # Check that expected keys are present with correct values
             for key, value in case["expected"].items():
                 if key in result:
@@ -67,20 +61,14 @@ class TestActionParser:
         test_cases = [
             {
                 "prompt": "connect to cluster at 192.168.1.100:10001",
-                "expected": {
-                    "operation": "connect",
-                    "address": "192.168.1.100:10001"
-                }
+                "expected": {"operation": "connect", "address": "192.168.1.100:10001"},
             },
             {
                 "prompt": "connect to Ray cluster at localhost:8265",
-                "expected": {
-                    "operation": "connect",
-                    "address": "localhost:8265"
-                }
-            }
+                "expected": {"operation": "connect", "address": "localhost:8265"},
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_cluster_action(case["prompt"])
             assert result["operation"] == case["expected"]["operation"]
@@ -92,9 +80,9 @@ class TestActionParser:
             "inspect cluster status",
             "show cluster information",
             "get cluster details",
-            "check cluster health"
+            "check cluster health",
         ]
-        
+
         for prompt in prompts:
             result = ActionParser.parse_cluster_action(prompt)
             assert result["operation"] == "inspect"
@@ -105,9 +93,9 @@ class TestActionParser:
             "stop the current cluster",
             "shutdown cluster",
             "terminate Ray cluster",
-            "stop cluster"
+            "stop cluster",
         ]
-        
+
         for prompt in prompts:
             result = ActionParser.parse_cluster_action(prompt)
             assert result["operation"] == "stop"
@@ -117,46 +105,34 @@ class TestActionParser:
         test_cases = [
             {
                 "prompt": "submit job with script train.py",
-                "expected": {
-                    "operation": "submit",
-                    "script": "train.py"
-                }
+                "expected": {"operation": "submit", "script": "train.py"},
             },
             {
                 "prompt": "run job with entrypoint main.py using 2 GPUs",
-                "expected": {
-                    "operation": "submit",
-                    "entrypoint": "main.py",
-                    "gpus": 2
-                }
+                "expected": {"operation": "submit", "entrypoint": "main.py", "gpus": 2},
             },
             {
                 "prompt": "submit training job train.py with job_id my-training-run",
                 "expected": {
                     "operation": "submit",
                     "script": "train.py",
-                    "job_id": "my-training-run"
-                }
-            }
+                    "job_id": "my-training-run",
+                },
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_job_action(case["prompt"])
             assert result["operation"] == case["expected"]["operation"]
-            
+
             for key, value in case["expected"].items():
                 if key in result:
                     assert result[key] == value
 
     def test_parse_job_list_action(self):
         """Test parsing job listing prompts."""
-        prompts = [
-            "list all running jobs",
-            "show jobs",
-            "get job list",
-            "list jobs"
-        ]
-        
+        prompts = ["list all running jobs", "show jobs", "get job list", "list jobs"]
+
         for prompt in prompts:
             result = ActionParser.parse_job_action(prompt)
             assert result["operation"] == "list"
@@ -166,20 +142,14 @@ class TestActionParser:
         test_cases = [
             {
                 "prompt": "cancel job raysubmit_123",
-                "expected": {
-                    "operation": "cancel",
-                    "job_id": "raysubmit_123"
-                }
+                "expected": {"operation": "cancel", "job_id": "raysubmit_123"},
             },
             {
                 "prompt": "stop job my-training-run",
-                "expected": {
-                    "operation": "cancel",
-                    "job_id": "my-training-run"
-                }
-            }
+                "expected": {"operation": "cancel", "job_id": "my-training-run"},
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_job_action(case["prompt"])
             assert result["operation"] == case["expected"]["operation"]
@@ -190,20 +160,14 @@ class TestActionParser:
         test_cases = [
             {
                 "prompt": "get logs for job raysubmit_456",
-                "expected": {
-                    "operation": "logs",
-                    "job_id": "raysubmit_456"
-                }
+                "expected": {"operation": "logs", "job_id": "raysubmit_456"},
             },
             {
                 "prompt": "show logs for job training-run-789",
-                "expected": {
-                    "operation": "logs", 
-                    "job_id": "training-run-789"
-                }
-            }
+                "expected": {"operation": "logs", "job_id": "training-run-789"},
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_job_action(case["prompt"])
             assert result["operation"] == case["expected"]["operation"]
@@ -217,22 +181,19 @@ class TestActionParser:
                 "expected": {
                     "operation": "authenticate",
                     "provider": "gcp",
-                    "project_id": "ml-experiments"
-                }
+                    "project_id": "ml-experiments",
+                },
             },
             {
                 "prompt": "auth with Google Cloud",
-                "expected": {
-                    "operation": "authenticate",
-                    "provider": "gcp"
-                }
-            }
+                "expected": {"operation": "authenticate", "provider": "gcp"},
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_cloud_action(case["prompt"])
             assert result["operation"] == case["expected"]["operation"]
-            
+
             for key, value in case["expected"].items():
                 if key in result:
                     assert result[key] == value
@@ -243,9 +204,9 @@ class TestActionParser:
             "list all GKE clusters",
             "show kubernetes clusters",
             "list clusters in GCP",
-            "get GKE cluster list"
+            "get GKE cluster list",
         ]
-        
+
         for prompt in prompts:
             result = ActionParser.parse_cloud_action(prompt)
             assert result["operation"] == "list_clusters"
@@ -258,18 +219,18 @@ class TestActionParser:
                 "expected": {
                     "operation": "connect_cluster",
                     "cluster_name": "production-ml",
-                    "zone": "us-central1-a"
-                }
+                    "zone": "us-central1-a",
+                },
             },
             {
                 "prompt": "connect to cluster training-cluster in GKE",
                 "expected": {
                     "operation": "connect_cluster",
-                    "cluster_name": "training-cluster"
-                }
-            }
+                    "cluster_name": "training-cluster",
+                },
+            },
         ]
-        
+
         for case in test_cases:
             result = ActionParser.parse_cloud_action(case["prompt"])
             assert result["operation"] == case["expected"]["operation"]
@@ -282,18 +243,18 @@ class TestActionParser:
             "this is not a valid command",
             "hello world",
             "create",  # incomplete
-            "job",     # incomplete
-            "cluster" # incomplete
+            "job",  # incomplete
+            "cluster",  # incomplete
         ]
-        
+
         for prompt in invalid_prompts:
             # Should raise ValueError for unparseable prompts
             with pytest.raises(ValueError):
                 ActionParser.parse_cluster_action(prompt)
-            
+
             with pytest.raises(ValueError):
                 ActionParser.parse_job_action(prompt)
-                
+
             with pytest.raises(ValueError):
                 ActionParser.parse_cloud_action(prompt)
 
@@ -303,14 +264,18 @@ class TestActionParser:
         result = ActionParser.parse_cluster_action("CREATE A CLUSTER WITH 4 CPUS")
         assert result["operation"] == "create"
         assert result["cpus"] == 4
-        
+
         # Test extra whitespace
-        result = ActionParser.parse_job_action("  submit   job   with   script   train.py  ")
+        result = ActionParser.parse_job_action(
+            "  submit   job   with   script   train.py  "
+        )
         assert result["operation"] == "submit"
         assert result["script"] == "train.py"
-        
+
         # Test punctuation
-        result = ActionParser.parse_cloud_action("authenticate with GCP project 'ml-experiments'!")
+        result = ActionParser.parse_cloud_action(
+            "authenticate with GCP project 'ml-experiments'!"
+        )
         assert result["operation"] == "authenticate"
 
 
@@ -324,17 +289,17 @@ class TestResponseFormatter:
         result = ResponseFormatter.format_success_response(
             message="Operation completed successfully"
         )
-        
+
         assert result["status"] == "success"
         assert result["message"] == "Operation completed successfully"
-        
+
         # Test success response with additional data
         result = ResponseFormatter.format_success_response(
             job_id="raysubmit_123",
             entrypoint="train.py",
-            message="Job submitted successfully"
+            message="Job submitted successfully",
         )
-        
+
         assert result["status"] == "success"
         assert result["job_id"] == "raysubmit_123"
         assert result["entrypoint"] == "train.py"
@@ -345,17 +310,16 @@ class TestResponseFormatter:
         # Test with Exception object
         error = Exception("Something went wrong")
         result = ResponseFormatter.format_error_response("test_operation", error)
-        
+
         assert result["status"] == "error"
         assert "Something went wrong" in result["message"]
         assert "test_operation" in result["message"]
-        
+
         # Test with string error
         result = ResponseFormatter.format_error_response(
-            "another_operation", 
-            Exception("Custom error message")
+            "another_operation", Exception("Custom error message")
         )
-        
+
         assert result["status"] == "error"
         assert "Custom error message" in result["message"]
 
@@ -363,21 +327,17 @@ class TestResponseFormatter:
         """Test that all responses follow consistent format."""
         # Success responses should always have status and can have additional fields
         success = ResponseFormatter.format_success_response(
-            cluster_address="localhost:8265",
-            dashboard_url="http://localhost:8265"
+            cluster_address="localhost:8265", dashboard_url="http://localhost:8265"
         )
-        
+
         assert "status" in success
         assert success["status"] == "success"
         assert "cluster_address" in success
         assert "dashboard_url" in success
-        
+
         # Error responses should always have status and message
-        error = ResponseFormatter.format_error_response(
-            "test", 
-            Exception("Test error")
-        )
-        
+        error = ResponseFormatter.format_error_response("test", Exception("Test error"))
+
         assert "status" in error
         assert error["status"] == "error"
         assert "message" in error
@@ -386,28 +346,26 @@ class TestResponseFormatter:
     def test_response_serialization(self):
         """Test that responses can be JSON serialized."""
         import json
-        
+
         # Test success response serialization
         success = ResponseFormatter.format_success_response(
-            job_id="test_123",
-            status_details={"running": True, "progress": 0.5}
+            job_id="test_123", status_details={"running": True, "progress": 0.5}
         )
-        
+
         # Should not raise exception
         json_str = json.dumps(success)
         assert isinstance(json_str, str)
-        
+
         # Should be deserializable
         deserialized = json.loads(json_str)
         assert deserialized["status"] == "success"
         assert deserialized["job_id"] == "test_123"
-        
+
         # Test error response serialization
         error = ResponseFormatter.format_error_response(
-            "test_op",
-            Exception("Test error with special chars: àñ™")
+            "test_op", Exception("Test error with special chars: àñ™")
         )
-        
+
         json_str = json.dumps(error)
         deserialized = json.loads(json_str)
         assert deserialized["status"] == "error"
