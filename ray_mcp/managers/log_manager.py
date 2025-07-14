@@ -3,25 +3,32 @@
 from typing import Any, Dict, Optional
 
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import ManagedComponent
 from ..foundation.logging_utils import LogProcessor
 
 
-class LogManager(ResourceManager, ManagedComponent):
+class LogManager(ResourceManager):
     """Manages Ray log retrieval and processing operations."""
 
-    def __init__(self, state_manager):
-        # Initialize both parent classes
-        ResourceManager.__init__(
-            self,
-            state_manager,
+    def __init__(self):
+        super().__init__(
             enable_ray=True,
             enable_kubernetes=False,
             enable_cloud=False,
         )
-        ManagedComponent.__init__(self, state_manager)
 
         self._log_processor = LogProcessor()
+
+    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+        """Execute log operations using natural language prompts.
+        
+        This is a simple log manager that delegates to retrieve_logs.
+        For now it just returns an error since log operations are handled
+        by job and cluster managers directly.
+        """
+        return self._ResponseFormatter.format_error_response(
+            "log manager execute_request",
+            Exception("Log operations should be handled by job or cluster managers directly")
+        )
 
     async def retrieve_logs(
         self,
@@ -93,7 +100,7 @@ class LogManager(ResourceManager, ManagedComponent):
     ) -> Dict[str, Any]:
         """Unified job log retrieval with error analysis."""
         # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
+        self._ensure_ray_available()
 
         try:
             # Get job client
@@ -137,7 +144,7 @@ class LogManager(ResourceManager, ManagedComponent):
             return result
 
         except Exception as e:
-            self._log_error("retrieve job logs", e)
+            self._LoggingUtility.log_error("retrieve job logs", e)
             return self._create_error_log_response(
                 "job", job_id, num_lines, max_size_mb, additional_info={"error": str(e)}
             )
@@ -152,7 +159,7 @@ class LogManager(ResourceManager, ManagedComponent):
     ) -> Dict[str, Any]:
         """Retrieve job logs with pagination support."""
         # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
+        self._ensure_ray_available()
 
         try:
             # Get job client
@@ -198,7 +205,7 @@ class LogManager(ResourceManager, ManagedComponent):
             return paginated_result
 
         except Exception as e:
-            self._log_error("retrieve job logs paginated", e)
+            self._LoggingUtility.log_error("retrieve job logs paginated", e)
             return self._create_error_log_response(
                 "job",
                 job_id,
@@ -216,20 +223,20 @@ class LogManager(ResourceManager, ManagedComponent):
         if not self._JobSubmissionClient:
             return None
 
-        job_client = self._get_state_value("job_client")
+        job_client = getattr(self, '_job_client', None)
 
         if not job_client:
             # Try to create a basic client if we have dashboard URL
-            dashboard_url = self._get_state_value("dashboard_url")
+            dashboard_url = getattr(self, '_dashboard_url', None)
             if dashboard_url:
                 try:
                     job_client = self._JobSubmissionClient(dashboard_url)
                     # Test the connection
                     _ = job_client.list_jobs()
-                    self._update_state(job_client=job_client)
+                    self._job_client = job_client
                     return job_client
                 except Exception as e:
-                    self._log_warning("create job client", str(e))
+                    self._LoggingUtility.log_warning("create job client", str(e))
 
         return job_client
 

@@ -7,19 +7,15 @@ import os
 import tempfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ...foundation.base_managers import ResourceManager
-from ...foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ...foundation.interfaces import CloudProvider, ManagedComponent
-from ...kubernetes.config.kubernetes_config import KubernetesConfig
-from ..config.cloud_provider_config import CloudProviderConfig
-from ..config.cloud_provider_detector import CloudProviderDetector
-
-if TYPE_CHECKING:
-    from ...managers.state_manager import StateManager
+from ..config import get_config_manager_sync
+from ..foundation.base_managers import ResourceManager
+from ..foundation.import_utils import get_kubernetes_imports, get_logging_utils
+from ..foundation.interfaces import CloudProvider
+from ..parsers import ActionParser
 
 
-class GKEManager(ResourceManager, ManagedComponent):
-    """Manages Google Kubernetes Engine clusters and operations."""
+class GKEManager(ResourceManager):
+    """Pure prompt-driven Google Kubernetes Engine management - no traditional APIs."""
 
     # GKE-specific constants
     DEFAULT_NODE_POOL_NAME = "default-pool"
@@ -28,24 +24,14 @@ class GKEManager(ResourceManager, ManagedComponent):
     DEFAULT_DISK_SIZE_GB = 100
     DEFAULT_NUM_NODES = 3
 
-    def __init__(
-        self,
-        state_manager: "StateManager",
-        kubernetes_config: Optional[KubernetesConfig] = None,
-    ):
-        # Initialize both parent classes
-        ResourceManager.__init__(
-            self,
-            state_manager,
+    def __init__(self):
+        super().__init__(
             enable_ray=False,
             enable_kubernetes=True,
             enable_cloud=True,
         )
-        ManagedComponent.__init__(self, state_manager)
 
-        self._detector = CloudProviderDetector(state_manager)
-        self._config_manager = CloudProviderConfig(state_manager)
-        self._kubernetes_config = kubernetes_config or KubernetesConfig()
+        self._config_manager = get_config_manager_sync()
         self._gke_client = None
         self._k8s_client = None  # Add Kubernetes client
         # Initialize missing instance variables
@@ -53,6 +39,64 @@ class GKEManager(ResourceManager, ManagedComponent):
         self._project_id = None
         self._credentials = None
         self._ca_cert_file = None  # Track the CA certificate file for cleanup
+
+    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+        """Execute GKE operations using natural language prompts.
+
+        Examples:
+            - "authenticate with GCP project ml-experiments"
+            - "list all GKE clusters in us-central1"
+            - "connect to GKE cluster training-cluster in zone us-central1-a"
+            - "create GKE cluster ml-cluster with 3 nodes"
+            - "get info for cluster production-cluster"
+        """
+        try:
+            action = ActionParser.parse_gke_action(prompt)
+            operation = action["operation"]
+
+            if operation == "authenticate":
+                project_id = action.get("project")
+                return await self._authenticate_from_prompt(project_id)
+            elif operation == "list_clusters":
+                project_id = action.get("project")
+                return await self._discover_clusters(project_id)
+            elif operation == "connect_cluster":
+                cluster_name = action.get("cluster_name")
+                location = action.get("location") or action.get("zone")
+                project_id = action.get("project")
+                if not cluster_name or not location:
+                    return {
+                        "status": "error",
+                        "message": "cluster name and location required",
+                    }
+                return await self._connect_cluster(cluster_name, location, project_id)
+            elif operation == "create_cluster":
+                cluster_name = action.get("cluster_name")
+                location = action.get("location") or action.get("zone")
+                project_id = action.get("project")
+                cluster_spec = {"name": cluster_name, "location": location}
+                return await self._create_cluster(cluster_spec, project_id)
+            elif operation == "get_cluster_info":
+                cluster_name = action.get("cluster_name")
+                location = action.get("location") or action.get("zone")
+                project_id = action.get("project")
+                if not cluster_name or not location:
+                    return {
+                        "status": "error",
+                        "message": "cluster name and location required",
+                    }
+                return await self._get_cluster_info(cluster_name, location, project_id)
+            else:
+                return {"status": "error", "message": f"Unknown operation: {operation}"}
+
+        except ValueError as e:
+            return {"status": "error", "message": f"Could not parse request: {str(e)}"}
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response("execute_request", e)
+
+    # =================================================================
+    # INTERNAL IMPLEMENTATION: All methods are now private
+    # =================================================================
 
     def _cleanup_ca_cert_file(self):
         """Clean up the CA certificate file."""
@@ -63,7 +107,14 @@ class GKEManager(ResourceManager, ManagedComponent):
             except OSError:
                 pass  # File might already be cleaned up
 
-    async def authenticate_gke(
+    async def _authenticate_from_prompt(
+        self, project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Authenticate with GKE from prompt action."""
+        service_account_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        return await self._authenticate_gke(service_account_path, project_id)
+
+    async def _authenticate_gke(
         self,
         service_account_path: Optional[str] = None,
         project_id: Optional[str] = None,
@@ -120,17 +171,9 @@ class GKEManager(ResourceManager, ManagedComponent):
         self._is_authenticated = True
 
         # Update state
-        self._update_state(
-            cloud_provider_auth={
-                "gke": {
-                    "authenticated": True,
-                    "auth_type": "service_account",
-                    "service_account_path": service_account_path,
-                    "project_id": self._project_id,
-                    "auth_time": self._get_current_time(),
-                }
-            }
-        )
+        # Simple state tracking
+        self._is_authenticated = True
+        self._project_id = project_id
 
         return {
             "provider": "gke",
@@ -140,32 +183,32 @@ class GKEManager(ResourceManager, ManagedComponent):
             "service_account_email": credentials_data.get("client_email"),
         }
 
-    # Add aliases for protocol compatibility
-    async def discover_gke_clusters(
-        self, project_id: Optional[str] = None, zone: Optional[str] = None
+    # Legacy aliases for protocol compatibility (all now private)
+    async def _discover_gke_clusters(
+        self, project_id: Optional[str] = None, location: Optional[str] = None
     ) -> Dict[str, Any]:
         """Discover GKE clusters in a project."""
-        return await self.discover_clusters(project_id)
+        return await self._discover_clusters(project_id)
 
-    async def connect_gke_cluster(
-        self, cluster_name: str, zone: str, project_id: Optional[str] = None
+    async def _connect_gke_cluster(
+        self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Connect to a specific GKE cluster."""
-        return await self.connect_cluster(cluster_name, zone, project_id)
+        return await self._connect_cluster(cluster_name, location, project_id)
 
-    async def create_gke_cluster(
+    async def _create_gke_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a GKE cluster."""
-        return await self.create_cluster(cluster_spec, project_id)
+        return await self._create_cluster(cluster_spec, project_id)
 
-    async def get_gke_cluster_info(
-        self, cluster_name: str, zone: str, project_id: Optional[str] = None
+    async def _get_gke_cluster_info(
+        self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get information about a GKE cluster."""
-        return await self.get_cluster_info(cluster_name, zone, project_id)
+        return await self._get_cluster_info(cluster_name, location, project_id)
 
-    def authenticate(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
+    def _authenticate(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
         """Authenticate with Google Cloud Platform."""
         try:
             if not self._GOOGLE_CLOUD_AVAILABLE:
@@ -226,12 +269,12 @@ class GKEManager(ResourceManager, ManagedComponent):
             )
 
         except Exception as e:
-            self._log_error("gke authentication", e)
+            self._LoggingUtility.log_error("gke authentication", e)
             return self._ResponseFormatter.format_error_response(
                 "gke authentication", e
             )
 
-    async def discover_clusters(
+    async def _discover_clusters(
         self, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Discover GKE clusters."""
@@ -246,7 +289,7 @@ class GKEManager(ResourceManager, ManagedComponent):
         self._ensure_gcp_available()
 
         # Use ManagedComponent validation method instead of manual check
-        self._ensure_cloud_authenticated(CloudProvider.GKE)
+        await self._ensure_gke_authenticated()
 
         project_id = project_id or self._project_id
         if not project_id:
@@ -329,7 +372,7 @@ class GKEManager(ResourceManager, ManagedComponent):
         except Exception:
             return str(timestamp)
 
-    async def connect_cluster(
+    async def _connect_cluster(
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Connect to a GKE cluster and establish Kubernetes connection."""
@@ -351,7 +394,7 @@ class GKEManager(ResourceManager, ManagedComponent):
 
         # Use ManagedComponent validation method instead of manual check
         try:
-            self._ensure_cloud_authenticated(CloudProvider.GKE)
+            await self._ensure_gke_authenticated()
         except RuntimeError as e:
             return self._ResponseFormatter.format_error_response(
                 "gke cluster connection", e
@@ -388,22 +431,8 @@ class GKEManager(ResourceManager, ManagedComponent):
             context_name = f"gke_{project_id}_{location}_{cluster_name}"
 
             # Update state to reflect both GKE and Kubernetes connection
-            self.state_manager.update_state(
-                kubernetes_connected=True,
-                kubernetes_context=context_name,
-                kubernetes_config_type="gke",
-                kubernetes_server_version=k8s_connection_result.get("server_version"),
-                cloud_provider_connections={
-                    "gke": {
-                        "connected": True,
-                        "cluster_name": cluster_name,
-                        "location": location,
-                        "project_id": project_id,
-                        "endpoint": cluster.endpoint,
-                        "context": context_name,
-                    }
-                },
-            )
+            # Simple state tracking
+            self._last_operation = "connect_cluster"
 
             return self._ResponseFormatter.format_success_response(
                 connected=True,
@@ -509,11 +538,11 @@ class GKEManager(ResourceManager, ManagedComponent):
                 "establish kubernetes connection", e
             )
 
-    def get_kubernetes_client(self) -> Optional[Any]:
+    def _get_kubernetes_client(self) -> Optional[Any]:
         """Get the current Kubernetes client configuration."""
         return self._k8s_client
 
-    def get_connection_status(self) -> Dict[str, Any]:
+    def _get_connection_status(self) -> Dict[str, Any]:
         """Get GKE connection status."""
         return self._ResponseFormatter.format_success_response(
             authenticated=self._is_authenticated,
@@ -521,7 +550,7 @@ class GKEManager(ResourceManager, ManagedComponent):
             provider="gke",
         )
 
-    def disconnect(self) -> Dict[str, Any]:
+    def _disconnect(self) -> Dict[str, Any]:
         """Disconnect from GKE and clean up resources."""
         try:
             # Clean up certificate file
@@ -535,14 +564,8 @@ class GKEManager(ResourceManager, ManagedComponent):
             self._gke_client = None
 
             # Update state
-            self.state_manager.update_state(
-                kubernetes_connected=False,
-                kubernetes_context=None,
-                kubernetes_config_type=None,
-                kubernetes_server_version=None,
-                cloud_provider_connections={},
-                cloud_provider_auth={},
-            )
+            # Simple state tracking
+            self._last_operation = "disconnect_cluster"
 
             return self._ResponseFormatter.format_success_response(
                 disconnected=True, provider="gke"
@@ -551,7 +574,7 @@ class GKEManager(ResourceManager, ManagedComponent):
         except Exception as e:
             return self._ResponseFormatter.format_error_response("gke disconnect", e)
 
-    async def create_cluster(
+    async def _create_cluster(
         self, cluster_spec: Dict[str, Any], project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a GKE cluster."""
@@ -608,7 +631,7 @@ class GKEManager(ResourceManager, ManagedComponent):
                 "gke cluster creation", e
             )
 
-    async def get_cluster_info(
+    async def _get_cluster_info(
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get information about a GKE cluster."""
@@ -708,7 +731,7 @@ class GKEManager(ResourceManager, ManagedComponent):
     ) -> Dict[str, Any]:
         """Build GKE cluster configuration from specification."""
         # Get default config
-        default_config = self._config_manager.get_provider_config(CloudProvider.GKE)
+        default_config = self._config_manager.get_provider_config("gke")
 
         # Build basic cluster config
         cluster_config = {
@@ -743,6 +766,43 @@ class GKEManager(ResourceManager, ManagedComponent):
         from datetime import datetime
 
         return datetime.now().isoformat()
+
+    async def _ensure_gke_authenticated(self) -> Dict[str, Any]:
+        """Ensure GKE authentication is configured."""
+        try:
+            if self._is_authenticated:
+                return self._ResponseFormatter.format_success_response(
+                    message="Already authenticated with GKE",
+                    project_id=self._project_id,
+                )
+
+            # Try to authenticate
+            self._ensure_gcp_available()
+
+            # Get GCP config
+            gcp_config = self._config_manager.get_gcp_config()
+            project_id = gcp_config.get("project_id")
+
+            if not project_id:
+                return self._ResponseFormatter.format_error_response(
+                    "ensure gke authenticated",
+                    Exception(
+                        "GCP project_id not configured. Set GOOGLE_APPLICATION_CREDENTIALS or configure authentication."
+                    ),
+                )
+
+            # Set authentication state
+            self._is_authenticated = True
+            self._project_id = project_id
+
+            return self._ResponseFormatter.format_success_response(
+                message="GKE authentication configured", project_id=project_id
+            )
+
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response(
+                "ensure gke authenticated", e
+            )
 
     def __del__(self):
         """Cleanup resources when object is destroyed."""

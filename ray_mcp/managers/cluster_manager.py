@@ -1,4 +1,4 @@
-"""Centralized cluster management for Ray."""
+"""Pure prompt-driven cluster management for Ray."""
 
 import asyncio
 import json
@@ -7,939 +7,271 @@ import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..config import get_config_manager_sync
 from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import ManagedComponent
-from .port_manager import PortManager
+from ..parsers import ActionParser
 
 
-class ClusterManager(ResourceManager, ManagedComponent):
-    """Manages Ray cluster lifecycle operations with clean separation of concerns."""
+class ClusterManager(ResourceManager):
+    """Pure prompt-driven Ray cluster management - no traditional APIs."""
 
-    def __init__(
-        self,
-        state_manager,
-        port_manager: PortManager,
-    ):
-        # Initialize both parent classes
-        ResourceManager.__init__(
-            self,
-            state_manager,
-            enable_ray=True,
-            enable_kubernetes=False,
-            enable_cloud=False,
-        )
-        ManagedComponent.__init__(self, state_manager)
+    def __init__(self):
+        super().__init__(enable_ray=True)
+        self._config_manager = get_config_manager_sync()
+        # Simple state tracking without complex state manager
+        self._cluster_address = None
+        self._dashboard_url = None
+        self._job_client = None
 
-        self._port_manager = port_manager
-        self._head_node_process: Optional[asyncio.subprocess.Process] = None
-        # Simple worker tracking (replacing WorkerManager)
-        self._worker_processes: List[subprocess.Popen] = []
-        self._worker_configs: List[Dict[str, Any]] = []
+    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+        """Execute cluster operations using natural language prompts.
 
-    async def init_cluster(
-        self,
-        address: Optional[str] = None,
-        num_cpus: Optional[int] = None,
-        num_gpus: Optional[int] = None,
-        object_store_memory: Optional[int] = None,
-        worker_nodes: Optional[List[Dict[str, Any]]] = None,
-        head_node_port: Optional[int] = None,
-        dashboard_port: Optional[int] = None,
-        head_node_host: str = "127.0.0.1",
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """Initialize Ray cluster - connect to existing or start new cluster."""
-        return await self._execute_operation(
-            "init cluster",
-            self._init_cluster_operation,
-            address,
-            num_cpus,
-            num_gpus,
-            object_store_memory,
-            worker_nodes,
-            head_node_port,
-            dashboard_port,
-            head_node_host,
-            **kwargs,
-        )
-
-    async def _init_cluster_operation(
-        self,
-        address: Optional[str] = None,
-        num_cpus: Optional[int] = None,
-        num_gpus: Optional[int] = None,
-        object_store_memory: Optional[int] = None,
-        worker_nodes: Optional[List[Dict[str, Any]]] = None,
-        head_node_port: Optional[int] = None,
-        dashboard_port: Optional[int] = None,
-        head_node_host: str = "127.0.0.1",
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """Execute cluster initialization operation."""
-        self._ensure_ray_available()
-
-        # If address provided, connect to existing cluster
-        if address:
-            return await self._connect_to_existing_cluster(address)
-
-        # Otherwise, start new cluster
-        return await self._start_new_cluster(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            object_store_memory=object_store_memory,
-            worker_nodes=worker_nodes,
-            head_node_port=head_node_port,
-            dashboard_port=dashboard_port,
-            head_node_host=head_node_host,
-            **kwargs,
-        )
-
-    async def stop_cluster(self) -> Dict[str, Any]:
-        """Stop the Ray cluster and clean up resources."""
-        try:
-            return await self._execute_operation(
-                "stop cluster", self._stop_cluster_operation
-            )
-        finally:
-            # Always reset state, even if cleanup fails
-            self._reset_state()
-
-    async def _stop_cluster_operation(self) -> Dict[str, Any]:
-        """Execute cluster stop operation."""
-        # Get connection type from state to determine appropriate cleanup
-        connection_type = self._get_state_value("connection_type")
-
-        if connection_type == "existing":
-            return await self._disconnect_from_existing_cluster()
-        else:
-            return await self._stop_local_cluster()
-
-    async def inspect_cluster(self) -> Dict[str, Any]:
-        """Get basic cluster information."""
-        return await self._execute_operation(
-            "inspect cluster", self._inspect_cluster_operation
-        )
-
-    async def _inspect_cluster_operation(self) -> Dict[str, Any]:
-        """Execute cluster inspection operation."""
-        # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
-
-        cluster_info = {}
-
-        # Use cluster_status to avoid collision with response status
-        cluster_info["cluster_status"] = (
-            "running" if self._ray and self._ray.is_initialized() else "not_running"
-        )
-        cluster_info["ray_version"] = (
-            self._ray.__version__ if self._ray else "unavailable"
-        )
-
-        return cluster_info
-
-    async def _disconnect_from_existing_cluster(self) -> Dict[str, Any]:
-        """Disconnect from existing Ray cluster without stopping remote cluster."""
-        self._LoggingUtility.log_info(
-            "cluster_disconnect", "Disconnecting from existing Ray cluster..."
-        )
-
-        # Only shutdown local Ray instance - this doesn't affect the remote cluster
-        if self._ray and self._ray.is_initialized():
-            self._ray.shutdown()
-            self._LoggingUtility.log_info(
-                "cluster_disconnect", "Local Ray instance shutdown completed"
-            )
-
-        return {
-            "message": "Successfully disconnected from existing Ray cluster",
-            "connection_type": "existing",
-            "action": "disconnected",
-        }
-
-    async def _stop_local_cluster(self) -> Dict[str, Any]:
-        """Stop locally-started Ray cluster and clean up all resources."""
-        cleanup_results = []
-
-        # Stop worker nodes first using simplified method
-        if self._worker_processes:
-            self._LoggingUtility.log_info("cluster_cleanup", "Stopping worker nodes...")
-            worker_results = await self._stop_all_workers()
-            cleanup_results.extend(worker_results)
-
-        # Clean up head node process reference
-        # Note: The 'ray start' command has already exited after starting Ray daemon processes.
-        # The actual Ray cluster cleanup is handled by ray.shutdown() below.
-        if self._head_node_process:
-            self._LoggingUtility.log_info(
-                "cluster_cleanup", "Head node command already completed"
-            )
-            self._head_node_process = None
-
-        # Shutdown Ray if initialized
-        if self._ray and self._ray.is_initialized():
-            self._ray.shutdown()
-            self._LoggingUtility.log_info("cluster_cleanup", "Ray shutdown completed")
-
-        return {
-            "message": "Ray cluster stopped successfully",
-            "connection_type": "new",
-            "action": "stopped",
-            "cleanup_results": cleanup_results,
-        }
-
-    def _validate_cluster_address(self, address: str) -> bool:
-        """Validate cluster address format supporting IPv4 and hostnames."""
-        if not address or ":" not in address:
-            return False
-
-        # Handle IPv4 addresses and hostnames with port: host:port
-        if address.count(":") == 1:
-            parts = address.split(":")
-            if len(parts) == 2:
-                host_part, port_part = parts
-                return self._validate_ipv4_or_hostname(
-                    host_part
-                ) and self._validate_port(port_part)
-
-        return False
-
-    def _validate_ipv4_or_hostname(self, host: str) -> bool:
-        """Validate IPv4 address or hostname."""
-        if not host:
-            return False
-
-        # Check if this looks like an IPv4 address (contains only digits, dots)
-        if "." in host:
-            parts = host.split(".")
-
-            # If it looks like an IPv4 pattern (all parts are digits), validate strictly
-            looks_like_ipv4 = all(part.isdigit() for part in parts if part)
-
-            if looks_like_ipv4:
-                # This looks like an IPv4 address, validate it strictly
-                if len(parts) != 4:
-                    return False  # Invalid IPv4, don't fall through to hostname
-
-                try:
-                    for part in parts:
-                        if not part:  # Empty part
-                            return False
-                        num = int(part)
-                        if num < 0 or num > 255:
-                            return False
-                    return True  # Valid IPv4
-                except ValueError:
-                    return False  # Invalid IPv4
-
-        # Check for hostname/domain format
-        hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
-        return bool(re.match(hostname_pattern, host))
-
-    def _validate_port(self, port: str) -> bool:
-        """Validate port number."""
-        try:
-            port_num = int(port)
-            return 1 <= port_num <= 65535
-        except (ValueError, TypeError):
-            return False
-
-    def _parse_cluster_address(self, address: str) -> Tuple[str, int]:
-        """Parse cluster address and return host and port.
-
-        Args:
-            address: Address in format "host:port"
-
-        Returns:
-            Tuple of (host, port)
-
-        Raises:
-            ValueError: If address format is invalid
+        Examples:
+            - "create a local cluster with 4 CPUs"
+            - "connect to cluster at 10.0.0.1:10001"
+            - "stop the current cluster"
+            - "inspect cluster status"
         """
-        if not self._validate_cluster_address(address):
-            raise ValueError(f"Invalid cluster address format: {address}")
-
-        # Handle IPv4 addresses or hostnames host:port
-        if address.count(":") == 1:
-            host, port_str = address.split(":")
-            port = int(port_str)
-            return host, port
-
-        raise ValueError(f"Unable to parse cluster address: {address}")
-
-    async def _connect_to_existing_cluster(self, address: str) -> Dict[str, Any]:
-        """Connect to an existing Ray cluster via dashboard API with atomic state updates."""
         try:
-            # Validate address format
-            if not self._validate_cluster_address(address):
-                return self._ResponseFormatter.format_validation_error(
-                    f"Invalid cluster address format: {address}"
-                )
+            action = ActionParser.parse_cluster_action(prompt)
+            operation = action["operation"]
 
-            # Parse address to construct dashboard URL
-            try:
-                host, port = self._parse_cluster_address(address)
-            except ValueError as e:
-                return self._ResponseFormatter.format_validation_error(str(e))
+            if operation == "create":
+                return await self._create_cluster_from_prompt(action)
+            elif operation == "connect":
+                address = action.get("address")
+                if not address:
+                    return {"status": "error", "message": "cluster address required"}
+                return await self._connect_to_cluster(address)
+            elif operation == "inspect":
+                return await self._inspect_cluster()
+            elif operation == "stop":
+                return await self._stop_cluster()
+            else:
+                return {"status": "error", "message": f"Unknown operation: {operation}"}
 
-            dashboard_port = 8265  # Standard Ray dashboard port
-            dashboard_url = f"http://{host}:{dashboard_port}"
+        except ValueError as e:
+            return {"status": "error", "message": f"Could not parse request: {str(e)}"}
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response("execute_request", e)
 
-            # Test connection via dashboard API
-            if not self._JobSubmissionClient:
+    # =================================================================
+    # INTERNAL IMPLEMENTATION: All methods are now private
+    # =================================================================
+
+    async def _create_cluster_from_prompt(
+        self, action: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create cluster from parsed prompt action."""
+        try:
+            # Extract parameters with simple defaults
+            cluster_spec = {
+                "num_cpus": action.get("cpus", 4),
+                "num_gpus": action.get("gpus", 0),
+                "dashboard_port": action.get("dashboard_port", 8265),
+                "object_store_memory": action.get("object_store_memory"),
+                "temp_dir": action.get("temp_dir"),
+                "include_dashboard": action.get("include_dashboard", True),
+            }
+
+            return await self._create_cluster(cluster_spec)
+
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response(
+                "create cluster from prompt", e
+            )
+
+    async def _create_cluster(self, cluster_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new Ray cluster."""
+        try:
+            self._ensure_ray_available()
+
+            # Check if Ray is already running
+            if self._is_ray_ready():
                 return self._ResponseFormatter.format_error_response(
-                    "connect to cluster",
+                    "create cluster",
                     Exception(
-                        "JobSubmissionClient not available - Ray not properly installed"
+                        "Ray cluster is already running. Stop it first or connect to it."
                     ),
                 )
 
-            # Note: Job client will be created lazily when needed by job operations
+            # Simple port allocation - use default or provided port
+            dashboard_port = cluster_spec.get("dashboard_port", 8265)
 
-            # Initialize local Ray without connecting to remote cluster
-            # This gives us access to Ray APIs for cluster inspection
-            if self._ray and not self._ray.is_initialized():
-                self._ray.init(ignore_reinit_error=True)
+            # Start Ray with simple configuration
+            config = {
+                "num_cpus": cluster_spec.get("num_cpus", 4),
+                "num_gpus": cluster_spec.get("num_gpus", 0),
+                "dashboard_port": dashboard_port,
+                "include_dashboard": cluster_spec.get("include_dashboard", True),
+            }
 
-            # Query the actual GCS address from the Ray cluster after connection
-            actual_gcs_address = await self._get_actual_gcs_address()
+            # Add optional parameters if provided
+            if cluster_spec.get("object_store_memory"):
+                config["object_store_memory"] = cluster_spec["object_store_memory"]
+            if cluster_spec.get("temp_dir"):
+                config["temp_dir"] = cluster_spec["temp_dir"]
 
-            # Apply all state updates atomically in a single batch
-            self.state_manager.update_state(
-                initialized=True,
-                cluster_address=address,
-                gcs_address=actual_gcs_address,
-                dashboard_url=dashboard_url,
-                job_client=None,  # Will be created lazily when needed
-                connection_type="existing",
+            # Initialize Ray
+            ray_info = self._ray.init(**config)
+
+            # Update simple state tracking
+            self._cluster_address = ray_info.get("redis_address") or ray_info.get(
+                "gcs_address"
             )
+            self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
 
             return self._ResponseFormatter.format_success_response(
-                message=f"Successfully connected to Ray cluster via dashboard API at {dashboard_url}",
-                cluster_address=address,
-                dashboard_url=dashboard_url,
-                connection_type="existing",
+                cluster_address=self._cluster_address,
+                dashboard_url=self._dashboard_url,
+                dashboard_port=dashboard_port,
+                num_cpus=config["num_cpus"],
+                num_gpus=config["num_gpus"],
+                message="Ray cluster created successfully",
             )
 
         except Exception as e:
-            # No state changes have been made if we reach this point
-            self._LoggingUtility.log_error("connect to cluster", e)
+            return self._ResponseFormatter.format_error_response("create cluster", e)
+
+    async def _connect_to_cluster(self, address: str) -> Dict[str, Any]:
+        """Connect to an existing Ray cluster."""
+        try:
+            self._ensure_ray_available()
+
+            # Check if already connected to a different cluster
+            if self._is_ray_ready():
+                current_address = self._cluster_address
+                if current_address == address:
+                    return self._ResponseFormatter.format_success_response(
+                        cluster_address=address,
+                        message="Already connected to this cluster",
+                    )
+                else:
+                    return self._ResponseFormatter.format_error_response(
+                        "connect to cluster",
+                        Exception(
+                            f"Already connected to {current_address}. Disconnect first."
+                        ),
+                    )
+
+            # Connect to the cluster
+            ray_info = self._ray.init(address=address)
+
+            # Update simple state tracking
+            self._cluster_address = address
+
+            # Try to determine dashboard URL
+            try:
+                dashboard_url = self._get_dashboard_url()
+                self._dashboard_url = dashboard_url
+            except Exception:
+                self._dashboard_url = None
+
+            return self._ResponseFormatter.format_success_response(
+                cluster_address=address,
+                dashboard_url=self._dashboard_url,
+                message=f"Connected to Ray cluster at {address}",
+            )
+
+        except Exception as e:
             return self._ResponseFormatter.format_error_response(
                 "connect to cluster", e
             )
 
-    async def _start_new_cluster(self, **kwargs) -> Dict[str, Any]:
-        """Start a new Ray cluster with atomic state updates."""
+    async def _inspect_cluster(self) -> Dict[str, Any]:
+        """Inspect current cluster status."""
         try:
-            # Use Ray's default approach - let Ray handle port allocation
-            # This avoids port conflicts and is more reliable
-            dashboard_port = kwargs.get(
-                "dashboard_port"
-            ) or await self._port_manager.find_free_port(8265)
+            if not self._is_ray_ready():
+                return self._ResponseFormatter.format_success_response(
+                    status="not_running", message="No Ray cluster is currently running"
+                )
 
-            # Build head node command (without manual port specification)
-            build_kwargs = {
-                k: v
-                for k, v in kwargs.items()
-                if k not in ["head_node_port", "dashboard_port"]
+            # Get cluster information
+            cluster_info = {
+                "status": "running",
+                "cluster_address": self._cluster_address,
+                "dashboard_url": self._dashboard_url,
+                "nodes": self._get_cluster_nodes(),
+                "resources": self._get_cluster_resources(),
             }
-            head_cmd = await self._build_head_node_command(
-                dashboard_port=dashboard_port, **build_kwargs
-            )
 
-            # Start head node process
-            self._head_node_process = await self._start_head_node_process(head_cmd)
-            if not self._head_node_process:
-                return self._ResponseFormatter.format_error_response(
-                    "start cluster", Exception("Failed to start head node process")
+            return self._ResponseFormatter.format_success_response(**cluster_info)
+
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response("inspect cluster", e)
+
+    async def _stop_cluster(self) -> Dict[str, Any]:
+        """Stop the current Ray cluster."""
+        try:
+            if not self._is_ray_ready():
+                return self._ResponseFormatter.format_success_response(
+                    message="No Ray cluster is currently running"
                 )
 
-            # Wait for cluster to be ready and initialize Ray to get actual address
-            host = kwargs.get("head_node_host", "127.0.0.1")
-            dashboard_url = f"http://{host}:{dashboard_port}"
+            # Shutdown Ray
+            self._ray.shutdown()
 
-            # Wait for the head node to be fully ready before connecting
-            await self._wait_for_head_node_ready(dashboard_port, host)
-
-            # Initialize Ray and let it detect the cluster
-            if self._ray:
-                self._ray.init(ignore_reinit_error=True)
-
-            # Get the actual cluster address from Ray
-            runtime_context = self._ray.get_runtime_context() if self._ray else None
-            gcs_address = runtime_context.gcs_address if runtime_context else None
-            cluster_address = gcs_address or f"{host}:10001"  # fallback
-
-            # Start worker nodes if requested
-            worker_results = []
-            worker_nodes = kwargs.get("worker_nodes")
-            if worker_nodes is not None and len(worker_nodes) > 0:
-                worker_results = await self._start_worker_nodes(
-                    worker_nodes, cluster_address
-                )
-            elif worker_nodes is None:
-                # Default: start 2 worker nodes
-                default_workers = self._get_default_worker_config()
-                worker_results = await self._start_worker_nodes(
-                    default_workers, cluster_address
-                )
-
-            # Apply all state updates atomically in a single batch
-            self.state_manager.update_state(
-                initialized=True,
-                cluster_address=cluster_address,
-                gcs_address=gcs_address,
-                dashboard_url=dashboard_url,
-                connection_type="new",
-            )
+            # Clear simple state tracking
+            self._cluster_address = None
+            self._dashboard_url = None
+            self._job_client = None
 
             return self._ResponseFormatter.format_success_response(
-                message="Ray cluster started successfully",
-                result_type="started",
-                cluster_address=cluster_address,
-                dashboard_url=dashboard_url,
-                gcs_address=gcs_address,
-                dashboard_port=dashboard_port,
-                worker_results=worker_results,
-                connection_type="new",
+                message="Ray cluster stopped successfully"
             )
 
         except Exception as e:
-            # Comprehensive cleanup on failure to prevent orphaned processes
-            self._LoggingUtility.log_error("start_cluster", e)
-            try:
-                await self._cleanup_all_processes()
-            except Exception as cleanup_error:
-                self._LoggingUtility.log_warning(
-                    "cluster_cleanup", f"Error during failure cleanup: {cleanup_error}"
-                )
-            return self._ResponseFormatter.format_error_response("start cluster", e)
+            return self._ResponseFormatter.format_error_response("stop cluster", e)
 
-    async def _build_head_node_command(
-        self, dashboard_port: int, **kwargs
-    ) -> List[str]:
-        """Build the command to start Ray head node."""
-        cmd = [
-            "ray",
-            "start",
-            "--head",
-            "--dashboard-port",
-            str(dashboard_port),
-            "--dashboard-host",
-            "0.0.0.0",
-        ]
-
-        # Add resource specifications
-        if kwargs.get("num_cpus"):
-            cmd.extend(["--num-cpus", str(kwargs["num_cpus"])])
-        if kwargs.get("num_gpus"):
-            cmd.extend(["--num-gpus", str(kwargs["num_gpus"])])
-        if kwargs.get("object_store_memory"):
-            cmd.extend(["--object-store-memory", str(kwargs["object_store_memory"])])
-
-        # Add Ray options
-        cmd.extend(["--disable-usage-stats", "--verbose"])
-
-        return cmd
-
-    async def _start_head_node_process(
-        self, cmd: List[str]
-    ) -> Optional[asyncio.subprocess.Process]:
-        """Start the head node process."""
+    def _get_dashboard_url(self) -> Optional[str]:
+        """Get dashboard URL from Ray cluster."""
         try:
-            self._LoggingUtility.log_info(
-                "cluster_start", f"Starting head node: {' '.join(cmd)}"
-            )
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            # Wait for the command to complete (ray start exits after starting the cluster)
-            stdout_bytes, stderr_bytes = await process.communicate()
-            stdout = stdout_bytes.decode()
-            stderr = stderr_bytes.decode()
-
-            # Check if the command completed successfully
-            if process.returncode == 0:
-                self._LoggingUtility.log_info(
-                    "cluster_start", "Head node command completed successfully"
-                )
-                self._LoggingUtility.log_debug("cluster_start", f"STDOUT: {stdout}")
-                # Ray start command succeeded - Ray cluster is now running as daemon processes
-                return process
-            else:
-                self._LoggingUtility.log_error(
-                    "cluster_start",
-                    Exception(
-                        f"Head node command failed with return code {process.returncode}. STDOUT: {stdout}, STDERR: {stderr}"
-                    ),
-                )
+            if not self._is_ray_ready():
                 return None
 
-        except Exception as e:
-            self._LoggingUtility.log_error("start head node process", e)
-            return None
-
-    def _get_default_worker_config(self) -> List[Dict[str, Any]]:
-        """Get default worker node configuration."""
-        return [
-            {"num_cpus": 1, "node_name": "worker-1"},
-            {"num_cpus": 1, "node_name": "worker-2"},
-        ]
-
-    async def _wait_for_head_node_ready(
-        self, dashboard_port: int, host: str, max_wait: int = 10
-    ) -> None:
-        """Wait for the head node to be fully ready before connecting."""
-        dashboard_url = f"http://{host}:{dashboard_port}"
-
-        for attempt in range(max_wait):
-            try:
-                # Try to connect to the dashboard to see if Ray is ready
-                if self._JobSubmissionClient:
-                    job_client = self._JobSubmissionClient(dashboard_url)
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, job_client.list_jobs)
-                    self._LoggingUtility.log_info(
-                        "head_node_ready",
-                        f"Head node ready after {attempt + 1} seconds",
-                    )
-                    return
-            except Exception as e:
-                self._LoggingUtility.log_debug(
-                    "head_node_ready", f"Attempt {attempt + 1}: {e}"
-                )
-
-            await asyncio.sleep(1.0)
-
-        self._LoggingUtility.log_warning(
-            "head_node_ready",
-            f"Head node may not be fully ready after {max_wait} seconds, proceeding anyway",
-        )
-
-    async def _get_actual_gcs_address(self) -> Optional[str]:
-        """Get the actual GCS address from Ray runtime context."""
-        try:
-            if not self._ray or not self._ray.is_initialized():
-                self._LoggingUtility.log_warning(
-                    "get_gcs_address", "Ray is not initialized, cannot get GCS address"
-                )
-                return None
-
+            # Try to get dashboard URL from Ray
             runtime_context = self._ray.get_runtime_context()
-            if not runtime_context:
-                self._LoggingUtility.log_warning(
-                    "get_gcs_address", "Ray runtime context is not available"
-                )
-                return None
+            if hasattr(runtime_context, "dashboard_url"):
+                return runtime_context.dashboard_url
 
-            gcs_address = getattr(runtime_context, "gcs_address", None)
-            if gcs_address:
-                self._LoggingUtility.log_info(
-                    "get_gcs_address", f"Retrieved GCS address: {gcs_address}"
-                )
-                return gcs_address
-            else:
-                self._LoggingUtility.log_warning(
-                    "get_gcs_address", "GCS address not available in runtime context"
-                )
-                return None
+            # Fallback to default port
+            return "http://127.0.0.1:8265"
 
-        except Exception as e:
-            self._LoggingUtility.log_error("get_gcs_address", e)
+        except Exception:
             return None
 
-    # Simplified worker management methods (replacing WorkerManager)
-    async def _start_worker_nodes(
-        self, worker_configs: List[Dict[str, Any]], head_node_address: str
-    ) -> List[Dict[str, Any]]:
-        """Start multiple worker nodes with rollback on critical failures."""
-        worker_results = []
-        started_workers_count = len(self._worker_processes)  # Track initial count
-        critical_failure = False
-
+    def _get_cluster_nodes(self) -> List[Dict[str, Any]]:
+        """Get information about cluster nodes."""
         try:
-            for i, config in enumerate(worker_configs):
-                try:
-                    node_name = config.get("node_name", f"worker-{i+1}")
-                    worker_result = await self._start_single_worker(
-                        config, head_node_address, node_name
-                    )
-                    worker_results.append(worker_result)
+            if not self._is_ray_ready():
+                return []
 
-                    # Small delay between worker starts
-                    if i < len(worker_configs) - 1:
-                        await asyncio.sleep(0.5)
+            nodes = self._ray.nodes()
+            return [
+                {
+                    "node_id": node.get("NodeID", "unknown"),
+                    "alive": node.get("Alive", False),
+                    "resources": node.get("Resources", {}),
+                }
+                for node in nodes
+            ]
 
-                except Exception as e:
-                    self._LoggingUtility.log_error(f"start worker node {i+1}", e)
-                    error_result = {
-                        "status": "error",
-                        "node_name": config.get("node_name", f"worker-{i+1}"),
-                        "message": f"Failed to start worker node: {str(e)}",
-                    }
-                    worker_results.append(error_result)
+        except Exception:
+            return []
 
-                    # Check if this is a critical failure (e.g., system resource exhaustion)
-                    if (
-                        isinstance(e, (OSError, MemoryError))
-                        or "resource" in str(e).lower()
-                    ):
-                        self._LoggingUtility.log_warning(
-                            "worker_start_rollback",
-                            f"Critical failure detected, initiating rollback of {len(self._worker_processes) - started_workers_count} workers",
-                        )
-                        critical_failure = True
-                        break
-
-        except Exception as e:
-            # Unexpected error in the loop itself
-            self._LoggingUtility.log_error("start_worker_nodes", e)
-            critical_failure = True
-
-        # Rollback newly started workers if critical failure occurred
-        if critical_failure and len(self._worker_processes) > started_workers_count:
-            try:
-                # Only rollback workers started in this operation
-                workers_to_rollback = self._worker_processes[started_workers_count:]
-                configs_to_rollback = self._worker_configs[started_workers_count:]
-
-                rollback_tasks = []
-                for i, process in enumerate(workers_to_rollback):
-                    if process and process.poll() is None:  # Still running
-                        node_name = configs_to_rollback[i].get(
-                            "node_name", f"worker-{started_workers_count + i + 1}"
-                        )
-                        task = self._safely_terminate_process(process, node_name)
-                        rollback_tasks.append(task)
-
-                if rollback_tasks:
-                    await asyncio.wait_for(
-                        asyncio.gather(*rollback_tasks, return_exceptions=True),
-                        timeout=5.0,
-                    )
-
-                # Remove rolled back workers from tracking
-                self._worker_processes = self._worker_processes[:started_workers_count]
-                self._worker_configs = self._worker_configs[:started_workers_count]
-
-                self._LoggingUtility.log_info(
-                    "worker_start_rollback",
-                    f"Rolled back {len(workers_to_rollback)} workers due to critical failure",
-                )
-
-            except Exception as rollback_error:
-                self._LoggingUtility.log_warning(
-                    "worker_start_rollback",
-                    f"Error during worker rollback: {rollback_error}",
-                )
-
-        return worker_results
-
-    async def _start_single_worker(
-        self, config: Dict[str, Any], head_node_address: str, node_name: str
-    ) -> Dict[str, Any]:
-        """Start a single worker node with simplified process management."""
+    def _get_cluster_resources(self) -> Dict[str, Any]:
+        """Get cluster resource information."""
         try:
-            # Build worker command
-            cmd = self._build_worker_command(config, head_node_address)
+            if not self._is_ray_ready():
+                return {}
 
-            # Start worker process
-            process = await self._spawn_worker_process(cmd, node_name)
-
-            if process:
-                self._worker_processes.append(process)
-                self._worker_configs.append(config)
-
-                return {
-                    "status": "started",
-                    "node_name": node_name,
-                    "message": f"Worker node '{node_name}' started successfully",
-                    "process_id": process.pid,
-                    "config": config,
-                }
-            else:
-                return {
-                    "status": "error",
-                    "node_name": node_name,
-                    "message": "Failed to spawn worker process",
-                }
-
-        except Exception as e:
-            self._LoggingUtility.log_error(f"start worker process for {node_name}", e)
-            return {
-                "status": "error",
-                "node_name": node_name,
-                "message": f"Failed to start worker process: {str(e)}",
-            }
-
-    def _build_worker_command(
-        self, config: Dict[str, Any], head_node_address: str
-    ) -> List[str]:
-        """Build command to start a Ray worker node."""
-        cmd = ["ray", "start", "--address", head_node_address]
-
-        # Add resource specifications
-        if "num_cpus" in config:
-            cmd.extend(["--num-cpus", str(config["num_cpus"])])
-        if "num_gpus" in config:
-            cmd.extend(["--num-gpus", str(config["num_gpus"])])
-        if "object_store_memory" in config:
-            # Ensure minimum 75MB
-            min_memory_bytes = 75 * 1024 * 1024
-            memory_bytes = max(min_memory_bytes, config["object_store_memory"])
-            cmd.extend(["--object-store-memory", str(memory_bytes)])
-        if "resources" in config and isinstance(config["resources"], dict):
-            resources_json = json.dumps(config["resources"])
-            cmd.extend(["--resources", resources_json])
-        if "node_name" in config:
-            cmd.extend(["--node-name", config["node_name"]])
-
-        cmd.extend(["--block", "--disable-usage-stats"])
-        return cmd
-
-    async def _spawn_worker_process(
-        self, cmd: List[str], node_name: str
-    ) -> Optional[subprocess.Popen]:
-        """Spawn a worker node process with simplified error handling."""
-        try:
-            self._LoggingUtility.log_info(
-                "worker_start", f"Starting worker '{node_name}': {' '.join(cmd)}"
-            )
-
-            # Set up environment
-            env = os.environ.copy()
-            env["RAY_DISABLE_USAGE_STATS"] = "1"
-            env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
-
-            # Start process
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-                text=True,
-            )
-
-            # Brief startup check
-            await asyncio.sleep(0.2)
-
-            if process.poll() is None:
-                self._LoggingUtility.log_info(
-                    "worker_start", f"Worker '{node_name}' started (PID: {process.pid})"
-                )
-                return process
-            else:
-                self._LoggingUtility.log_error(
-                    "worker_start",
-                    Exception(f"Worker '{node_name}' failed to start"),
-                )
-                return None
-
-        except Exception as e:
-            self._LoggingUtility.log_error("spawn worker process", e)
-            return None
-
-    async def _safely_terminate_process(
-        self, process: subprocess.Popen, node_name: str
-    ) -> Dict[str, Any]:
-        """Safely terminate a process and ensure proper cleanup.
-
-        The key insight: always call wait() after terminate() to prevent zombies.
-        """
-        process_id = process.pid
-
-        try:
-            # If process is already dead, we're done
-            if process.poll() is not None:
-                return {
-                    "status": "stopped",
-                    "node_name": node_name,
-                    "message": f"Worker '{node_name}' was already stopped",
-                    "process_id": process_id,
-                }
-
-            # Try graceful termination first
-            process.terminate()
-            loop = asyncio.get_running_loop()
-
-            try:
-                await asyncio.wait_for(
-                    loop.run_in_executor(None, process.wait), timeout=5
-                )
-                return {
-                    "status": "stopped",
-                    "node_name": node_name,
-                    "message": f"Worker '{node_name}' stopped gracefully",
-                    "process_id": process_id,
-                }
-            except asyncio.TimeoutError:
-                # Force kill if graceful shutdown times out
-                process.kill()
-                await asyncio.wait_for(
-                    loop.run_in_executor(None, process.wait), timeout=3
-                )
-                return {
-                    "status": "force_stopped",
-                    "node_name": node_name,
-                    "message": f"Worker '{node_name}' force stopped",
-                    "process_id": process_id,
-                }
-
-        except Exception as e:
-            # If anything goes wrong, ensure we still wait() for the process
-            try:
-                if process.poll() is None:  # Still alive
-                    process.kill()
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, process.wait)
-            except Exception:
-                pass  # We tried our best
+            cluster_resources = self._ray.cluster_resources()
+            available_resources = self._ray.available_resources()
 
             return {
-                "status": "error",
-                "node_name": node_name,
-                "message": f"Error stopping worker '{node_name}': {str(e)}",
-                "process_id": process_id,
+                "total": cluster_resources,
+                "available": available_resources,
             }
 
-    async def _stop_all_workers(self) -> List[Dict[str, Any]]:
-        """Stop all worker nodes with simplified cleanup."""
-        results = []
-
-        for i, process in enumerate(self._worker_processes):
-            node_name = self._worker_configs[i].get("node_name", f"worker-{i+1}")
-            result = await self._safely_terminate_process(process, node_name)
-            results.append(result)
-
-        # Clear worker tracking
-        self._worker_processes.clear()
-        self._worker_configs.clear()
-
-        return results
-
-    async def _cleanup_all_processes(self) -> None:
-        """Emergency cleanup of all tracked processes to prevent orphaning.
-
-        This method ensures all spawned processes are properly terminated
-        in error scenarios to prevent orphaned processes.
-        """
-        cleanup_tasks = []
-
-        # Clean up all worker processes
-        if self._worker_processes:
-            self._LoggingUtility.log_warning(
-                "process_cleanup",
-                f"Emergency cleanup of {len(self._worker_processes)} worker processes",
-            )
-
-            for i, process in enumerate(self._worker_processes):
-                if process and process.poll() is None:  # Still running
-                    node_name = (
-                        self._worker_configs[i].get("node_name", f"worker-{i+1}")
-                        if i < len(self._worker_configs)
-                        else f"worker-{i+1}"
-                    )
-                    task = self._safely_terminate_process(process, node_name)
-                    cleanup_tasks.append(task)
-
-        # Execute all cleanup tasks concurrently with timeout
-        if cleanup_tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*cleanup_tasks, return_exceptions=True),
-                    timeout=10.0,  # Maximum 10 seconds for cleanup
-                )
-            except asyncio.TimeoutError:
-                self._LoggingUtility.log_warning(
-                    "process_cleanup",
-                    "Process cleanup timed out, some processes may remain",
-                )
-            except Exception as e:
-                self._LoggingUtility.log_warning(
-                    "process_cleanup", f"Error during emergency process cleanup: {e}"
-                )
-
-        # Force clear all tracking regardless of cleanup success
-        self._worker_processes.clear()
-        self._worker_configs.clear()
-
-        # Clear head node reference
-        if self._head_node_process:
-            self._head_node_process = None
-
-        self._LoggingUtility.log_info(
-            "process_cleanup", "Emergency process cleanup completed"
-        )
-
-    def _reset_state(self) -> None:
-        """Reset state with comprehensive process cleanup.
-
-        Overrides parent method to ensure processes are cleaned up
-        before state is reset to prevent orphaned processes.
-        """
-        # First, clean up any remaining processes synchronously
-        if self._worker_processes or self._head_node_process:
-            self._LoggingUtility.log_warning(
-                "state_reset",
-                f"Cleaning up {len(self._worker_processes)} workers and head node before state reset",
-            )
-
-            # Force terminate any remaining worker processes
-            for i, process in enumerate(self._worker_processes):
-                if process and process.poll() is None:  # Still running
-                    try:
-                        process.terminate()
-                        # Give process 1 second to terminate gracefully
-                        try:
-                            process.wait(timeout=1.0)
-                        except subprocess.TimeoutExpired:
-                            # Force kill if it doesn't terminate
-                            process.kill()
-                            process.wait()
-                        self._LoggingUtility.log_info(
-                            "state_reset",
-                            f"Terminated worker process {i+1} (PID: {process.pid})",
-                        )
-                    except Exception as e:
-                        self._LoggingUtility.log_warning(
-                            "state_reset",
-                            f"Error terminating worker process {i+1}: {e}",
-                        )
-
-            # Clear process tracking
-            self._worker_processes.clear()
-            self._worker_configs.clear()
-            self._head_node_process = None
-
-        # Call parent reset_state method
-        try:
-            super()._reset_state()
-        except AttributeError:
-            # If parent doesn't have _reset_state, reset our state manager directly
-            if hasattr(self, "_external_state_manager"):
-                self._external_state_manager.reset_state()
-            elif hasattr(self, "state_manager"):
-                self.state_manager.reset_state()
-
-        self._LoggingUtility.log_info(
-            "state_reset", "State reset completed with process cleanup"
-        )
-
-    def __del__(self):
-        """Destructor to ensure processes are cleaned up on manager destruction."""
-        if hasattr(self, "_worker_processes") and self._worker_processes:
-            # Emergency cleanup in destructor - cannot use async
-            for process in self._worker_processes:
-                if process and process.poll() is None:
-                    try:
-                        process.terminate()
-                        process.wait(timeout=1.0)
-                    except Exception:
-                        try:
-                            process.kill()
-                            process.wait()
-                        except Exception:
-                            pass  # Last resort - we tried
+        except Exception:
+            return {}
