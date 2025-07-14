@@ -1,8 +1,9 @@
-# Ray MCP Server - Test Automation (UV Native)
+# Ray MCP Server - Prompt-Driven Architecture (UV Native)
 # 
-# Minimal Testing Strategy:
-# - test-fast:  Unit tests only (fast development feedback)
+# Modern Testing Strategy:
+# - test-fast:  Unit tests with 100% mocking (fast development feedback)
 # - test-smoke: Critical functionality validation (quick confidence)
+# - test-e2e:   End-to-end tests without mocking (integration validation)
 # - test:       Complete test suite including E2E (full validation)
 
 .PHONY: test test-fast test-smoke test-e2e install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
@@ -14,42 +15,22 @@
 # Default test - full test suite including e2e
 test:
 	@echo "🔍 Running complete test suite..."
-	@uv run pytest tests/ --tb=short -v --cov=ray_mcp --cov-report=term-missing --cov-report=html:htmlcov
+	@python test_runner.py all
 
-# Fast test suite (excludes e2e tests) - for development
+# Fast test suite (unit tests with 100% mocking) - for development
 test-fast:
-	@echo "🏃‍♂️ Running fast test suite..."
-	@uv run pytest tests/ -k "not e2e" --tb=short -v --cov=ray_mcp --cov-report=term-missing
+	@echo "🏃‍♂️ Running fast unit tests with 100% mocking..."
+	@python test_runner.py unit
 
-# Comprehensive end-to-end server tests (consolidated)
+# End-to-end tests without mocking - for integration validation
 test-e2e:
-	@echo "🚀 Running comprehensive Ray MCP server tests..."
-	@echo "📋 Testing complete end-to-end functionality..."
-	@uv run pytest tests/test_mcp_server.py --tb=short -v
-	@echo "✅ End-to-end server tests completed!"
+	@echo "🚀 Running end-to-end tests without mocking..."
+	@python test_runner.py e2e
 
 # Smoke tests - critical functionality validation for quick confidence
 test-smoke:
 	@echo "💨 Running smoke tests for critical functionality..."
-	@echo "🚀 Testing system architecture integration..."
-	@uv run python -c "\
-import asyncio; \
-from ray_mcp.main import ray_manager; \
-from ray_mcp.managers.unified_manager import RayUnifiedManager; \
-print('🔧 Testing System Architecture Integration'); \
-print('=' * 60); \
-print('✅ Architecture Validation:'); \
-print(f'   - Type: {type(ray_manager).__name__}'); \
-print(f'   - Instance: {isinstance(ray_manager, RayUnifiedManager)}'); \
-print('✅ Component Access:'); \
-components = {'State Manager': ray_manager.get_state_manager(), 'Cluster Manager': ray_manager.get_cluster_manager(), 'Job Manager': ray_manager.get_job_manager(), 'Log Manager': ray_manager.get_log_manager(), 'Port Manager': ray_manager.get_port_manager()}; \
-[print(f'   - {name}: {\"✅ Available\" if component else \"❌ Missing\"}') for name, component in components.items()]; \
-print('✅ Integration Test: All systems operational!'); \
-print('✅ System architecture successfully deployed!'); \
-"
-	@echo "🚀 Testing core unit functionality..."
-	@uv run pytest tests/test_core_unified_manager.py::TestRayUnifiedManagerCore::test_manager_instantiation_creates_all_components -v --tb=short
-	@echo "✅ Smoke tests completed - System architecture validated!"
+	@python test_runner.py smoke
 
 # ================================================================================
 # LINTING AND FORMATTING TARGETS
@@ -63,10 +44,22 @@ lint:
 	@uv run pyright ray_mcp/ examples/ tests/
 	@echo "✅ All linting checks passed!"
 
-# Tool function specific linting
+# Tool function specific linting for 3-tool architecture
 lint-tool-functions:
-	@echo "🔧 Running tool function linting..."
-	@python scripts/lint_tool_functions.py
+	@echo "🔧 Running tool function linting for prompt-driven tools..."
+	@uv run python -c "\
+from ray_mcp.tools import get_ray_tools; \
+tools = get_ray_tools(); \
+print('🔍 Validating 3-tool architecture:'); \
+print(f'   - Tool count: {len(tools)} (expected: 3)'); \
+tool_names = [tool.name for tool in tools]; \
+expected = ['ray_cluster', 'ray_job', 'cloud']; \
+print(f'   - Tool names: {tool_names}'); \
+print(f'   - Expected: {expected}'); \
+print(f'   - Valid: {\"✅\" if set(tool_names) == set(expected) else \"❌\"}'); \
+[print(f'   - {tool.name}: prompt parameter {\"✅\" if \"prompt\" in tool.inputSchema.get(\"required\", []) else \"❌\"}') for tool in tools]; \
+print('✅ Tool function validation complete!'); \
+"
 
 # Enhanced linting - includes tool function checks
 lint-enhanced: lint lint-tool-functions
@@ -201,15 +194,15 @@ clean-all: clean-coverage
 	rm -rf .mypy_cache/
 	@echo "✅ All generated files cleaned"
 
-# Test with coverage (using new clean setup)
+# Test with coverage (using test runner)
 test-cov: clean-coverage
 	@echo "🧪 Running tests with coverage..."
-	python -m pytest --cov=ray_mcp --cov-report=term-missing --cov-report=html:htmlcov
+	@python test_runner.py unit --coverage
 	@echo "📊 Coverage report generated in htmlcov/"
 
 # Help
 help:
-	@echo "Ray MCP Server - Available Commands:"
+	@echo "Ray MCP Server - Prompt-Driven Architecture - Available Commands:"
 	@echo ""
 	@echo "📦 Installation:"
 	@echo "  install          Install dependencies"
@@ -219,19 +212,24 @@ help:
 	@echo "  uv-check         Check dependency consistency"
 	@echo "  update-deps      Update dependencies to latest compatible versions"
 	@echo ""
-	@echo "🧪 Testing:"
-	@echo "  test             Run complete test suite including E2E (default)"
-	@echo "  test-fast        Run unit tests only for fast development feedback"
-	@echo "  test-smoke       Run smoke tests for quick critical functionality validation"
-	@echo "  test-e2e         Run comprehensive end-to-end server tests (consolidated)"
-	@echo "  test-cov         Run tests with coverage"
+	@echo "🧪 Testing (New Test Runner):"
+	@echo "  test             Run complete test suite (unit + e2e)"
+	@echo "  test-fast        Run unit tests with 100% mocking (fast development)"
+	@echo "  test-smoke       Run smoke tests for critical functionality"
+	@echo "  test-e2e         Run end-to-end tests without mocking (integration)"
+	@echo "  test-cov         Run unit tests with coverage reporting"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  lint             Run linting checks"
-	@echo "  lint-enhanced    Run enhanced linting with tool function checks"
+	@echo "  lint-enhanced    Run enhanced linting with 3-tool validation"
 	@echo "  format           Format code"
-	@echo "  lint-tool-functions  Lint tool function signatures"
+	@echo "  lint-tool-functions  Validate prompt-driven tool architecture"
 	@echo "  wc               Count lines of code with directory breakdown"
 	@echo "  clean            Clean build artifacts"
 	@echo "  clean-coverage   Clean coverage files"
-	@echo "  clean-all        Clean all generated files" 
+	@echo "  clean-all        Clean all generated files"
+	@echo ""
+	@echo "🎯 Architecture:"
+	@echo "  3 Tools: ray_cluster, ray_job, cloud"
+	@echo "  Interface: Natural language prompts"
+	@echo "  Tests: 96 unit + 8 e2e = 104 total" 
