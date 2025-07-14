@@ -188,6 +188,23 @@ class TestActionParser:
                 "prompt": "auth with Google Cloud",
                 "expected": {"operation": "authenticate", "provider": "gcp"},
             },
+            # Test GCP/GKE synonyms
+            {
+                "prompt": "authenticate with GKE project test-project",
+                "expected": {
+                    "operation": "authenticate",
+                    "provider": "gcp",
+                    "project_id": "test-project",
+                },
+            },
+            {
+                "prompt": "auth with gcp",
+                "expected": {"operation": "authenticate", "provider": "gcp"},
+            },
+            {
+                "prompt": "login to GKE",
+                "expected": {"operation": "authenticate", "provider": "gcp"},
+            },
         ]
 
         for case in test_cases:
@@ -208,6 +225,11 @@ class TestActionParser:
             "Get GKE clusters",  # Added test case for the reported issue
             "list gke clusters",  # Added test case with lowercase
             "show all gke clusters",  # Added test case with 'all'
+            # Test GCP/GKE synonyms for listing
+            "list GCP clusters",
+            "get gcp clusters", 
+            "show GCP clusters",
+            "list all gcp clusters",
         ]
 
         for prompt in prompts:
@@ -230,6 +252,61 @@ class TestActionParser:
                 "expected": {
                     "operation": "connect_cluster",
                     "cluster_name": "training-cluster",
+                },
+            },
+            # Test GCP/GKE synonyms for connection
+            {
+                "prompt": "connect to GCP cluster dev-cluster",
+                "expected": {
+                    "operation": "connect_cluster",
+                    "cluster_name": "dev-cluster",
+                },
+            },
+            {
+                "prompt": "connect to gcp cluster test in zone us-west1-b",
+                "expected": {
+                    "operation": "connect_cluster", 
+                    "cluster_name": "test",
+                    "zone": "us-west1-b",
+                },
+            },
+        ]
+
+        for case in test_cases:
+            result = ActionParser.parse_cloud_action(case["prompt"])
+            assert result["operation"] == case["expected"]["operation"]
+            assert result["cluster_name"] == case["expected"]["cluster_name"]
+
+    def test_parse_cloud_create_cluster_action(self):
+        """Test parsing cloud cluster creation prompts with GCP/GKE synonyms."""
+        test_cases = [
+            {
+                "prompt": "create GKE cluster ai-training",
+                "expected": {
+                    "operation": "create_cluster",
+                    "cluster_name": "ai-training",
+                },
+            },
+            {
+                "prompt": "create GCP cluster ml-pipeline in zone us-central1-a",
+                "expected": {
+                    "operation": "create_cluster",
+                    "cluster_name": "ml-pipeline",
+                    "zone": "us-central1-a",
+                },
+            },
+            {
+                "prompt": "create cluster dev-env in gke",
+                "expected": {
+                    "operation": "create_cluster",
+                    "cluster_name": "dev-env",
+                },
+            },
+            {
+                "prompt": "create gcp cluster test-cluster",
+                "expected": {
+                    "operation": "create_cluster",
+                    "cluster_name": "test-cluster",
                 },
             },
         ]

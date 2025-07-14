@@ -44,7 +44,7 @@ def get_ray_tools() -> List[Tool]:
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "What you want to do with cloud infrastructure in plain English. Examples: 'Authenticate with Google Cloud project ml-experiments', 'List all GKE clusters', 'Connect to cluster ml-training in GKE', 'Create GKE cluster named ai-cluster'",
+                        "description": "What you want to do with cloud infrastructure in plain English. Examples: 'Authenticate with GCP project ml-experiments', 'List all GKE clusters', 'Connect to cluster ml-training in GKE', 'Create GCP cluster named ai-cluster', 'List GCP clusters'",
                     }
                 },
                 "required": ["prompt"],
