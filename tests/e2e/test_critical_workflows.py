@@ -32,15 +32,15 @@ from ray_mcp.tools import get_ray_tools
 def cleanup_after_all_tests():
     """Final cleanup after all tests complete."""
     yield  # This runs after all tests
-    
+
     # Final cleanup - kill all Ray processes and close threads
     try:
         cleanup_all_ray_processes()
-        
+
         # Force thread cleanup with timeout
         import threading
         import time
-        
+
         # Wait for background threads to finish (with timeout)
         main_thread = threading.current_thread()
         for thread in threading.enumerate():
@@ -49,14 +49,15 @@ def cleanup_after_all_tests():
                     thread.join(timeout=0.5)  # Short timeout
                 except:
                     pass
-        
+
         # Force garbage collection
         import gc
+
         gc.collect()
-        
+
         # Brief pause to allow cleanup
         time.sleep(0.2)
-            
+
     except:
         pass
 
@@ -103,7 +104,7 @@ async def cleanup_ray():
     # Force cleanup any stubborn Ray processes
     try:
         import subprocess
-        
+
         # Kill any remaining Ray processes
         subprocess.run(["pkill", "-f", "ray::"], capture_output=True, check=False)
         subprocess.run(["pkill", "-f", "ray_"], capture_output=True, check=False)
@@ -118,7 +119,7 @@ async def cleanup_ray():
     # Force cleanup any hanging Python processes related to Ray
     try:
         import subprocess
-        
+
         # Kill any Python processes that might be hanging from Ray jobs
         subprocess.run(["pkill", "-f", "python.*ray"], capture_output=True, check=False)
         # Brief wait for process cleanup
@@ -131,7 +132,7 @@ def cleanup_all_ray_processes():
     """Nuclear cleanup option - use only when tests are completely stuck."""
     try:
         import subprocess
-        
+
         # Kill all Ray-related processes
         processes_to_kill = [
             "ray::",
@@ -142,21 +143,29 @@ def cleanup_all_ray_processes():
             "python.*ray",
             "python.*pytest.*e2e",
         ]
-        
+
         for process_pattern in processes_to_kill:
             try:
-                subprocess.run(["pkill", "-f", process_pattern], 
-                              capture_output=True, check=False, timeout=5)
+                subprocess.run(
+                    ["pkill", "-f", process_pattern],
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
             except:
                 pass
-        
+
         # Force kill any remaining processes
         try:
-            subprocess.run(["pkill", "-9", "-f", "ray"], 
-                          capture_output=True, check=False, timeout=5)
+            subprocess.run(
+                ["pkill", "-9", "-f", "ray"],
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
         except:
             pass
-            
+
     except:
         pass
 
@@ -164,10 +173,11 @@ def cleanup_all_ray_processes():
 def create_test_script(script_content: str) -> str:
     """Create a temporary test script and return its path."""
     import os
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(script_content)
         script_path = f.name
-    
+
     # Make the script executable
     os.chmod(script_path, 0o755)
     return script_path
@@ -193,41 +203,47 @@ class TestCriticalWorkflows:
         """Set up for each test."""
         self.unified_manager = RayUnifiedManager()
         self.handlers = RayHandlers(self.unified_manager)
-        
+
         # Store original Ray timeout for restoration
-        self.original_gcs_timeout = os.environ.get('RAY_gcs_server_request_timeout_seconds')
-        
+        self.original_gcs_timeout = os.environ.get(
+            "RAY_gcs_server_request_timeout_seconds"
+        )
+
         # Set faster timeout for tests to avoid long waits on invalid connections
-        os.environ['RAY_gcs_server_request_timeout_seconds'] = '5'
-        
+        os.environ["RAY_gcs_server_request_timeout_seconds"] = "5"
+
         # Suppress Ray's verbose logging during tests
-        self.original_ray_log_level = os.environ.get('RAY_LOG_LEVEL')
-        os.environ['RAY_LOG_LEVEL'] = 'CRITICAL'  # Suppress all but critical logs
+        self.original_ray_log_level = os.environ.get("RAY_LOG_LEVEL")
+        os.environ["RAY_LOG_LEVEL"] = "CRITICAL"  # Suppress all but critical logs
 
     async def teardown_method(self):
         """Clean up after each test."""
         # Restore original Ray timeout
         if self.original_gcs_timeout is not None:
-            os.environ['RAY_gcs_server_request_timeout_seconds'] = self.original_gcs_timeout
+            os.environ["RAY_gcs_server_request_timeout_seconds"] = (
+                self.original_gcs_timeout
+            )
         else:
-            os.environ.pop('RAY_gcs_server_request_timeout_seconds', None)
-            
+            os.environ.pop("RAY_gcs_server_request_timeout_seconds", None)
+
         # Restore original Ray log level
         if self.original_ray_log_level is not None:
-            os.environ['RAY_LOG_LEVEL'] = self.original_ray_log_level
+            os.environ["RAY_LOG_LEVEL"] = self.original_ray_log_level
         else:
-            os.environ.pop('RAY_LOG_LEVEL', None)
-        
+            os.environ.pop("RAY_LOG_LEVEL", None)
+
         # Aggressive cleanup
         await cleanup_ray()
-        
+
         # Force garbage collection to clean up any lingering objects
         import gc
+
         gc.collect()
-        
+
         # Clear any remaining asyncio tasks
         try:
             import asyncio
+
             # Cancel any pending tasks
             tasks = [task for task in asyncio.all_tasks() if not task.done()]
             for task in tasks:
@@ -450,14 +466,15 @@ print("Job finished successfully")
 
         response = parse_tool_response(result)
         assert response["status"] == "error"
-        
+
         # Explicitly clean up any Ray processes that might have started
         # This is especially important after invalid connection attempts
         await cleanup_ray()
-        
+
         # Extra cleanup for stubborn background processes
         try:
             import subprocess
+
             # Force kill any remaining ray processes
             subprocess.run(["pkill", "-f", "ray"], capture_output=True, check=False)
             await asyncio.sleep(1)

@@ -161,10 +161,10 @@ class JobManager(ResourceManager):
                 for job_info in jobs:
                     # Try different attributes to get job_id
                     job_id = (
-                        getattr(job_info, "job_id", None) or
-                        getattr(job_info, "submission_id", None) or
-                        getattr(job_info, "id", None) or
-                        "unknown"
+                        getattr(job_info, "job_id", None)
+                        or getattr(job_info, "submission_id", None)
+                        or getattr(job_info, "id", None)
+                        or "unknown"
                     )
                     job_list.append(
                         {
@@ -182,7 +182,9 @@ class JobManager(ResourceManager):
                     )
 
             return self._ResponseFormatter.format_success_response(
-                jobs=job_list, total_count=len(job_list), message=f"Found {len(job_list)} jobs"
+                jobs=job_list,
+                total_count=len(job_list),
+                message=f"Found {len(job_list)} jobs",
             )
 
         except Exception as e:
@@ -304,7 +306,9 @@ class JobManager(ResourceManager):
                 return "http://127.0.0.1:8265"
 
             # First try to get from unified manager if available
-            if self._unified_manager and hasattr(self._unified_manager, 'get_dashboard_url'):
+            if self._unified_manager and hasattr(
+                self._unified_manager, "get_dashboard_url"
+            ):
                 dashboard_url = self._unified_manager.get_dashboard_url()
                 if dashboard_url != "http://127.0.0.1:8265":  # Not the default fallback
                     return dashboard_url

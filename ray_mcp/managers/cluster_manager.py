@@ -158,10 +158,12 @@ class ClusterManager(ResourceManager):
             try:
                 ray_info = await asyncio.wait_for(
                     asyncio.to_thread(self._ray.init, address=address),
-                    timeout=30  # 30 second timeout for connection attempts
+                    timeout=30,  # 30 second timeout for connection attempts
                 )
             except asyncio.TimeoutError:
-                raise Exception(f"Connection to cluster at {address} timed out after 30 seconds")
+                raise Exception(
+                    f"Connection to cluster at {address} timed out after 30 seconds"
+                )
 
             # Update simple state tracking
             self._cluster_address = address
@@ -189,7 +191,8 @@ class ClusterManager(ResourceManager):
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_success_response(
-                    cluster_status="not_running", message="No Ray cluster is currently running"
+                    cluster_status="not_running",
+                    message="No Ray cluster is currently running",
                 )
 
             # Get cluster information

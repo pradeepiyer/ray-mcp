@@ -107,9 +107,12 @@ class RayUnifiedManager:
         ]
         prompt_lower = prompt.lower()
         return any(keyword in prompt_lower for keyword in k8s_keywords)
-    
+
     def get_dashboard_url(self) -> str:
         """Get the dashboard URL from the cluster manager."""
-        if hasattr(self._cluster_manager, '_dashboard_url') and self._cluster_manager._dashboard_url:
+        if (
+            hasattr(self._cluster_manager, "_dashboard_url")
+            and self._cluster_manager._dashboard_url
+        ):
             return self._cluster_manager._dashboard_url
         return "http://127.0.0.1:8265"  # Default fallback
