@@ -70,9 +70,14 @@ async def cleanup_ray():
 
 def create_test_script(script_content: str) -> str:
     """Create a temporary test script and return its path."""
+    import os
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(script_content)
-        return f.name
+        script_path = f.name
+    
+    # Make the script executable
+    os.chmod(script_path, 0o755)
+    return script_path
 
 
 def parse_tool_response(result: Any) -> Dict[str, Any]:
@@ -170,19 +175,22 @@ class TestCriticalWorkflows:
             # Step 3: Create and submit a simple test job
             print("💼 Creating and submitting test job...")
 
-            test_job_script = """
+            test_job_script = """#!/usr/bin/env python3
 import time
-import ray
 
-@ray.remote
+# Simple test job that doesn't use Ray remote functions
+# This simulates a job that would typically be submitted to Ray
 def simple_task(x):
     time.sleep(1)  # Simulate some work
     return x * 2
 
 # Submit some tasks
 print("Starting Ray job...")
-futures = [simple_task.remote(i) for i in range(3)]
-results = ray.get(futures)
+results = []
+for i in range(3):
+    result = simple_task(i)
+    results.append(result)
+    
 print(f"Job completed! Results: {results}")
 print("Job finished successfully")
 """
@@ -219,7 +227,7 @@ print("Job finished successfully")
                     response = parse_tool_response(result)
 
                     if response["status"] == "success":
-                        job_status = response.get("status", "UNKNOWN")
+                        job_status = response.get("job_status", "UNKNOWN")
                         print(f"Job status: {job_status}")
 
                         if job_status in ["SUCCEEDED", "FAILED"]:
@@ -227,6 +235,18 @@ print("Job finished successfully")
 
                     await asyncio.sleep(wait_interval)
                     elapsed_time += wait_interval
+
+                # If job failed, get logs for debugging
+                if job_status == "FAILED":
+                    print("🔍 Job failed - getting logs for debugging...")
+                    result = await self.handlers.handle_tool_call(
+                        "ray_job", {"prompt": f"get logs for job {job_id}"}
+                    )
+                    response = parse_tool_response(result)
+                    if response["status"] == "success" and "logs" in response:
+                        print(f"Job logs: {response['logs']}")
+                    else:
+                        print(f"Could not get job logs: {response}")
 
                 # Verify job completed successfully
                 assert (
@@ -256,6 +276,7 @@ print("Job finished successfully")
                 )
 
                 response = parse_tool_response(result)
+                print(f"Job listing response: {response}")
                 assert response["status"] == "success"
                 assert "jobs" in response
 

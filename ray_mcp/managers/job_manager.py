@@ -40,6 +40,11 @@ class JobManager(ResourceManager):
                 if not job_id:
                     return {"status": "error", "message": "job_id required"}
                 return await self._get_job_status(job_id)
+            elif operation == "inspect":
+                job_id = action.get("job_id")
+                if not job_id:
+                    return {"status": "error", "message": "job_id required"}
+                return await self._get_job_status(job_id)
             elif operation == "cancel":
                 job_id = action.get("job_id")
                 if not job_id:
@@ -110,7 +115,7 @@ class JobManager(ResourceManager):
             return self._ResponseFormatter.format_success_response(
                 job_id=job_id,
                 entrypoint=job_spec["entrypoint"],
-                status="submitted",
+                job_status="submitted",
                 message=f"Job {job_id} submitted successfully",
             )
 
@@ -134,24 +139,50 @@ class JobManager(ResourceManager):
             jobs = job_client.list_jobs()
             job_list = []
 
-            for job_id, job_info in jobs.items():
-                job_list.append(
-                    {
-                        "job_id": job_id,
-                        "status": (
-                            job_info.status.value
-                            if hasattr(job_info.status, "value")
-                            else str(job_info.status)
-                        ),
-                        "entrypoint": getattr(job_info, "entrypoint", "unknown"),
-                        "start_time": getattr(job_info, "start_time", None),
-                        "end_time": getattr(job_info, "end_time", None),
-                        "metadata": getattr(job_info, "metadata", {}),
-                    }
-                )
+            # Handle both dict and list responses from Ray
+            if isinstance(jobs, dict):
+                for job_id, job_info in jobs.items():
+                    job_list.append(
+                        {
+                            "job_id": job_id,
+                            "status": (
+                                job_info.status.value
+                                if hasattr(job_info.status, "value")
+                                else str(job_info.status)
+                            ),
+                            "entrypoint": getattr(job_info, "entrypoint", "unknown"),
+                            "start_time": getattr(job_info, "start_time", None),
+                            "end_time": getattr(job_info, "end_time", None),
+                            "metadata": getattr(job_info, "metadata", {}),
+                        }
+                    )
+            else:
+                # Handle list response
+                for job_info in jobs:
+                    # Try different attributes to get job_id
+                    job_id = (
+                        getattr(job_info, "job_id", None) or
+                        getattr(job_info, "submission_id", None) or
+                        getattr(job_info, "id", None) or
+                        "unknown"
+                    )
+                    job_list.append(
+                        {
+                            "job_id": job_id,
+                            "status": (
+                                job_info.status.value
+                                if hasattr(job_info.status, "value")
+                                else str(job_info.status)
+                            ),
+                            "entrypoint": getattr(job_info, "entrypoint", "unknown"),
+                            "start_time": getattr(job_info, "start_time", None),
+                            "end_time": getattr(job_info, "end_time", None),
+                            "metadata": getattr(job_info, "metadata", {}),
+                        }
+                    )
 
             return self._ResponseFormatter.format_success_response(
-                jobs=job_list, total_count=len(job_list)
+                jobs=job_list, total_count=len(job_list), message=f"Found {len(job_list)} jobs"
             )
 
         except Exception as e:
@@ -175,7 +206,7 @@ class JobManager(ResourceManager):
 
             return self._ResponseFormatter.format_success_response(
                 job_id=job_id,
-                status=(
+                job_status=(
                     job_info.status.value
                     if hasattr(job_info.status, "value")
                     else str(job_info.status)

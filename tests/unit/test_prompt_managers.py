@@ -104,7 +104,8 @@ class TestClusterManager:
 
             result = await self.manager.execute_request(prompt)
 
-            assert result["status"] == "running"
+            assert result["status"] == "success"
+            assert result["cluster_status"] == "running"
             assert "nodes" in result
             assert "resources" in result
 
@@ -197,7 +198,8 @@ class TestJobManager:
 
             # Verify job was submitted
             self.job_client_mock.submit_job.assert_called_once()
-            assert result["status"] == "submitted"
+            assert result["status"] == "success"
+            assert result["job_status"] == "submitted"
             assert result["job_id"] == "raysubmit_123"
             assert "submitted successfully" in result["message"]
 

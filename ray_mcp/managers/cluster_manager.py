@@ -199,6 +199,7 @@ class ClusterManager(ResourceManager):
                 "dashboard_url": self._dashboard_url,
                 "nodes": self._get_cluster_nodes(),
                 "resources": self._get_cluster_resources(),
+                "message": "Cluster inspection completed successfully",
             }
 
             return self._ResponseFormatter.format_success_response(**cluster_info)
