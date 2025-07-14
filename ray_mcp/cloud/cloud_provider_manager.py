@@ -58,12 +58,16 @@ class CloudProviderManager(ResourceManager):
     # INTERNAL IMPLEMENTATION: All methods are now private
     # =================================================================
 
+    def _is_gcp_provider(self, provider: str) -> bool:
+        """Check if provider string refers to GCP/GKE (both are synonymous)."""
+        return provider.lower() in ["gcp", "gke"]
+
     async def _authenticate_from_prompt(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Convert parsed prompt action to cloud authentication."""
         provider = action.get("provider", "gcp")
         project = action.get("project_id")
 
-        if provider == "gcp":
+        if self._is_gcp_provider(provider):
             auth_config = {}
             if project:
                 auth_config["project_id"] = project
@@ -78,12 +82,18 @@ class CloudProviderManager(ResourceManager):
     ) -> Dict[str, Any]:
         """Convert parsed prompt action to cluster connection."""
         cluster_name = action.get("cluster_name")
-        provider = action.get("provider", "gke")
+        provider = action.get("provider", "gcp")
 
         if not cluster_name:
             return {
                 "status": "error",
                 "message": "cluster_name required for connection",
+            }
+
+        if not self._is_gcp_provider(provider):
+            return {
+                "status": "error",
+                "message": f"Unsupported provider: {provider}",
             }
 
         return await self._connect_cloud_cluster(
@@ -95,11 +105,17 @@ class CloudProviderManager(ResourceManager):
     ) -> Dict[str, Any]:
         """Convert parsed prompt action to cluster creation."""
         cluster_name = action.get("cluster_name")
-        provider = action.get("provider", "gke")
+        provider = action.get("provider", "gcp")
         zone = action.get("zone", "us-central1-a")
 
         if not cluster_name:
             return {"status": "error", "message": "cluster_name required for creation"}
+
+        if not self._is_gcp_provider(provider):
+            return {
+                "status": "error",
+                "message": f"Unsupported provider: {provider}",
+            }
 
         cluster_spec = {"name": cluster_name, "zone": zone}
 
