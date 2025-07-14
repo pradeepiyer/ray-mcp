@@ -30,35 +30,67 @@ from ray_mcp.tools import get_ray_tools
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_after_all_tests():
-    """Final cleanup after all tests complete."""
+    """Enhanced final cleanup after all tests complete."""
     yield  # This runs after all tests
 
-    # Final cleanup - kill all Ray processes and close threads
+    # Enhanced final cleanup with Ray-specific thread targeting
     try:
+        # Set environment to force Ray cleanup
+        import os
+        os.environ["RAY_DISABLE_USAGE_STATS"] = "1"
+        os.environ["RAY_memory_monitor_refresh_ms"] = "0"
+
         cleanup_all_ray_processes()
 
-        # Force thread cleanup with timeout
+        # Enhanced thread cleanup with specific Ray thread targeting
         import threading
         import time
 
-        # Wait for background threads to finish (with timeout)
+        print("🧹 Final cleanup: checking background threads...")
         main_thread = threading.current_thread()
+        ray_threads = []
+        
         for thread in threading.enumerate():
             if thread is not main_thread and thread.is_alive():
-                try:
-                    thread.join(timeout=0.5)  # Short timeout
-                except:
-                    pass
-
+                thread_name_lower = thread.name.lower()
+                is_ray_thread = any(keyword in thread_name_lower for keyword in 
+                      ['ray', 'raylet', 'gcs', 'plasma', 'dashboard', 'monitor', 'listener', 'logger'])
+                
+                print(f"  Found thread: {thread.name} (daemon: {thread.daemon}, ray: {is_ray_thread})")
+                
+                if is_ray_thread:
+                    ray_threads.append(thread)
+                    
+        # Force terminate Ray-specific threads
+        for thread in ray_threads:
+            try:
+                if hasattr(thread, '_stop'):
+                    thread._stop()
+                thread.daemon = True  # Convert to daemon
+                thread.join(timeout=0.5)
+            except Exception as e:
+                print(f"  Failed to stop thread {thread.name}: {e}")
+                pass
+                
         # Force garbage collection
         import gc
-
         gc.collect()
+        
+        # Final process cleanup with more comprehensive patterns
+        import subprocess
+        try:
+            # Kill Ray processes more comprehensively
+            ray_process_patterns = ["ray", "raylet", "gcs_server", "dashboard", "ray-mcp"]
+            for pattern in ray_process_patterns:
+                subprocess.run(["pkill", "-9", "-f", pattern], capture_output=True, check=False, timeout=3)
+        except Exception as e:
+            print(f"  Process cleanup error: {e}")
+            pass
+            
+        print("🧹 Final cleanup completed")
 
-        # Brief pause to allow cleanup
-        time.sleep(0.2)
-
-    except:
+    except Exception as e:
+        print(f"🚨 Final cleanup failed: {e}")
         pass
 
 
@@ -80,50 +112,84 @@ class E2ETestConfig:
 
 
 async def cleanup_ray():
-    """Clean up any existing Ray instances."""
+    """Enhanced Ray cleanup with proper thread and event loop management."""
     try:
         import ray
+        import threading
+        import asyncio
 
+        # Step 1: Shutdown Ray with timeout
         if ray.is_initialized():
-            ray.shutdown()
-            # Reduced wait time for faster cleanup
-            await asyncio.sleep(1)
-    except:
-        pass
+            try:
+                # Use run_in_executor for thread safety with timeout
+                loop = asyncio.get_event_loop()
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, ray.shutdown),
+                    timeout=10.0  # 10 second timeout
+                )
+            except asyncio.TimeoutError:
+                print("Ray shutdown timed out, forcing cleanup...")
+                pass
 
-    # Also try command line cleanup with reduced timeout
-    try:
-        import subprocess
+        # Step 2: Force terminate Ray daemon threads
+        main_thread = threading.current_thread()
+        for thread in threading.enumerate():
+            if thread is not main_thread and thread.is_alive():
+                # Target specific Ray threads
+                thread_name_lower = thread.name.lower()
+                if any(name in thread_name_lower for name in ['ray', 'listener', 'logger', 'monitor', 'raylet', 'gcs', 'plasma']):
+                    try:
+                        if hasattr(thread, '_stop'):
+                            thread._stop()
+                        if not thread.daemon:
+                            thread.daemon = True
+                    except:
+                        pass
 
-        subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=5)
-        # Reduced wait time for faster cleanup
-        await asyncio.sleep(0.5)
-    except:
-        pass
+        # Step 3: Close asyncio event loop executors
+        try:
+            loop = asyncio.get_running_loop()
+            if hasattr(loop, 'shutdown_default_executor'):
+                await asyncio.wait_for(loop.shutdown_default_executor(), timeout=2.0)
+        except (RuntimeError, asyncio.TimeoutError):
+            pass
 
-    # Force cleanup any stubborn Ray processes
-    try:
-        import subprocess
-
-        # Kill any remaining Ray processes
-        subprocess.run(["pkill", "-f", "ray::"], capture_output=True, check=False)
-        subprocess.run(["pkill", "-f", "ray_"], capture_output=True, check=False)
-        subprocess.run(["pkill", "-f", "raylet"], capture_output=True, check=False)
-        subprocess.run(["pkill", "-f", "gcs_server"], capture_output=True, check=False)
-        subprocess.run(["pkill", "-f", "dashboard"], capture_output=True, check=False)
-        # Brief wait for process cleanup
+        # Brief wait for cleanup
         await asyncio.sleep(0.2)
-    except:
+
+    except Exception as e:
+        print(f"Ray cleanup error: {e}")
         pass
 
-    # Force cleanup any hanging Python processes related to Ray
+    # Force cleanup any stubborn Ray processes immediately
     try:
         import subprocess
 
-        # Kill any Python processes that might be hanging from Ray jobs
-        subprocess.run(["pkill", "-f", "python.*ray"], capture_output=True, check=False)
+        # Kill all Ray-related processes more aggressively
+        processes_to_kill = [
+            "ray::",
+            "ray_",
+            "raylet",
+            "gcs_server", 
+            "dashboard",
+            "python.*ray"
+        ]
+        
+        for process_pattern in processes_to_kill:
+            try:
+                subprocess.run(["pkill", "-9", "-f", process_pattern], capture_output=True, check=False, timeout=2)
+            except:
+                pass
+        
         # Brief wait for process cleanup
         await asyncio.sleep(0.1)
+    except:
+        pass
+
+    # Also try command line cleanup
+    try:
+        import subprocess
+        subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=3)
     except:
         pass
 
@@ -204,54 +270,65 @@ class TestCriticalWorkflows:
         self.unified_manager = RayUnifiedManager()
         self.handlers = RayHandlers(self.unified_manager)
 
-        # Store original Ray timeout for restoration
+        # Store original Ray environment variables for restoration
         self.original_gcs_timeout = os.environ.get(
             "RAY_gcs_server_request_timeout_seconds"
         )
-
-        # Set faster timeout for tests to avoid long waits on invalid connections
-        os.environ["RAY_gcs_server_request_timeout_seconds"] = "5"
-
-        # Suppress Ray's verbose logging during tests
         self.original_ray_log_level = os.environ.get("RAY_LOG_LEVEL")
+        self.original_memory_monitor = os.environ.get("RAY_memory_monitor_refresh_ms")
+        self.original_kill_child = os.environ.get("RAY_kill_child_processes_on_worker_exit")
+
+        # Set Ray environment variables to prevent background processes and hanging
+        os.environ["RAY_gcs_server_request_timeout_seconds"] = "5"  # Fast timeout for invalid connections
         os.environ["RAY_LOG_LEVEL"] = "CRITICAL"  # Suppress all but critical logs
+        os.environ["RAY_DISABLE_USAGE_STATS"] = "1"  # Disable usage statistics collection
+        os.environ["RAY_memory_monitor_refresh_ms"] = "0"  # Disable memory monitor
+        os.environ["RAY_kill_child_processes_on_worker_exit"] = "true"  # Kill child processes
+        os.environ["RAY_worker_register_timeout_seconds"] = "10"  # Faster worker timeout
 
     async def teardown_method(self):
         """Clean up after each test."""
-        # Restore original Ray timeout
+        # Restore original Ray environment variables
         if self.original_gcs_timeout is not None:
-            os.environ["RAY_gcs_server_request_timeout_seconds"] = (
-                self.original_gcs_timeout
-            )
+            os.environ["RAY_gcs_server_request_timeout_seconds"] = self.original_gcs_timeout
         else:
             os.environ.pop("RAY_gcs_server_request_timeout_seconds", None)
 
-        # Restore original Ray log level
         if self.original_ray_log_level is not None:
             os.environ["RAY_LOG_LEVEL"] = self.original_ray_log_level
         else:
             os.environ.pop("RAY_LOG_LEVEL", None)
+            
+        if self.original_memory_monitor is not None:
+            os.environ["RAY_memory_monitor_refresh_ms"] = self.original_memory_monitor
+        else:
+            os.environ.pop("RAY_memory_monitor_refresh_ms", None)
+            
+        if self.original_kill_child is not None:
+            os.environ["RAY_kill_child_processes_on_worker_exit"] = self.original_kill_child
+        else:
+            os.environ.pop("RAY_kill_child_processes_on_worker_exit", None)
 
-        # Aggressive cleanup
+        # Enhanced cleanup
         await cleanup_ray()
 
         # Force garbage collection to clean up any lingering objects
         import gc
-
         gc.collect()
 
-        # Clear any remaining asyncio tasks
+        # Clear any remaining asyncio tasks with timeout
         try:
             import asyncio
-
-            # Cancel any pending tasks
             tasks = [task for task in asyncio.all_tasks() if not task.done()]
             for task in tasks:
-                task.cancel()
-            # Wait briefly for cancellation
+                if not task.cancelled():
+                    task.cancel()
             if tasks:
-                await asyncio.sleep(0.1)
-        except:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=1.0
+                )
+        except (asyncio.TimeoutError, RuntimeError):
             pass
 
     @pytest.mark.asyncio
