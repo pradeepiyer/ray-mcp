@@ -11,11 +11,12 @@ from ..parsers import ActionParser
 class JobManager(ResourceManager):
     """Pure prompt-driven Ray job management - no traditional APIs."""
 
-    def __init__(self):
+    def __init__(self, unified_manager=None):
         super().__init__(enable_ray=True)
         self._config_manager = get_config_manager_sync()
         # Simple state tracking
         self._job_client = None
+        self._unified_manager = unified_manager
 
     async def execute_request(self, prompt: str) -> Dict[str, Any]:
         """Execute job operations using natural language prompts.
@@ -270,6 +271,12 @@ class JobManager(ResourceManager):
         try:
             if not self._is_ray_ready():
                 return "http://127.0.0.1:8265"
+
+            # First try to get from unified manager if available
+            if self._unified_manager and hasattr(self._unified_manager, 'get_dashboard_url'):
+                dashboard_url = self._unified_manager.get_dashboard_url()
+                if dashboard_url != "http://127.0.0.1:8265":  # Not the default fallback
+                    return dashboard_url
 
             # Try to get dashboard URL from Ray
             runtime_context = self._ray.get_runtime_context()

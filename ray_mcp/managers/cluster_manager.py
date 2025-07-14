@@ -154,8 +154,14 @@ class ClusterManager(ResourceManager):
                         ),
                     )
 
-            # Connect to the cluster
-            ray_info = self._ray.init(address=address)
+            # Connect to the cluster with timeout
+            try:
+                ray_info = await asyncio.wait_for(
+                    asyncio.to_thread(self._ray.init, address=address),
+                    timeout=30  # 30 second timeout for connection attempts
+                )
+            except asyncio.TimeoutError:
+                raise Exception(f"Connection to cluster at {address} timed out after 30 seconds")
 
             # Update simple state tracking
             self._cluster_address = address

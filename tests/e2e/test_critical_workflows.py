@@ -42,6 +42,7 @@ class E2ETestConfig:
     # Timeouts
     CLUSTER_START_TIMEOUT = 30 if IN_CI else 60
     JOB_COMPLETION_TIMEOUT = 60 if IN_CI else 120
+    CONNECTION_TIMEOUT = 10  # Fast timeout for invalid connections
 
 
 async def cleanup_ray():
@@ -51,7 +52,8 @@ async def cleanup_ray():
 
         if ray.is_initialized():
             ray.shutdown()
-            await asyncio.sleep(2)  # Give time for cleanup
+            # Wait a bit longer for processes to shut down
+            await asyncio.sleep(3)
     except:
         pass
 
@@ -60,6 +62,8 @@ async def cleanup_ray():
         import subprocess
 
         subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=10)
+        # Give time for external processes to shut down
+        await asyncio.sleep(1)
     except:
         pass
 
@@ -91,9 +95,31 @@ class TestCriticalWorkflows:
         """Set up for each test."""
         self.unified_manager = RayUnifiedManager()
         self.handlers = RayHandlers(self.unified_manager)
+        
+        # Store original Ray timeout for restoration
+        self.original_gcs_timeout = os.environ.get('RAY_gcs_server_request_timeout_seconds')
+        
+        # Set faster timeout for tests to avoid long waits on invalid connections
+        os.environ['RAY_gcs_server_request_timeout_seconds'] = '5'
+        
+        # Suppress Ray's verbose logging during tests
+        self.original_ray_log_level = os.environ.get('RAY_LOG_LEVEL')
+        os.environ['RAY_LOG_LEVEL'] = 'CRITICAL'  # Suppress all but critical logs
 
     async def cleanup_method(self):
         """Clean up after each test."""
+        # Restore original Ray timeout
+        if self.original_gcs_timeout is not None:
+            os.environ['RAY_gcs_server_request_timeout_seconds'] = self.original_gcs_timeout
+        else:
+            os.environ.pop('RAY_gcs_server_request_timeout_seconds', None)
+            
+        # Restore original Ray log level
+        if self.original_ray_log_level is not None:
+            os.environ['RAY_LOG_LEVEL'] = self.original_ray_log_level
+        else:
+            os.environ.pop('RAY_LOG_LEVEL', None)
+            
         await cleanup_ray()
 
     @pytest.mark.asyncio
@@ -287,11 +313,24 @@ print("Job finished successfully")
         # Test 2: Try to connect to invalid cluster
         print("Test 2: Connect to invalid cluster...")
         result = await self.handlers.handle_tool_call(
-            "ray_cluster", {"prompt": "connect to cluster at invalid.address:9999"}
+            "ray_cluster", {"prompt": "connect to cluster at 192.0.2.1:9999"}
         )
 
         response = parse_tool_response(result)
         assert response["status"] == "error"
+        
+        # Explicitly clean up any Ray processes that might have started
+        # This is especially important after invalid connection attempts
+        await cleanup_ray()
+        
+        # Extra cleanup for stubborn background processes
+        try:
+            import subprocess
+            # Force kill any remaining ray processes
+            subprocess.run(["pkill", "-f", "ray"], capture_output=True, check=False)
+            await asyncio.sleep(1)
+        except:
+            pass
 
         # Test 3: Try to inspect non-existent cluster
         print("Test 3: Inspect non-existent cluster...")
