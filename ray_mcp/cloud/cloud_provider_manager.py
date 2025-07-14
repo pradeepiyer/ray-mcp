@@ -143,6 +143,7 @@ class CloudProviderManager(ResourceManager):
                 }
 
             return self._ResponseFormatter.format_success_response(
+                message="Cloud provider detection completed successfully",
                 detected_provider=env_detection.get("default_provider"),
                 providers=providers_status,
                 environment=env_detection,
@@ -461,6 +462,7 @@ class CloudProviderManager(ResourceManager):
             validation = self._config_manager.validate_config()
 
             return self._ResponseFormatter.format_success_response(
+                message="Environment check completed successfully",
                 environment=env_detection,
                 validation=validation,
                 providers_available=env_detection["providers"],

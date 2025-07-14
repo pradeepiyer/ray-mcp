@@ -183,12 +183,12 @@ class ClusterManager(ResourceManager):
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_success_response(
-                    status="not_running", message="No Ray cluster is currently running"
+                    cluster_status="not_running", message="No Ray cluster is currently running"
                 )
 
             # Get cluster information
             cluster_info = {
-                "status": "running",
+                "cluster_status": "running",
                 "cluster_address": self._cluster_address,
                 "dashboard_url": self._dashboard_url,
                 "nodes": self._get_cluster_nodes(),

@@ -84,6 +84,8 @@ class ActionParser:
                 result["gpus"] = resources["gpu"]
             if "workers" in resources:
                 result["workers"] = resources["workers"]
+            if "dashboard_port" in resources:
+                result["dashboard_port"] = resources["dashboard_port"]
             return result
         elif re.search(cls.CLUSTER_CONNECT, prompt_lower):
             return {
@@ -326,6 +328,8 @@ class ActionParser:
             resources["gpu"] = int(match.group(1))
         if match := re.search(r"(\d+)\s*worker", prompt, re.IGNORECASE):
             resources["workers"] = int(match.group(1))
+        if match := re.search(r"dashboard\s+on\s+port\s+(\d+)", prompt, re.IGNORECASE):
+            resources["dashboard_port"] = int(match.group(1))
         return resources
 
     @staticmethod

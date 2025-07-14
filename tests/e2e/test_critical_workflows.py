@@ -137,7 +137,8 @@ class TestCriticalWorkflows:
             response = parse_tool_response(result)
             print(f"Cluster inspection response: {response}")
 
-            assert response["status"] == "running"
+            assert response["status"] == "success"
+            assert response["cluster_status"] == "running"
             assert "resources" in response
 
             # Step 3: Create and submit a simple test job
@@ -300,8 +301,9 @@ print("Job finished successfully")
 
         response = parse_tool_response(result)
         # Should return success but indicate no cluster is running
+        assert response["status"] == "success"
         assert (
-            response["status"] == "not_running"
+            response.get("cluster_status") == "not_running"
             or response["message"] == "No Ray cluster is currently running"
         )
 
@@ -352,7 +354,7 @@ print("Job finished successfully")
 
                 # All tools should return valid responses (success or error)
                 assert "status" in response
-                assert response["status"] in ["success", "error", "not_running"]
+                assert response["status"] in ["success", "error"]
 
                 # All responses should include a message
                 assert "message" in response
@@ -402,7 +404,8 @@ print("Job finished successfully")
                 "ray_cluster", {"prompt": "inspect cluster"}
             )
             response = parse_tool_response(result)
-            assert response["status"] == "running"
+            assert response["status"] == "success"
+            assert response["cluster_status"] == "running"
 
             # Stop it
             result = await self.handlers.handle_tool_call(
@@ -417,7 +420,8 @@ print("Job finished successfully")
                 "ray_cluster", {"prompt": "inspect cluster"}
             )
             response = parse_tool_response(result)
-            assert response["status"] == "not_running"
+            assert response["status"] == "success"
+            assert response["cluster_status"] == "not_running"
 
 
 if __name__ == "__main__":
