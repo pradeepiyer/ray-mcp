@@ -101,6 +101,8 @@ class RayUnifiedManager:
             "kubernetes",
             "k8s",
             "kuberay",
+            "gke",
+            "gcp",
             "namespace",
             "kubectl",
             "kubeconfig",

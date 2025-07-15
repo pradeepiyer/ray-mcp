@@ -47,6 +47,16 @@ class ClusterManager(ResourceManager):
                 return await self._inspect_cluster()
             elif operation == "stop":
                 return await self._stop_cluster()
+            elif operation == "list":
+                return await self._list_clusters()
+            elif operation == "scale":
+                workers = action.get("workers")
+                if workers is None:
+                    return {
+                        "status": "error",
+                        "message": "number of workers required for scaling",
+                    }
+                return await self._scale_cluster(workers)
             else:
                 return {"status": "error", "message": f"Unknown operation: {operation}"}
 
@@ -285,3 +295,63 @@ class ClusterManager(ResourceManager):
 
         except Exception:
             return {}
+
+    async def _list_clusters(self) -> Dict[str, Any]:
+        """List available Ray clusters."""
+        try:
+            clusters = []
+
+            # Check if current cluster is running
+            if self._is_ray_ready():
+                cluster_info = {
+                    "name": "current",
+                    "address": self._cluster_address or "local",
+                    "status": "running",
+                    "dashboard_url": self._dashboard_url,
+                    "nodes": len(self._get_cluster_nodes()),
+                    "resources": self._get_cluster_resources(),
+                }
+                clusters.append(cluster_info)
+
+            return self._ResponseFormatter.format_success_response(
+                clusters=clusters,
+                total_count=len(clusters),
+                message=f"Found {len(clusters)} Ray cluster(s)",
+            )
+
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response("list clusters", e)
+
+    async def _scale_cluster(self, workers: int) -> Dict[str, Any]:
+        """Scale the Ray cluster to the specified number of workers."""
+        try:
+            if not self._is_ray_ready():
+                return self._ResponseFormatter.format_error_response(
+                    "scale cluster", Exception("No Ray cluster is currently running")
+                )
+
+            # For local clusters, scaling is limited since Ray doesn't provide
+            # direct scaling APIs for local clusters
+            current_nodes = self._get_cluster_nodes()
+            current_worker_count = len(
+                [n for n in current_nodes if not n.get("is_head", False)]
+            )
+
+            if workers == current_worker_count:
+                return self._ResponseFormatter.format_success_response(
+                    message=f"Cluster already has {workers} workers",
+                    current_workers=current_worker_count,
+                    requested_workers=workers,
+                )
+
+            # Note: For local Ray clusters, manual scaling is not directly supported
+            # This is more relevant for cloud/kubernetes clusters
+            return self._ResponseFormatter.format_error_response(
+                "scale cluster",
+                Exception(
+                    f"Manual scaling not supported for local Ray clusters. Current workers: {current_worker_count}, requested: {workers}. Consider using KubeRay for dynamic scaling."
+                ),
+            )
+
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response("scale cluster", e)

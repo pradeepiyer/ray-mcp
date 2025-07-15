@@ -78,7 +78,7 @@ class GKEManager(ResourceManager):
                 return await self._create_cluster(cluster_spec, project_id)
             elif operation == "get_cluster_info":
                 cluster_name = action.get("cluster_name")
-                location = action.get("zone")  # parse_cloud_action uses "zone"  
+                location = action.get("zone")  # parse_cloud_action uses "zone"
                 project_id = action.get("project_id")
                 if not cluster_name or not location:
                     return {
@@ -86,6 +86,8 @@ class GKEManager(ResourceManager):
                         "message": "cluster name and location required",
                     }
                 return await self._get_cluster_info(cluster_name, location, project_id)
+            elif operation == "check_environment":
+                return await self._check_environment()
             else:
                 return {"status": "error", "message": f"Unknown operation: {operation}"}
 
@@ -173,7 +175,6 @@ class GKEManager(ResourceManager):
         # Update state
         # Simple state tracking
         self._is_authenticated = True
-        self._project_id = project_id
 
         return {
             "provider": "gke",
@@ -291,9 +292,11 @@ class GKEManager(ResourceManager):
         # Use ManagedComponent validation method instead of manual check
         await self._ensure_gke_authenticated()
 
-        project_id = project_id or self._project_id
+        project_id = self._resolve_project_id(project_id)
         if not project_id:
-            raise ValueError("Project ID is required for cluster discovery")
+            raise ValueError(
+                "Project ID is required for cluster discovery. Please authenticate with GCP first or specify a project ID."
+            )
 
         parent = f"projects/{project_id}/locations/-"
         clusters_response = await asyncio.to_thread(
@@ -404,11 +407,13 @@ class GKEManager(ResourceManager):
             # Clean up any existing certificate file
             self._cleanup_ca_cert_file()
 
-            project_id = project_id or self._project_id
+            project_id = self._resolve_project_id(project_id)
             if not project_id:
                 return self._ResponseFormatter.format_error_response(
                     "gke cluster connection",
-                    ValueError("Project ID is required for cluster connection"),
+                    ValueError(
+                        "Project ID is required for cluster connection. Please authenticate with GCP first or specify a project ID."
+                    ),
                 )
 
             # Get cluster details from GKE API
@@ -593,11 +598,13 @@ class GKEManager(ResourceManager):
             )
 
         try:
-            project_id = project_id or self._project_id
+            project_id = self._resolve_project_id(project_id)
             if not project_id:
                 return self._ResponseFormatter.format_error_response(
                     "gke cluster creation",
-                    ValueError("Project ID is required for cluster creation"),
+                    ValueError(
+                        "Project ID is required for cluster creation. Please authenticate with GCP first or specify a project ID."
+                    ),
                 )
 
             # Build cluster configuration
@@ -650,11 +657,13 @@ class GKEManager(ResourceManager):
             )
 
         try:
-            project_id = project_id or self._project_id
+            project_id = self._resolve_project_id(project_id)
             if not project_id:
                 return self._ResponseFormatter.format_error_response(
                     "gke cluster info",
-                    ValueError("Project ID is required for cluster info"),
+                    ValueError(
+                        "Project ID is required for cluster info. Please authenticate with GCP first or specify a project ID."
+                    ),
                 )
 
             # Get cluster details
@@ -803,6 +812,68 @@ class GKEManager(ResourceManager):
             return self._ResponseFormatter.format_error_response(
                 "ensure gke authenticated", e
             )
+
+    def _resolve_project_id(self, project_id: Optional[str] = None) -> Optional[str]:
+        """Resolve project ID from multiple sources with fallback."""
+        # Try provided project_id first
+        if project_id:
+            return project_id
+
+        # Try instance project_id
+        if self._project_id:
+            return self._project_id
+
+        # Try to get from GCP config as fallback
+        try:
+            gcp_config = self._config_manager.get_gcp_config()
+            return gcp_config.get("project_id")
+        except Exception:
+            return None
+
+    async def _check_environment(self) -> Dict[str, Any]:
+        """Check GKE environment and authentication status."""
+        try:
+            environment_status = {
+                "provider": "gke",
+                "google_cloud_available": self._GOOGLE_CLOUD_AVAILABLE,
+                "kubernetes_available": self._KUBERNETES_AVAILABLE,
+                "authenticated": self._is_authenticated,
+                "project_id": self._project_id,
+                "credentials_configured": bool(
+                    os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+                ),
+            }
+
+            # Additional checks
+            if self._GOOGLE_CLOUD_AVAILABLE:
+                environment_status["google_cloud_status"] = "available"
+            else:
+                environment_status["google_cloud_status"] = (
+                    "missing - install google-cloud-container"
+                )
+
+            if self._KUBERNETES_AVAILABLE:
+                environment_status["kubernetes_status"] = "available"
+            else:
+                environment_status["kubernetes_status"] = (
+                    "missing - install kubernetes package"
+                )
+
+            # Check authentication
+            if self._is_authenticated:
+                environment_status["authentication_status"] = "authenticated"
+                if self._project_id:
+                    environment_status["active_project"] = self._project_id
+            else:
+                environment_status["authentication_status"] = "not authenticated"
+                environment_status["suggestion"] = (
+                    "Run 'authenticate with GCP project YOUR_PROJECT_ID'"
+                )
+
+            return self._ResponseFormatter.format_success_response(**environment_status)
+
+        except Exception as e:
+            return self._ResponseFormatter.format_error_response("check environment", e)
 
     def __del__(self):
         """Cleanup resources when object is destroyed."""

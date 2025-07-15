@@ -28,6 +28,9 @@ class ActionParser:
     CLOUD_CONNECT = r"connect.+(?:gke|gcp|k8s|kubernetes)"
     CLOUD_CREATE = r"create.+(?:cluster|gke|gcp|k8s)"
     CLOUD_CHECK = r"(?:check|verify|test).+(?:env|auth|setup)"
+    CLOUD_INFO = (
+        r"(?:get|show|describe|info).+(?:cluster|gke|gcp).+(?:info|details|status)"
+    )
 
     # Kubernetes operations
     K8S_CONNECT = r"connect.+(?:kubernetes|k8s|cluster).+(?:context|config)"
@@ -56,7 +59,6 @@ class ActionParser:
     KUBERAY_CLUSTER_GET = r"(?:get|status|check).+(?:cluster|ray.+cluster)"
     KUBERAY_CLUSTER_SCALE = r"scale.+(?:cluster|ray.+cluster)"
     KUBERAY_CLUSTER_DELETE = r"(?:delete|remove|destroy).+(?:cluster|ray.+cluster)"
-
 
     @classmethod
     def parse_cluster_action(cls, prompt: str) -> Dict[str, Any]:
@@ -158,6 +160,13 @@ class ActionParser:
             }
         elif re.search(cls.CLOUD_CHECK, prompt_lower):
             return {"operation": "check_environment"}
+        elif re.search(cls.CLOUD_INFO, prompt_lower):
+            return {
+                "operation": "get_cluster_info",
+                "cluster_name": cls._extract_name(prompt),
+                "provider": "gcp",
+                "zone": cls._extract_zone(prompt),
+            }
 
         raise ValueError(f"Cannot understand cloud action: {prompt}")
 

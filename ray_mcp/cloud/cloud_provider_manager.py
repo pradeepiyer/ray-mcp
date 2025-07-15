@@ -238,10 +238,34 @@ class CloudProviderManager(ResourceManager):
                 await self._ensure_gke_authenticated()
                 zone = kwargs.get("zone")
                 if not zone:
-                    return self._ResponseFormatter.format_error_response(
-                        "connect cloud cluster",
-                        Exception("zone is required for GKE cluster connection"),
-                    )
+                    # Auto-discover zone by listing clusters and finding matching cluster name
+                    try:
+                        discovery_result = await self._gke_manager.execute_request(
+                            "list all GKE clusters"
+                        )
+                        if (
+                            discovery_result.get("status") == "success"
+                            and "clusters" in discovery_result
+                        ):
+                            for cluster in discovery_result["clusters"]:
+                                if cluster.get("name") == cluster_name:
+                                    zone = cluster.get("location")
+                                    break
+
+                        if not zone:
+                            return self._ResponseFormatter.format_error_response(
+                                "connect cloud cluster",
+                                Exception(
+                                    f"Could not find cluster '{cluster_name}' in any zone. Please specify the zone explicitly or ensure the cluster exists."
+                                ),
+                            )
+                    except Exception as e:
+                        return self._ResponseFormatter.format_error_response(
+                            "connect cloud cluster",
+                            Exception(
+                                f"Could not auto-discover zone for cluster '{cluster_name}': {str(e)}"
+                            ),
+                        )
                 prompt = f"connect to GKE cluster {cluster_name} in zone {zone}"
                 if kwargs.get("project_id"):
                     prompt += f" in project {kwargs.get('project_id')}"

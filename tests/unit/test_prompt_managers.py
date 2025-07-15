@@ -412,11 +412,16 @@ class TestUnifiedManager:
         assert self.manager._is_kubernetes_environment("list namespaces in k8s")
         assert self.manager._is_kubernetes_environment("create kuberay cluster")
         assert self.manager._is_kubernetes_environment("use kubectl to get pods")
+        
+        # Test GKE/GCP keywords (should be detected as Kubernetes environment)
+        assert self.manager._is_kubernetes_environment("submit job to GKE cluster")
+        assert self.manager._is_kubernetes_environment("connect to GCP cluster")
+        assert self.manager._is_kubernetes_environment("create job on gke")
 
         # Test non-Kubernetes prompts
         assert not self.manager._is_kubernetes_environment("create local cluster")
         assert not self.manager._is_kubernetes_environment("submit job to ray")
-        assert not self.manager._is_kubernetes_environment("authenticate with GCP")
+        assert not self.manager._is_kubernetes_environment("start local ray cluster")
 
     @pytest.mark.asyncio
     async def test_error_propagation_from_cluster_manager(self):
