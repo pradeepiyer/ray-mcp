@@ -184,6 +184,7 @@ spec:
         """Apply Kubernetes manifest using kubectl."""
         import asyncio
 
+        manifest_file = None
         try:
             # Write manifest to temporary file
             with tempfile.NamedTemporaryFile(
@@ -206,10 +207,6 @@ spec:
 
             stdout, stderr = await process.communicate()
 
-            # Clean up temp file
-
-            os.unlink(manifest_file)
-
             if process.returncode == 0:
                 return {
                     "status": "success",
@@ -230,6 +227,10 @@ spec:
                 "message": f"Failed to apply manifest: {str(e)}",
                 "namespace": namespace,
             }
+        finally:
+            # Always clean up temp file if it was created
+            if manifest_file and os.path.exists(manifest_file):
+                os.unlink(manifest_file)
 
     @staticmethod
     async def delete_resource(
