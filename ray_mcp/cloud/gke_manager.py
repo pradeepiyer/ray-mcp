@@ -51,19 +51,19 @@ class GKEManager(ResourceManager):
             - "get info for cluster production-cluster"
         """
         try:
-            action = ActionParser.parse_gke_action(prompt)
+            action = ActionParser.parse_cloud_action(prompt)
             operation = action["operation"]
 
             if operation == "authenticate":
-                project_id = action.get("project")
+                project_id = action.get("project_id")
                 return await self._authenticate_from_prompt(project_id)
             elif operation == "list_clusters":
-                project_id = action.get("project")
+                project_id = action.get("project_id")
                 return await self._discover_clusters(project_id)
             elif operation == "connect_cluster":
                 cluster_name = action.get("cluster_name")
-                location = action.get("location") or action.get("zone")
-                project_id = action.get("project")
+                location = action.get("zone")  # parse_cloud_action uses "zone"
+                project_id = action.get("project_id")
                 if not cluster_name or not location:
                     return {
                         "status": "error",
@@ -72,14 +72,14 @@ class GKEManager(ResourceManager):
                 return await self._connect_cluster(cluster_name, location, project_id)
             elif operation == "create_cluster":
                 cluster_name = action.get("cluster_name")
-                location = action.get("location") or action.get("zone")
-                project_id = action.get("project")
+                location = action.get("zone")  # parse_cloud_action uses "zone"
+                project_id = action.get("project_id")
                 cluster_spec = {"name": cluster_name, "location": location}
                 return await self._create_cluster(cluster_spec, project_id)
             elif operation == "get_cluster_info":
                 cluster_name = action.get("cluster_name")
-                location = action.get("location") or action.get("zone")
-                project_id = action.get("project")
+                location = action.get("zone")  # parse_cloud_action uses "zone"  
+                project_id = action.get("project_id")
                 if not cluster_name or not location:
                     return {
                         "status": "error",

@@ -57,12 +57,6 @@ class ActionParser:
     KUBERAY_CLUSTER_SCALE = r"scale.+(?:cluster|ray.+cluster)"
     KUBERAY_CLUSTER_DELETE = r"(?:delete|remove|destroy).+(?:cluster|ray.+cluster)"
 
-    # GKE operations
-    GKE_AUTH = r"(?:auth|login|connect).+(?:gcp|google|gke)"
-    GKE_LIST = r"(?:list|show).+(?:gke.+cluster|cluster).+gke"
-    GKE_CONNECT = r"connect.+(?:gke.+cluster|cluster).+(?:zone|location)"
-    GKE_CREATE = r"create.+(?:gke.+cluster|cluster).+(?:zone|location|node)"
-    GKE_INFO = r"(?:get|info|describe).+(?:cluster|gke)"
 
     @classmethod
     def parse_cluster_action(cls, prompt: str) -> Dict[str, Any]:
@@ -270,47 +264,6 @@ class ActionParser:
             }
 
         raise ValueError(f"Cannot understand KubeRay cluster action: {prompt}")
-
-    @classmethod
-    def parse_gke_action(cls, prompt: str) -> Dict[str, Any]:
-        """Parse GKE action from prompt."""
-        prompt_lower = prompt.lower()
-
-        if re.search(cls.GKE_AUTH, prompt_lower):
-            return {
-                "operation": "authenticate",
-                "project": cls._extract_project(prompt),
-            }
-        elif re.search(cls.GKE_LIST, prompt_lower):
-            return {
-                "operation": "list_clusters",
-                "project": cls._extract_project(prompt),
-                "location": cls._extract_location(prompt),
-            }
-        elif re.search(cls.GKE_CONNECT, prompt_lower):
-            return {
-                "operation": "connect_cluster",
-                "cluster_name": cls._extract_cluster_name(prompt),
-                "location": cls._extract_location(prompt),
-                "project": cls._extract_project(prompt),
-            }
-        elif re.search(cls.GKE_CREATE, prompt_lower):
-            return {
-                "operation": "create_cluster",
-                "cluster_name": cls._extract_cluster_name(prompt),
-                "location": cls._extract_location(prompt),
-                "project": cls._extract_project(prompt),
-                "nodes": cls._extract_number(prompt, "node"),
-            }
-        elif re.search(cls.GKE_INFO, prompt_lower):
-            return {
-                "operation": "get_cluster_info",
-                "cluster_name": cls._extract_cluster_name(prompt),
-                "location": cls._extract_location(prompt),
-                "project": cls._extract_project(prompt),
-            }
-
-        raise ValueError(f"Cannot understand GKE action: {prompt}")
 
     # Helper extraction methods
     @staticmethod
