@@ -157,10 +157,14 @@ async def test_all_tools_consistency():
 
         # All tools should return valid responses
         assert "status" in response
-        assert response["status"] in expected_behaviors[tool_name], f"{tool_name} returned unexpected status: {response['status']}"
+        assert (
+            response["status"] in expected_behaviors[tool_name]
+        ), f"{tool_name} returned unexpected status: {response['status']}"
         assert "message" in response
 
-        print(f"✅ {tool_name}: {response['status']} (expected: {expected_behaviors[tool_name]})")
+        print(
+            f"✅ {tool_name}: {response['status']} (expected: {expected_behaviors[tool_name]})"
+        )
 
     return True
 
@@ -208,16 +212,17 @@ async def main():
 async def cleanup_resources():
     """Ensure all Ray resources are properly cleaned up."""
     try:
-        import ray
         import subprocess
-        
+
+        import ray
+
         # Force shutdown Ray if it's still running
         if ray.is_initialized():
             ray.shutdown()
-        
+
         # Run ray stop to clean up any external processes
         subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=5)
-        
+
         print("✅ Resource cleanup completed")
     except Exception as e:
         print(f"⚠️  Resource cleanup warning: {e}")
@@ -228,14 +233,14 @@ if __name__ == "__main__":
         success = asyncio.run(main())
         # Basic cleanup before exit
         asyncio.run(cleanup_resources())
-        
+
         if success:
             print("🎉 All tests completed successfully!")
         else:
             print("💥 Some tests failed!")
-        
+
         sys.exit(0 if success else 1)
-        
+
     except KeyboardInterrupt:
         print("\n🛑 Testing interrupted by user")
         asyncio.run(cleanup_resources())
