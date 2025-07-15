@@ -4,7 +4,6 @@ Setup script for Ray MCP server testing environment.
 Helps configure both local and GKE testing modes.
 """
 
-import json
 import os
 from pathlib import Path
 import subprocess

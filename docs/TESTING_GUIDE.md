@@ -281,7 +281,7 @@ asyncio.run(test())
 # Install GKE dependencies
 uv add "ray-mcp[gke]"
 
-# Set up service account (follow gke_setup_guide.json)
+# Set up service account with Container Admin role
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 export GOOGLE_CLOUD_PROJECT="your-project-id"
 ```
