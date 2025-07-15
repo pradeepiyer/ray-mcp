@@ -208,7 +208,7 @@ class CloudProviderManager(ResourceManager):
             if provider == CloudProvider.GKE:
                 # Use ManagedComponent validation method instead of ResourceManager's
                 await self._ensure_gke_authenticated()
-                prompt = f"list all GKE clusters"
+                prompt = "list all GKE clusters"
                 if kwargs.get("project_id"):
                     prompt += f" in project {kwargs.get('project_id')}"
                 if kwargs.get("zone"):
@@ -328,7 +328,7 @@ class CloudProviderManager(ResourceManager):
     # Provider-specific authentication methods
     async def _authenticate_gke(self, auth_config: Dict[str, Any]) -> Dict[str, Any]:
         """Authenticate with GKE."""
-        prompt = f"authenticate with GCP"
+        prompt = "authenticate with GCP"
         if auth_config.get("project_id"):
             prompt += f" project {auth_config.get('project_id')}"
         return await self._gke_manager.execute_request(prompt)
