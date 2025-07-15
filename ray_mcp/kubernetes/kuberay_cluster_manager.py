@@ -598,7 +598,12 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
     def _find_external_port(self, service, target_port: int) -> Optional[int]:
-        """Find the external port for a target port in a service."""
+        """Find the external port for a target port in a service.
+
+        For LoadBalancer services, returns the service port.
+        For NodePort services, returns the node_port.
+        For other service types, returns the service port.
+        """
         try:
             service_spec = getattr(service, "spec", None)
             if not service_spec:
@@ -608,10 +613,19 @@ class KubeRayClusterManager(ResourceManager):
             if not ports:
                 return None
 
+            # Get service type to determine correct external port
+            service_type = getattr(service_spec, "type", "ClusterIP")
+
             for port in ports:
                 port_num = getattr(port, "port", None)
                 if port_num == target_port:
-                    return port_num
+                    if service_type == "NodePort":
+                        # For NodePort services, return the node_port
+                        node_port = getattr(port, "node_port", None)
+                        return node_port
+                    else:
+                        # For LoadBalancer and other services, return the service port
+                        return port_num
             return None
         except Exception:
             return None
