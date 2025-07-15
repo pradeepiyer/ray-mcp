@@ -2,8 +2,8 @@
 
 from typing import Any, Dict, Optional
 
-from ..foundation.base_managers import ResourceManager
 from ..foundation.logging_utils import LogProcessor
+from ..foundation.resource_manager import ResourceManager
 
 
 class LogManager(ResourceManager):

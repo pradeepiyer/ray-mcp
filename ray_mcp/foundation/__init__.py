@@ -1,12 +1,11 @@
 """Minimal foundation for prompt-driven Ray MCP."""
 
-from .base_managers import PromptManager, ResourceManager
+from .enums import AuthenticationType, CloudProvider
 from .import_utils import get_kubernetes_imports, get_logging_utils, get_ray_imports
-from .interfaces import AuthenticationType, CloudProvider
+from .resource_manager import ResourceManager
 from .test_mocks import get_mock_logging_utils
 
 __all__ = [
-    "PromptManager",
     "ResourceManager",
     "CloudProvider",
     "AuthenticationType",

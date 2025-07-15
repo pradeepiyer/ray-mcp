@@ -8,9 +8,9 @@ import tempfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..config import get_config_manager_sync
-from ..foundation.base_managers import ResourceManager
+from ..foundation.enums import CloudProvider
 from ..foundation.import_utils import get_kubernetes_imports, get_logging_utils
-from ..foundation.interfaces import CloudProvider
+from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 
 

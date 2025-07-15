@@ -170,7 +170,7 @@ class ActionParser:
 
 ```python
 # ray_mcp/cloud/providers/new_provider_manager.py
-from ...foundation.base_managers import ResourceManager
+from ...foundation.resource_manager import ResourceManager
 
 class NewProviderManager(ResourceManager):
     """Manager for new cloud provider operations."""

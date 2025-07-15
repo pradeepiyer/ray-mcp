@@ -1,4 +1,4 @@
-"""Minimal base classes for prompt-driven Ray MCP managers."""
+"""ResourceManager base class for prompt-driven Ray MCP managers."""
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict
@@ -6,23 +6,8 @@ from typing import Any, Dict
 from .import_utils import get_logging_utils
 
 
-class PromptManager(ABC):
-    """Minimal base for prompt-driven managers."""
-
-    def __init__(self):
-        # Import logging utilities
-        logging_utils = get_logging_utils()
-        self._ResponseFormatter = logging_utils["ResponseFormatter"]
-        self._LoggingUtility = logging_utils["LoggingUtility"]
-
-    @abstractmethod
-    async def execute_request(self, prompt: str) -> Dict[str, Any]:
-        """Process natural language prompt and return response."""
-        pass
-
-
-class ResourceManager(PromptManager):
-    """Enhanced base for managers that need import management."""
+class ResourceManager(ABC):
+    """Enhanced base for prompt-driven managers with import management."""
 
     def __init__(
         self,
@@ -30,7 +15,10 @@ class ResourceManager(PromptManager):
         enable_kubernetes: bool = False,
         enable_cloud: bool = False,
     ):
-        super().__init__()
+        # Import logging utilities (moved from PromptManager)
+        logging_utils = get_logging_utils()
+        self._ResponseFormatter = logging_utils["ResponseFormatter"]
+        self._LoggingUtility = logging_utils["LoggingUtility"]
 
         # Import enabled services
         if enable_ray:
@@ -39,6 +27,11 @@ class ResourceManager(PromptManager):
             self._setup_kubernetes_imports()
         if enable_cloud:
             self._setup_cloud_imports()
+
+    @abstractmethod
+    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+        """Process natural language prompt and return response."""
+        pass
 
     def _setup_ray_imports(self) -> None:
         """Set up Ray imports."""

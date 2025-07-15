@@ -3,7 +3,7 @@
 from typing import Any, Dict, Optional
 
 from ..config import get_config_manager_sync
-from ..foundation.base_managers import ResourceManager
+from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 
 

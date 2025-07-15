@@ -4,8 +4,8 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 from ..config import get_config_manager_sync
-from ..foundation.base_managers import ResourceManager
 from ..foundation.logging_utils import LoggingUtility
+from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 from .manifest_generator import ManifestGenerator
 

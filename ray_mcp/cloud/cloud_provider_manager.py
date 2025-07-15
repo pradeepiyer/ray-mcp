@@ -4,8 +4,8 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from ..config import get_config_manager_sync
-from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import CloudProvider
+from ..foundation.enums import CloudProvider
+from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 from .gke_manager import GKEManager
 
