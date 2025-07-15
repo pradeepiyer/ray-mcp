@@ -1,5 +1,6 @@
 """Pure prompt-driven KubeRay job management for Ray MCP."""
 
+import asyncio
 from typing import Any, Dict, Optional
 
 from ..config import get_config_manager_sync
@@ -317,7 +318,8 @@ class KubeRayJobManager(ResourceManager):
             v1 = client.CoreV1Api()
 
             # Try to get job-specific pod logs
-            pods = v1.list_namespaced_pod(
+            pods = await asyncio.to_thread(
+                v1.list_namespaced_pod,
                 namespace=namespace,
                 label_selector=f"ray.io/cluster={ray_cluster_name},ray.io/job-name={name}",
             )
@@ -325,7 +327,8 @@ class KubeRayJobManager(ResourceManager):
             logs = []
             for pod in pods.items:
                 try:
-                    pod_logs = v1.read_namespaced_pod_log(
+                    pod_logs = await asyncio.to_thread(
+                        v1.read_namespaced_pod_log,
                         name=pod.metadata.name,
                         namespace=namespace,
                         tail_lines=1000,
@@ -352,7 +355,8 @@ class KubeRayJobManager(ResourceManager):
                 )
             else:
                 # Fallback to head node logs
-                head_pods = v1.list_namespaced_pod(
+                head_pods = await asyncio.to_thread(
+                    v1.list_namespaced_pod,
                     namespace=namespace,
                     label_selector=f"ray.io/cluster={ray_cluster_name},ray.io/node-type=head",
                 )
@@ -360,7 +364,8 @@ class KubeRayJobManager(ResourceManager):
                 head_logs = []
                 for pod in head_pods.items:
                     try:
-                        pod_logs = v1.read_namespaced_pod_log(
+                        pod_logs = await asyncio.to_thread(
+                            v1.read_namespaced_pod_log,
                             name=pod.metadata.name,
                             namespace=namespace,
                             tail_lines=1000,

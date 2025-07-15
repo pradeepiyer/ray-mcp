@@ -105,7 +105,8 @@ class JobManager(ResourceManager):
                 )
 
             # Submit the job
-            job_id = job_client.submit_job(
+            job_id = await asyncio.to_thread(
+                job_client.submit_job,
                 entrypoint=job_spec["entrypoint"],
                 runtime_env=job_spec.get("runtime_env"),
                 metadata=job_spec.get("metadata"),
@@ -136,7 +137,7 @@ class JobManager(ResourceManager):
                     "list jobs", Exception("Could not create job client")
                 )
 
-            jobs = job_client.list_jobs()
+            jobs = await asyncio.to_thread(job_client.list_jobs)
             job_list = []
 
             # Handle both dict and list responses from Ray
@@ -204,7 +205,7 @@ class JobManager(ResourceManager):
                     "get job status", Exception("Could not create job client")
                 )
 
-            job_info = job_client.get_job_info(job_id)
+            job_info = await asyncio.to_thread(job_client.get_job_info, job_id)
 
             return self._ResponseFormatter.format_success_response(
                 job_id=job_id,
@@ -237,7 +238,7 @@ class JobManager(ResourceManager):
                     "cancel job", Exception("Could not create job client")
                 )
 
-            success = job_client.stop_job(job_id)
+            success = await asyncio.to_thread(job_client.stop_job, job_id)
 
             if success:
                 return self._ResponseFormatter.format_success_response(
@@ -265,7 +266,7 @@ class JobManager(ResourceManager):
                     "get job logs", Exception("Could not create job client")
                 )
 
-            logs = job_client.get_job_logs(job_id)
+            logs = await asyncio.to_thread(job_client.get_job_logs, job_id)
 
             return self._ResponseFormatter.format_success_response(
                 job_id=job_id, logs=logs, message=f"Retrieved logs for job {job_id}"

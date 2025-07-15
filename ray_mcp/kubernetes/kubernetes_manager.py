@@ -1,5 +1,6 @@
 """Pure prompt-driven Kubernetes cluster management for Ray MCP."""
 
+import asyncio
 from typing import Any, Dict, Optional
 
 from ..config import get_config_manager_sync
@@ -70,14 +71,18 @@ class KubernetesManager(ResourceManager):
             # Load configuration
             config_file_path = config_file or k8s_config_data.get("kubeconfig_path")
             if config_file_path:
-                k8s_config.load_kube_config(
-                    config_file=config_file_path, context=context
+                await asyncio.to_thread(
+                    k8s_config.load_kube_config,
+                    config_file=config_file_path,
+                    context=context,
                 )
             else:
-                k8s_config.load_kube_config(context=context)
+                await asyncio.to_thread(k8s_config.load_kube_config, context=context)
 
             # Get current context
-            contexts, active_context = k8s_config.list_kube_config_contexts()
+            contexts, active_context = await asyncio.to_thread(
+                k8s_config.list_kube_config_contexts
+            )
             current_context = active_context["name"] if active_context else context
 
             # Simple state tracking
@@ -114,7 +119,9 @@ class KubernetesManager(ResourceManager):
             from kubernetes import client, config as k8s_config
 
             # Get cluster info
-            contexts, active_context = k8s_config.list_kube_config_contexts()
+            contexts, active_context = await asyncio.to_thread(
+                k8s_config.list_kube_config_contexts
+            )
             current_context = active_context["name"] if active_context else "unknown"
 
             v1 = client.CoreV1Api()
@@ -145,7 +152,7 @@ class KubernetesManager(ResourceManager):
             v1 = client.CoreV1Api()
 
             # Basic health check - try to list nodes
-            nodes = v1.list_node()
+            nodes = await asyncio.to_thread(v1.list_node)
             node_count = len(nodes.items)
 
             # Get ready nodes
@@ -178,7 +185,7 @@ class KubernetesManager(ResourceManager):
             from kubernetes import client
 
             v1 = client.CoreV1Api()
-            namespaces = v1.list_namespace()
+            namespaces = await asyncio.to_thread(v1.list_namespace)
 
             namespace_list = [ns.metadata.name for ns in namespaces.items]
 
@@ -193,7 +200,9 @@ class KubernetesManager(ResourceManager):
         try:
             from kubernetes import config as k8s_config
 
-            contexts, active_context = k8s_config.list_kube_config_contexts()
+            contexts, active_context = await asyncio.to_thread(
+                k8s_config.list_kube_config_contexts
+            )
             context_names = []
             if contexts:
                 for ctx in contexts:

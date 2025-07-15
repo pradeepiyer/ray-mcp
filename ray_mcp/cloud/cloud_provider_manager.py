@@ -343,12 +343,18 @@ class CloudProviderManager(ResourceManager):
             context = auth_config.get("context")
 
             if config_file:
-                kube_config.load_kube_config(config_file=config_file, context=context)
+                await asyncio.to_thread(
+                    kube_config.load_kube_config,
+                    config_file=config_file,
+                    context=context,
+                )
             else:
-                kube_config.load_kube_config(context=context)
+                await asyncio.to_thread(kube_config.load_kube_config, context=context)
 
             # Get current context
-            contexts, active_context = kube_config.list_kube_config_contexts()
+            contexts, active_context = await asyncio.to_thread(
+                kube_config.list_kube_config_contexts
+            )
             current_context = active_context["name"] if active_context else context
 
             # Simple state tracking (no complex state manager)
@@ -372,7 +378,9 @@ class CloudProviderManager(ResourceManager):
         try:
             from kubernetes import config as kube_config
 
-            contexts, active_context = kube_config.list_kube_config_contexts()
+            contexts, active_context = await asyncio.to_thread(
+                kube_config.list_kube_config_contexts
+            )
             context_names = []
             if contexts:
                 for ctx in contexts:
@@ -407,11 +415,15 @@ class CloudProviderManager(ResourceManager):
             # Load kubeconfig with the specified context
             config_file = kwargs.get("config_file")
             if config_file:
-                kube_config.load_kube_config(
-                    config_file=config_file, context=cluster_name
+                await asyncio.to_thread(
+                    kube_config.load_kube_config,
+                    config_file=config_file,
+                    context=cluster_name,
                 )
             else:
-                kube_config.load_kube_config(context=cluster_name)
+                await asyncio.to_thread(
+                    kube_config.load_kube_config, context=cluster_name
+                )
 
             # Update state
             # Simple state tracking (no complex state manager)

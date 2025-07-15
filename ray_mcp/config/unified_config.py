@@ -1,5 +1,6 @@
 """Unified configuration management for Ray MCP - replaces all fragmented config systems."""
 
+import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 import os
@@ -201,8 +202,7 @@ class UnifiedConfigManager:
     async def _load_config_file(self, config_path: Path) -> None:
         """Load configuration from a YAML file."""
         try:
-            with open(config_path, "r") as f:
-                file_config = yaml.safe_load(f) or {}
+            file_config = await asyncio.to_thread(self._load_yaml_file, config_path)
 
             # Update configuration with file values
             for key, value in file_config.items():
@@ -212,6 +212,11 @@ class UnifiedConfigManager:
         except Exception as e:
             # Log warning but don't fail - config files are optional
             print(f"Warning: Could not load config file {config_path}: {e}")
+
+    def _load_yaml_file(self, config_path: Path) -> Dict[str, Any]:
+        """Helper method to load YAML file synchronously for asyncio.to_thread."""
+        with open(config_path, "r") as f:
+            return yaml.safe_load(f) or {}
 
     def get_ray_config(self) -> Dict[str, Any]:
         """Get Ray-specific configuration."""
