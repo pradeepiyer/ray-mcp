@@ -2,6 +2,8 @@
 
 Common issues and solutions for Ray MCP Server's prompt-driven architecture.
 
+**Note:** Ray MCP Server uses native Kubernetes and Google Cloud APIs internally. The `kubectl` and `gcloud` commands shown in this guide are for debugging and external verification only.
+
 ## Quick Diagnostics
 
 ### Check System Status

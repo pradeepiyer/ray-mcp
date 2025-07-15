@@ -2,6 +2,8 @@
 
 This guide covers authentication and setup for Ray MCP Server with different environments.
 
+**Note:** Ray MCP Server uses native Kubernetes and Google Cloud APIs internally. The `kubectl` and `gcloud` commands shown in this guide are for initial setup and troubleshooting only.
+
 ## MCP Client Configuration
 
 ### Claude Desktop

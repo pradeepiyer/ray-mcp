@@ -1,15 +1,51 @@
-"""Prompt-to-manifest generation for Ray clusters and jobs - replaces entire CRD system."""
+"""Prompt-to-manifest generation for Ray clusters and jobs using native Kubernetes API."""
 
 import asyncio
 import json
-import os
 import re
-import tempfile
 from typing import Any, Dict, Optional
+
+import yaml
+
+try:
+    from kubernetes import client, config
+    from kubernetes.client.rest import ApiException
+
+    KUBERNETES_AVAILABLE = True
+except ImportError:
+    KUBERNETES_AVAILABLE = False
 
 
 class ManifestGenerator:
-    """Generates Kubernetes manifests from natural language prompts."""
+    """Generates and applies Kubernetes manifests using native Kubernetes API."""
+
+    def __init__(self):
+        self._custom_objects_api = None
+        self._core_v1_api = None
+        self._apps_v1_api = None
+        self._client_initialized = False
+
+    def _ensure_kubernetes_client(self) -> None:
+        """Initialize Kubernetes clients if not already done."""
+        if not KUBERNETES_AVAILABLE:
+            raise RuntimeError(
+                "Kubernetes client not available. Please install kubernetes package."
+            )
+
+        if not self._client_initialized:
+            try:
+                # Try to load in-cluster config first, then kubeconfig
+                try:
+                    config.load_incluster_config()
+                except config.ConfigException:
+                    config.load_kube_config()
+
+                self._custom_objects_api = client.CustomObjectsApi()
+                self._core_v1_api = client.CoreV1Api()
+                self._apps_v1_api = client.AppsV1Api()
+                self._client_initialized = True
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize Kubernetes client: {str(e)}")
 
     @staticmethod
     def generate_ray_cluster_manifest(prompt: str, action: Dict[str, Any]) -> str:
@@ -177,49 +213,30 @@ spec:
 """
         return manifest
 
-    @staticmethod
     async def apply_manifest(
-        manifest: str, namespace: str = "default"
+        self, manifest: str, namespace: str = "default"
     ) -> Dict[str, Any]:
-        """Apply Kubernetes manifest using kubectl."""
-        import asyncio
-
-        manifest_file = None
+        """Apply Kubernetes manifest using native Kubernetes API."""
         try:
-            # Write manifest to temporary file
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".yaml", delete=False
-            ) as f:
-                f.write(manifest)
-                manifest_file = f.name
+            self._ensure_kubernetes_client()
 
-            # Apply using kubectl
-            process = await asyncio.create_subprocess_exec(
-                "kubectl",
-                "apply",
-                "-f",
-                manifest_file,
-                "-n",
-                namespace,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            # Parse YAML manifest into documents
+            documents = list(yaml.safe_load_all(manifest))
+            applied_resources = []
 
-            stdout, stderr = await process.communicate()
+            for doc in documents:
+                if not doc or not isinstance(doc, dict):
+                    continue
 
-            if process.returncode == 0:
-                return {
-                    "status": "success",
-                    "message": "Manifest applied successfully",
-                    "output": stdout.decode().strip(),
-                    "namespace": namespace,
-                }
-            else:
-                return {
-                    "status": "error",
-                    "message": f"kubectl apply failed: {stderr.decode().strip()}",
-                    "namespace": namespace,
-                }
+                result = await self._apply_single_resource(doc, namespace)
+                applied_resources.append(result)
+
+            return {
+                "status": "success",
+                "message": "Manifest applied successfully",
+                "applied_resources": applied_resources,
+                "namespace": namespace,
+            }
 
         except Exception as e:
             return {
@@ -227,56 +244,171 @@ spec:
                 "message": f"Failed to apply manifest: {str(e)}",
                 "namespace": namespace,
             }
-        finally:
-            # Always clean up temp file if it was created
-            if manifest_file and os.path.exists(manifest_file):
-                os.unlink(manifest_file)
 
-    @staticmethod
-    async def delete_resource(
-        resource_type: str, name: str, namespace: str = "default"
+    async def _apply_single_resource(
+        self, resource: Dict[str, Any], namespace: str
     ) -> Dict[str, Any]:
-        """Delete Kubernetes resource using kubectl."""
-        import asyncio
+        """Apply a single Kubernetes resource."""
+        api_version = resource.get("apiVersion", "")
+        kind = resource.get("kind", "")
+        metadata = resource.get("metadata", {})
+        name = metadata.get("name")
+
+        # Ensure namespace is set in metadata
+        if "namespace" not in metadata and namespace != "default":
+            metadata["namespace"] = namespace
+            resource["metadata"] = metadata
 
         try:
-            # Delete using kubectl
-            process = await asyncio.create_subprocess_exec(
-                "kubectl",
-                "delete",
-                resource_type,
-                name,
-                "-n",
-                namespace,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            if api_version == "ray.io/v1":
+                # Handle Ray CRDs
+                group = "ray.io"
+                version = "v1"
 
-            stdout, stderr = await process.communicate()
+                if kind == "RayCluster":
+                    plural = "rayclusters"
+                elif kind == "RayJob":
+                    plural = "rayjobs"
+                else:
+                    raise ValueError(f"Unsupported Ray CRD kind: {kind}")
 
-            if process.returncode == 0:
+                # Try to get existing resource first
+                try:
+                    await asyncio.to_thread(
+                        self._custom_objects_api.get_namespaced_custom_object,
+                        group=group,
+                        version=version,
+                        namespace=namespace,
+                        plural=plural,
+                        name=name,
+                    )
+                    # Resource exists, update it
+                    result = await asyncio.to_thread(
+                        self._custom_objects_api.patch_namespaced_custom_object,
+                        group=group,
+                        version=version,
+                        namespace=namespace,
+                        plural=plural,
+                        name=name,
+                        body=resource,
+                    )
+                    action = "updated"
+                except ApiException as e:
+                    if e.status == 404:
+                        # Resource doesn't exist, create it
+                        result = await asyncio.to_thread(
+                            self._custom_objects_api.create_namespaced_custom_object,
+                            group=group,
+                            version=version,
+                            namespace=namespace,
+                            plural=plural,
+                            body=resource,
+                        )
+                        action = "created"
+                    else:
+                        raise
+
+            elif api_version == "v1" and kind == "Service":
+                # Handle core v1 Service
+                try:
+                    await asyncio.to_thread(
+                        self._core_v1_api.read_namespaced_service,
+                        name=name,
+                        namespace=namespace,
+                    )
+                    # Service exists, update it
+                    result = await asyncio.to_thread(
+                        self._core_v1_api.patch_namespaced_service,
+                        name=name,
+                        namespace=namespace,
+                        body=resource,
+                    )
+                    action = "updated"
+                except ApiException as e:
+                    if e.status == 404:
+                        # Service doesn't exist, create it
+                        result = await asyncio.to_thread(
+                            self._core_v1_api.create_namespaced_service,
+                            namespace=namespace,
+                            body=resource,
+                        )
+                        action = "created"
+                    else:
+                        raise
+            else:
+                raise ValueError(f"Unsupported resource type: {api_version}/{kind}")
+
+            return {
+                "kind": kind,
+                "name": name,
+                "namespace": namespace,
+                "action": action,
+                "status": "success",
+            }
+
+        except Exception as e:
+            return {
+                "kind": kind,
+                "name": name,
+                "namespace": namespace,
+                "action": "failed",
+                "status": "error",
+                "error": str(e),
+            }
+
+    async def delete_resource(
+        self, resource_type: str, name: str, namespace: str = "default"
+    ) -> Dict[str, Any]:
+        """Delete Kubernetes resource using native Kubernetes API."""
+        try:
+            self._ensure_kubernetes_client()
+
+            if resource_type.lower() == "raycluster":
+                await asyncio.to_thread(
+                    self._custom_objects_api.delete_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayclusters",
+                    name=name,
+                )
+            elif resource_type.lower() == "rayjob":
+                await asyncio.to_thread(
+                    self._custom_objects_api.delete_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayjobs",
+                    name=name,
+                )
+            elif resource_type.lower() == "service":
+                await asyncio.to_thread(
+                    self._core_v1_api.delete_namespaced_service,
+                    name=name,
+                    namespace=namespace,
+                )
+            else:
+                raise ValueError(f"Unsupported resource type: {resource_type}")
+
+            return {
+                "status": "success",
+                "message": f"{resource_type} {name} deleted successfully",
+                "namespace": namespace,
+            }
+
+        except ApiException as e:
+            if e.status == 404:
                 return {
                     "status": "success",
-                    "message": f"{resource_type} {name} deleted successfully",
-                    "output": stdout.decode().strip(),
+                    "message": f"{resource_type} {name} not found (already deleted)",
                     "namespace": namespace,
                 }
             else:
-                # Check if resource doesn't exist (not an error in this context)
-                error_msg = stderr.decode().strip()
-                if "not found" in error_msg.lower():
-                    return {
-                        "status": "success",
-                        "message": f"{resource_type} {name} not found (already deleted)",
-                        "namespace": namespace,
-                    }
-                else:
-                    return {
-                        "status": "error",
-                        "message": f"kubectl delete failed: {error_msg}",
-                        "namespace": namespace,
-                    }
-
+                return {
+                    "status": "error",
+                    "message": f"Failed to delete {resource_type}: {str(e)}",
+                    "namespace": namespace,
+                }
         except Exception as e:
             return {
                 "status": "error",
@@ -284,66 +416,95 @@ spec:
                 "namespace": namespace,
             }
 
-    @staticmethod
     async def get_resource_status(
-        resource_type: str, name: str, namespace: str = "default"
+        self, resource_type: str, name: str, namespace: str = "default"
     ) -> Dict[str, Any]:
-        """Get Kubernetes resource status using kubectl."""
-        import asyncio
-
+        """Get Kubernetes resource status using native Kubernetes API."""
         try:
-            # Get resource info using kubectl
-            process = await asyncio.create_subprocess_exec(
-                "kubectl",
-                "get",
-                resource_type,
-                name,
-                "-n",
-                namespace,
-                "-o",
-                "json",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            self._ensure_kubernetes_client()
+
+            if resource_type.lower() == "raycluster":
+                resource_data = await asyncio.to_thread(
+                    self._custom_objects_api.get_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayclusters",
+                    name=name,
+                )
+            elif resource_type.lower() == "rayjob":
+                resource_data = await asyncio.to_thread(
+                    self._custom_objects_api.get_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayjobs",
+                    name=name,
+                )
+            elif resource_type.lower() == "service":
+                service = await asyncio.to_thread(
+                    self._core_v1_api.read_namespaced_service,
+                    name=name,
+                    namespace=namespace,
+                )
+                # Convert K8s object to dict for consistency
+                resource_data = client.ApiClient().sanitize_for_serialization(service)
+            else:
+                raise ValueError(f"Unsupported resource type: {resource_type}")
+
+            # Extract common status information
+            metadata = (
+                resource_data.get("metadata", {})
+                if isinstance(resource_data, dict)
+                else {}
             )
+            status_info = {
+                "name": name,
+                "namespace": namespace,
+                "kind": (
+                    resource_data.get("kind")
+                    if isinstance(resource_data, dict)
+                    else None
+                ),
+                "creation_timestamp": (
+                    metadata.get("creationTimestamp")
+                    if isinstance(metadata, dict)
+                    else None
+                ),
+                "labels": (
+                    metadata.get("labels", {}) if isinstance(metadata, dict) else {}
+                ),
+                "status": (
+                    resource_data.get("status", {})
+                    if isinstance(resource_data, dict)
+                    else {}
+                ),
+                "spec": (
+                    resource_data.get("spec", {})
+                    if isinstance(resource_data, dict)
+                    else {}
+                ),
+            }
 
-            stdout, stderr = await process.communicate()
+            return {
+                "status": "success",
+                "resource": status_info,
+                "raw_resource": resource_data,
+            }
 
-            if process.returncode == 0:
-                resource_data = json.loads(stdout.decode())
-
-                # Extract common status information
-                status_info = {
-                    "name": name,
-                    "namespace": namespace,
-                    "kind": resource_data.get("kind"),
-                    "creation_timestamp": resource_data.get("metadata", {}).get(
-                        "creationTimestamp"
-                    ),
-                    "labels": resource_data.get("metadata", {}).get("labels", {}),
-                    "status": resource_data.get("status", {}),
-                    "spec": resource_data.get("spec", {}),
-                }
-
+        except ApiException as e:
+            if e.status == 404:
                 return {
-                    "status": "success",
-                    "resource": status_info,
-                    "raw_resource": resource_data,
+                    "status": "error",
+                    "message": f"{resource_type} {name} not found",
+                    "namespace": namespace,
                 }
             else:
-                error_msg = stderr.decode().strip()
-                if "not found" in error_msg.lower():
-                    return {
-                        "status": "error",
-                        "message": f"{resource_type} {name} not found",
-                        "namespace": namespace,
-                    }
-                else:
-                    return {
-                        "status": "error",
-                        "message": f"kubectl get failed: {error_msg}",
-                        "namespace": namespace,
-                    }
-
+                return {
+                    "status": "error",
+                    "message": f"Failed to get {resource_type}: {str(e)}",
+                    "namespace": namespace,
+                }
         except Exception as e:
             return {
                 "status": "error",
@@ -351,59 +512,88 @@ spec:
                 "namespace": namespace,
             }
 
-    @staticmethod
     async def list_resources(
-        resource_type: str, namespace: str = "default"
+        self, resource_type: str, namespace: str = "default"
     ) -> Dict[str, Any]:
-        """List Kubernetes resources using kubectl."""
-        import asyncio
-
+        """List Kubernetes resources using native Kubernetes API."""
         try:
-            # List resources using kubectl
-            process = await asyncio.create_subprocess_exec(
-                "kubectl",
-                "get",
-                resource_type,
-                "-n",
-                namespace,
-                "-o",
-                "json",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            self._ensure_kubernetes_client()
+
+            if resource_type.lower() == "raycluster":
+                resources_data = await asyncio.to_thread(
+                    self._custom_objects_api.list_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayclusters",
+                )
+            elif resource_type.lower() == "rayjob":
+                resources_data = await asyncio.to_thread(
+                    self._custom_objects_api.list_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayjobs",
+                )
+            elif resource_type.lower() == "service":
+                service_list = await asyncio.to_thread(
+                    self._core_v1_api.list_namespaced_service, namespace=namespace
+                )
+                # Convert K8s object to dict for consistency
+                resources_data = client.ApiClient().sanitize_for_serialization(
+                    service_list
+                )
+            else:
+                raise ValueError(f"Unsupported resource type: {resource_type}")
+
+            items = (
+                resources_data.get("items", [])
+                if isinstance(resources_data, dict)
+                else []
             )
 
-            stdout, stderr = await process.communicate()
-
-            if process.returncode == 0:
-                resources_data = json.loads(stdout.decode())
-                items = resources_data.get("items", [])
-
-                # Extract summary information for each resource
-                resources = []
-                for item in items:
+            # Extract summary information for each resource
+            resources = []
+            for item in items:
+                if isinstance(item, dict):
+                    metadata = (
+                        item.get("metadata", {})
+                        if isinstance(item.get("metadata"), dict)
+                        else {}
+                    )
                     resource_summary = {
-                        "name": item.get("metadata", {}).get("name"),
-                        "namespace": item.get("metadata", {}).get("namespace"),
-                        "creation_timestamp": item.get("metadata", {}).get(
-                            "creationTimestamp"
+                        "name": (
+                            metadata.get("name") if isinstance(metadata, dict) else None
                         ),
-                        "labels": item.get("metadata", {}).get("labels", {}),
-                        "status": item.get("status", {}),
+                        "namespace": (
+                            metadata.get("namespace")
+                            if isinstance(metadata, dict)
+                            else None
+                        ),
+                        "creation_timestamp": (
+                            metadata.get("creationTimestamp")
+                            if isinstance(metadata, dict)
+                            else None
+                        ),
+                        "labels": (
+                            metadata.get("labels", {})
+                            if isinstance(metadata, dict)
+                            else {}
+                        ),
+                        "status": (
+                            item.get("status", {})
+                            if isinstance(item.get("status"), dict)
+                            else {}
+                        ),
                     }
                     resources.append(resource_summary)
 
-                return {
-                    "status": "success",
-                    "resources": resources,
-                    "total_count": len(resources),
-                    "namespace": namespace,
-                }
-            else:
-                return {
-                    "status": "error",
-                    "message": f"kubectl get failed: {stderr.decode().strip()}",
-                    "namespace": namespace,
-                }
+            return {
+                "status": "success",
+                "resources": resources,
+                "total_count": len(resources),
+                "namespace": namespace,
+            }
 
         except Exception as e:
             return {

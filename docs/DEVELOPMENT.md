@@ -61,7 +61,7 @@ Ray MCP Server uses a prompt-driven architecture with 3 simple tools:
 
 - Python 3.10+
 - uv package manager
-- kubectl (for KubeRay development)
+- kubectl (for KubeRay operator setup and debugging only - the MCP server uses native Kubernetes APIs)
 - Docker (optional, for local Kubernetes)
 
 ### Installation
