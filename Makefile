@@ -5,7 +5,7 @@
 # - test-e2e:   End-to-end tests without mocking (integration validation)
 # - test:       Complete test suite including E2E (full validation)
 
-.PHONY: test test-fast test-e2e install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
+.PHONY: test test-fast test-e2e test-integration-local test-integration-gke test-integration-both test-integration-setup install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
 
 # ================================================================================
 # TESTING TARGETS
@@ -14,17 +14,37 @@
 # Default test - full test suite including e2e
 test:
 	@echo "🔍 Running complete test suite..."
-	@python test_runner.py all
+	@python tests/integration/test_runner.py all
 
 # Fast test suite (unit tests with 100% mocking) - for development
 test-fast:
 	@echo "🏃‍♂️ Running fast unit tests with 100% mocking..."
-	@python test_runner.py unit
+	@python tests/integration/test_runner.py unit
 
 # End-to-end tests without mocking - for integration validation
 test-e2e:
 	@echo "🚀 Running end-to-end tests without mocking..."
-	@python test_runner.py e2e
+	@python tests/integration/test_runner.py e2e
+
+# Integration tests for local mode
+test-integration-local:
+	@echo "🔧 Running local integration tests..."
+	@python tests/integration/test_local_mode.py
+
+# Integration tests for GKE mode
+test-integration-gke:
+	@echo "☁️ Running GKE integration tests..."
+	@python tests/integration/test_gke_mode.py
+
+# Integration tests for both modes
+test-integration-both:
+	@echo "🚀 Running both local and GKE integration tests..."
+	@./tests/integration/run_tests.sh both
+
+# Setup integration testing environment
+test-integration-setup:
+	@echo "🔧 Setting up integration testing environment..."
+	@python tests/integration/setup_testing_environment.py
 
 
 # ================================================================================
@@ -200,7 +220,7 @@ clean-all: clean-coverage
 # Test with coverage (using test runner)
 test-cov: clean-coverage
 	@echo "🧪 Running tests with coverage..."
-	@python test_runner.py unit --coverage
+	@python tests/integration/test_runner.py unit --coverage
 	@echo "📊 Coverage report generated in htmlcov/"
 
 # Help
@@ -218,9 +238,14 @@ help:
 	@echo "🧪 Testing (New Test Runner):"
 	@echo "  test             Run complete test suite (unit + e2e)"
 	@echo "  test-fast        Run unit tests with 100% mocking (fast development)"
-	@echo ""
 	@echo "  test-e2e         Run end-to-end tests without mocking (integration)"
 	@echo "  test-cov         Run unit tests with coverage reporting"
+	@echo ""
+	@echo "🔧 Integration Testing:"
+	@echo "  test-integration-local    Run local integration tests"
+	@echo "  test-integration-gke      Run GKE integration tests"
+	@echo "  test-integration-both     Run both local and GKE integration tests"
+	@echo "  test-integration-setup    Setup integration testing environment"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  lint             Run linting checks"

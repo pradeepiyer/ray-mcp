@@ -5,6 +5,7 @@ from typing import Any
 from .import_utils import (
     GOOGLE_AUTH_AVAILABLE,
     GOOGLE_CLOUD_AVAILABLE,
+    GOOGLE_SERVICE_ACCOUNT_AVAILABLE,
     KUBERNETES_AVAILABLE,
     RAY_AVAILABLE,
     ApiException,
@@ -16,6 +17,7 @@ from .import_utils import (
     default,
     google_auth_transport,
     ray,
+    service_account,
 )
 from .logging_utils import LoggingUtility, error_response
 

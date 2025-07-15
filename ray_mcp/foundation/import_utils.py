@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from google.auth.exceptions import DefaultCredentialsError
     from google.auth.transport import requests as google_auth_transport
     from google.cloud import container_v1
+    from google.oauth2 import service_account
 
 try:
     from google.auth import default
@@ -47,3 +48,12 @@ except ImportError:
     google_auth_transport = None
     GOOGLE_CLOUD_AVAILABLE = False
     GOOGLE_AUTH_AVAILABLE = False
+
+# Google OAuth2 service account (separate import)
+try:
+    from google.oauth2 import service_account
+
+    GOOGLE_SERVICE_ACCOUNT_AVAILABLE = True
+except ImportError:
+    service_account = None
+    GOOGLE_SERVICE_ACCOUNT_AVAILABLE = False

@@ -12,6 +12,7 @@ from ..foundation.enums import CloudProvider
 from ..foundation.import_utils import (
     GOOGLE_AUTH_AVAILABLE,
     GOOGLE_CLOUD_AVAILABLE,
+    GOOGLE_SERVICE_ACCOUNT_AVAILABLE,
     KUBERNETES_AVAILABLE,
     DefaultCredentialsError,
     client,
@@ -19,16 +20,8 @@ from ..foundation.import_utils import (
     container_v1,
     default,
     google_auth_transport,
+    service_account,
 )
-
-# Import service_account conditionally
-if TYPE_CHECKING:
-    from google.auth import service_account  # type: ignore
-else:
-    try:
-        from google.auth import service_account  # type: ignore
-    except ImportError:
-        service_account = None
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
@@ -169,7 +162,7 @@ class GKEManager(ResourceManager):
             credentials_data = json.load(f)
 
         # Create credentials object
-        if service_account is None:
+        if not GOOGLE_SERVICE_ACCOUNT_AVAILABLE:
             raise RuntimeError("Google Auth service account module not available")
         self._credentials = service_account.Credentials.from_service_account_info(
             credentials_data,
@@ -250,7 +243,7 @@ class GKEManager(ResourceManager):
                 credentials_data = credentials_json
 
             # Create credentials object
-            if service_account is None:
+            if not GOOGLE_SERVICE_ACCOUNT_AVAILABLE:
                 raise RuntimeError("Google Auth service account module not available")
             self._credentials = service_account.Credentials.from_service_account_info(
                 credentials_data,

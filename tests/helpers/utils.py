@@ -91,11 +91,21 @@ class TempScriptManager:
 
     def __enter__(self) -> str:
         """Create temporary script and return path."""
+        # Add shebang line if it's not already present
+        if not self.script_content.startswith("#!"):
+            script_with_shebang = "#!/usr/bin/env python3\n" + self.script_content
+        else:
+            script_with_shebang = self.script_content
+
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=self.suffix, delete=False
         ) as f:
-            f.write(self.script_content)
+            f.write(script_with_shebang)
             self.script_path = f.name
+
+        # Make the script executable
+        os.chmod(self.script_path, 0o755)
+
         return self.script_path
 
     def __exit__(self, exc_type, exc_val, exc_tb):

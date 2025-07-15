@@ -319,6 +319,13 @@ class ActionParser:
 
     @staticmethod
     def _extract_script_path(prompt: str) -> Optional[str]:
+        # First check if this is an entrypoint command (contains "python" before the script path)
+        if "entrypoint" in prompt.lower():
+            # Extract the full command after "entrypoint"
+            if match := re.search(r"entrypoint\s+(.+)", prompt, re.IGNORECASE):
+                return match.group(1).strip()
+
+        # Fallback to just extracting the .py file path
         if match := re.search(r"([^\s]+\.py)", prompt):
             return match.group(1)
         return None
