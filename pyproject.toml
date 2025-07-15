@@ -129,7 +129,15 @@ exclude = [
 useLibraryCodeForTypes = true
 # Python version compatibility
 pythonVersion = "3.10"
-# Basic type checking for this project
-typeCheckingMode = "basic"
-# Ignore specific error types while fixing
+# Standard type checking with import validation
+typeCheckingMode = "standard"
+# Enable critical import checks to match CI
+reportMissingImports = true
+# Keep other checks at reasonable levels
 reportOptionalMemberAccess = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportMissingParameterType = false
+reportUnknownArgumentType = false
+reportPossiblyUnboundVariable = false
