@@ -486,7 +486,7 @@ class KubeRayClusterManager(ResourceManager):
             if service_type == "LoadBalancer":
                 return self._get_loadbalancer_url(service, dashboard_port)
             elif service_type == "NodePort":
-                return self._get_nodeport_url(service, dashboard_port, namespace)
+                return await self._get_nodeport_url(service, dashboard_port, namespace)
             else:
 
                 LoggingUtility.log_debug(
@@ -548,7 +548,7 @@ class KubeRayClusterManager(ResourceManager):
             )
             return None
 
-    def _get_nodeport_url(
+    async def _get_nodeport_url(
         self, service, dashboard_port: int, namespace: str
     ) -> Optional[str]:
         """Get NodePort service external URL."""
@@ -579,8 +579,8 @@ class KubeRayClusterManager(ResourceManager):
                 )
                 return None
 
-            # Get node external IP (using sync version for non-async method)
-            node_ip = self._get_node_external_ip_sync()
+            # Get node external IP (using async version)
+            node_ip = await self._get_node_external_ip()
             if node_ip:
                 url = f"http://{node_ip}:{node_port}"
 
@@ -663,30 +663,6 @@ class KubeRayClusterManager(ResourceManager):
 
             LoggingUtility.log_debug(
                 "node_external_ip", f"Error getting node external IP: {e}"
-            )
-            return None
-
-    def _get_node_external_ip_sync(self) -> Optional[str]:
-        """Get external IP of any cluster node (sync version for dashboard URL)."""
-        try:
-            if not self._KUBERNETES_AVAILABLE:
-                return None
-
-            self._ensure_kubernetes_client()
-
-            # Simplified sync version - just return None for dashboard URL generation
-            # The async version should be used for critical operations
-
-            LoggingUtility.log_debug(
-                "node_external_ip_sync",
-                "Sync version used for dashboard URL - returning None to use cluster-internal URL",
-            )
-            return None
-
-        except Exception as e:
-
-            LoggingUtility.log_debug(
-                "node_external_ip_sync", f"Error in sync version: {e}"
             )
             return None
 
