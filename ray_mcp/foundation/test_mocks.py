@@ -7,29 +7,6 @@ dependencies are not available, primarily for testing and development scenarios.
 from typing import Any, Dict
 
 
-class MockStateManager:
-    """Mock implementation of StateManager for testing scenarios."""
-
-    def __init__(self):
-        self._state = {}
-
-    def get_state(self) -> Dict[str, Any]:
-        """Mock get state - returns empty dict."""
-        return self._state.copy()
-
-    def update_state(self, **kwargs) -> None:
-        """Mock update state - does nothing."""
-        self._state.update(kwargs)
-
-    def reset_state(self) -> None:
-        """Mock reset state - clears state."""
-        self._state.clear()
-
-    def is_initialized(self) -> bool:
-        """Mock is initialized - always returns False."""
-        return False
-
-
 class MockLoggingUtility:
     """Mock implementation of LoggingUtility for testing scenarios."""
 

@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import time
 from typing import Any, Dict, List
@@ -23,8 +24,7 @@ from mcp.types import TextContent
 import pytest
 
 # Import the actual server components (no mocking)
-from ray_mcp.handlers import RayHandlers
-from ray_mcp.managers.unified_manager import RayUnifiedManager
+from ray_mcp.main import call_tool
 from ray_mcp.tools import get_ray_tools
 
 
@@ -36,7 +36,6 @@ def cleanup_after_all_tests():
     # Enhanced final cleanup with Ray-specific thread targeting
     try:
         # Set environment to force Ray cleanup
-        import os
 
         os.environ["RAY_DISABLE_USAGE_STATS"] = "1"
         os.environ["RAY_memory_monitor_refresh_ms"] = "0"
@@ -92,7 +91,6 @@ def cleanup_after_all_tests():
         gc.collect()
 
         # Final process cleanup with more comprehensive patterns
-        import subprocess
 
         try:
             # Kill Ray processes more comprehensively
@@ -201,7 +199,6 @@ async def cleanup_ray():
 
     # Force cleanup any stubborn Ray processes immediately
     try:
-        import subprocess
 
         # Kill all Ray-related processes more aggressively
         processes_to_kill = [
@@ -231,7 +228,6 @@ async def cleanup_ray():
 
     # Also try command line cleanup
     try:
-        import subprocess
 
         subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=3)
     except:
@@ -241,7 +237,6 @@ async def cleanup_ray():
 def cleanup_all_ray_processes():
     """Nuclear cleanup option - use only when tests are completely stuck."""
     try:
-        import subprocess
 
         # Kill all Ray-related processes
         processes_to_kill = [
@@ -282,7 +277,6 @@ def cleanup_all_ray_processes():
 
 def create_test_script(script_content: str) -> str:
     """Create a temporary test script and return its path."""
-    import os
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(script_content)
@@ -311,8 +305,6 @@ class TestCriticalWorkflows:
 
     def setup_method(self):
         """Set up for each test."""
-        self.unified_manager = RayUnifiedManager()
-        self.handlers = RayHandlers(self.unified_manager)
 
         # Store original Ray environment variables for restoration
         self.original_gcs_timeout = os.environ.get(
@@ -400,7 +392,7 @@ class TestCriticalWorkflows:
         try:
             # Step 1: Create local Ray cluster
             print("📡 Creating Ray cluster...")
-            result = await self.handlers.handle_tool_call(
+            result = await call_tool(
                 "ray_cluster",
                 {
                     "prompt": f"create a local cluster with {E2ETestConfig.CPU_LIMIT} CPUs and dashboard on port {E2ETestConfig.DASHBOARD_PORT}"
@@ -424,7 +416,7 @@ class TestCriticalWorkflows:
 
             # Step 2: Verify cluster is running by inspecting it
             print("🔍 Inspecting cluster status...")
-            result = await self.handlers.handle_tool_call(
+            result = await call_tool(
                 "ray_cluster", {"prompt": "inspect cluster status"}
             )
 
@@ -461,7 +453,7 @@ print("Job finished successfully")
             script_path = create_test_script(test_job_script)
 
             try:
-                result = await self.handlers.handle_tool_call(
+                result = await call_tool(
                     "ray_job", {"prompt": f"submit job with script {script_path}"}
                 )
 
@@ -483,7 +475,7 @@ print("Job finished successfully")
 
                 job_status = None
                 while elapsed_time < max_wait_time:
-                    result = await self.handlers.handle_tool_call(
+                    result = await call_tool(
                         "ray_job", {"prompt": f"get status for job {job_id}"}
                     )
 
@@ -502,7 +494,7 @@ print("Job finished successfully")
                 # If job failed, get logs for debugging
                 if job_status == "FAILED":
                     print("🔍 Job failed - getting logs for debugging...")
-                    result = await self.handlers.handle_tool_call(
+                    result = await call_tool(
                         "ray_job", {"prompt": f"get logs for job {job_id}"}
                     )
                     response = parse_tool_response(result)
@@ -518,7 +510,7 @@ print("Job finished successfully")
 
                 # Step 5: Get job logs
                 print("📋 Retrieving job logs...")
-                result = await self.handlers.handle_tool_call(
+                result = await call_tool(
                     "ray_job", {"prompt": f"get logs for job {job_id}"}
                 )
 
@@ -534,9 +526,7 @@ print("Job finished successfully")
 
                 # Step 6: List all jobs to verify our job is in the list
                 print("📜 Listing all jobs...")
-                result = await self.handlers.handle_tool_call(
-                    "ray_job", {"prompt": "list all jobs"}
-                )
+                result = await call_tool("ray_job", {"prompt": "list all jobs"})
 
                 response = parse_tool_response(result)
                 print(f"Job listing response: {response}")
@@ -558,7 +548,7 @@ print("Job finished successfully")
             # Step 7: Clean up cluster
             print("🧹 Cleaning up cluster...")
             try:
-                result = await self.handlers.handle_tool_call(
+                result = await call_tool(
                     "ray_cluster", {"prompt": "stop the current cluster"}
                 )
                 response = parse_tool_response(result)
@@ -583,7 +573,7 @@ print("Job finished successfully")
 
         # Test 1: Try to submit job without cluster
         print("Test 1: Submit job without cluster...")
-        result = await self.handlers.handle_tool_call(
+        result = await call_tool(
             "ray_job", {"prompt": "submit job with script nonexistent.py"}
         )
 
@@ -596,7 +586,7 @@ print("Job finished successfully")
 
         # Test 2: Try to connect to invalid cluster
         print("Test 2: Connect to invalid cluster...")
-        result = await self.handlers.handle_tool_call(
+        result = await call_tool(
             "ray_cluster", {"prompt": "connect to cluster at 192.0.2.1:9999"}
         )
 
@@ -609,7 +599,6 @@ print("Job finished successfully")
 
         # Extra cleanup for stubborn background processes
         try:
-            import subprocess
 
             # Force kill any remaining ray processes
             subprocess.run(["pkill", "-f", "ray"], capture_output=True, check=False)
@@ -619,9 +608,7 @@ print("Job finished successfully")
 
         # Test 3: Try to inspect non-existent cluster
         print("Test 3: Inspect non-existent cluster...")
-        result = await self.handlers.handle_tool_call(
-            "ray_cluster", {"prompt": "inspect cluster status"}
-        )
+        result = await call_tool("ray_cluster", {"prompt": "inspect cluster status"})
 
         response = parse_tool_response(result)
         # Should return success but indicate no cluster is running
@@ -647,7 +634,7 @@ print("Job finished successfully")
 
         for tool_name, prompt in valid_prompts:
             print(f"Testing: {tool_name} - '{prompt}'")
-            result = await self.handlers.handle_tool_call(tool_name, {"prompt": prompt})
+            result = await call_tool(tool_name, {"prompt": prompt})
             response = parse_tool_response(result)
 
             # Should not fail due to parsing (may fail due to missing resources)
@@ -671,9 +658,7 @@ print("Job finished successfully")
             prompt = minimal_prompts.get(tool.name)
             if prompt:
                 print(f"Testing tool: {tool.name}")
-                result = await self.handlers.handle_tool_call(
-                    tool.name, {"prompt": prompt}
-                )
+                result = await call_tool(tool.name, {"prompt": prompt})
                 response = parse_tool_response(result)
 
                 # All tools should return valid responses (success or error)
@@ -694,9 +679,7 @@ print("Job finished successfully")
 
         # Test concurrent cluster inspections (should be safe)
         tasks = [
-            self.handlers.handle_tool_call(
-                "ray_cluster", {"prompt": "inspect cluster status"}
-            )
+            call_tool("ray_cluster", {"prompt": "inspect cluster status"})
             for _ in range(3)
         ]
 
@@ -716,7 +699,7 @@ print("Job finished successfully")
         await cleanup_ray()
 
         # Create cluster
-        result = await self.handlers.handle_tool_call(
+        result = await call_tool(
             "ray_cluster",
             {"prompt": f"create cluster with {E2ETestConfig.CPU_LIMIT} CPUs"},
         )
@@ -724,25 +707,19 @@ print("Job finished successfully")
 
         if response["status"] == "success":
             # Verify it's running
-            result = await self.handlers.handle_tool_call(
-                "ray_cluster", {"prompt": "inspect cluster"}
-            )
+            result = await call_tool("ray_cluster", {"prompt": "inspect cluster"})
             response = parse_tool_response(result)
             assert response["status"] == "success"
             assert response["cluster_status"] == "running"
 
             # Stop it
-            result = await self.handlers.handle_tool_call(
-                "ray_cluster", {"prompt": "stop cluster"}
-            )
+            result = await call_tool("ray_cluster", {"prompt": "stop cluster"})
             response = parse_tool_response(result)
             assert response["status"] == "success"
 
             # Verify it's stopped
             await asyncio.sleep(2)
-            result = await self.handlers.handle_tool_call(
-                "ray_cluster", {"prompt": "inspect cluster"}
-            )
+            result = await call_tool("ray_cluster", {"prompt": "inspect cluster"})
             response = parse_tool_response(result)
             assert response["status"] == "success"
             assert response["cluster_status"] == "not_running"

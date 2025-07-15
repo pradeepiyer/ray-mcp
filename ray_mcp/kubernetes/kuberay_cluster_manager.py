@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ..config import get_config_manager_sync
 from ..foundation.base_managers import ResourceManager
+from ..foundation.logging_utils import LoggingUtility
 from ..parsers import ActionParser
 from .manifest_generator import ManifestGenerator
 
@@ -88,7 +89,6 @@ class KubeRayClusterManager(ResourceManager):
         so explicit configuration setting is not needed.
         """
         try:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_info(
                 "kuberay_cluster_set_k8s_config",
@@ -101,7 +101,6 @@ class KubeRayClusterManager(ResourceManager):
                 "Using kubectl with current kubeconfig context",
             )
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_error(
                 "kuberay_cluster_set_k8s_config",
@@ -471,7 +470,6 @@ class KubeRayClusterManager(ResourceManager):
             except self._ApiException as e:
                 status = getattr(e, "status", "unknown")
                 if status == 404:
-                    from ..foundation.logging_utils import LoggingUtility
 
                     LoggingUtility.log_debug(
                         "get_external_dashboard_url",
@@ -490,7 +488,6 @@ class KubeRayClusterManager(ResourceManager):
             elif service_type == "NodePort":
                 return self._get_nodeport_url(service, dashboard_port, namespace)
             else:
-                from ..foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_debug(
                     "get_external_dashboard_url",
@@ -499,7 +496,6 @@ class KubeRayClusterManager(ResourceManager):
                 return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "get_external_dashboard_url", f"Error getting external URL: {e}"
@@ -533,14 +529,11 @@ class KubeRayClusterManager(ResourceManager):
                 external_port = self._find_external_port(service, dashboard_port)
                 if external_port:
                     url = f"http://{external_host}:{external_port}"
-                    from ..foundation.logging_utils import LoggingUtility
 
                     LoggingUtility.log_info(
                         "loadbalancer_url", f"LoadBalancer external URL: {url}"
                     )
                     return url
-
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "loadbalancer_url",
@@ -549,7 +542,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "loadbalancer_url", f"Error getting LoadBalancer URL: {e}"
@@ -580,7 +572,6 @@ class KubeRayClusterManager(ResourceManager):
                     break
 
             if not node_port:
-                from ..foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_debug(
                     "nodeport_url",
@@ -592,12 +583,9 @@ class KubeRayClusterManager(ResourceManager):
             node_ip = self._get_node_external_ip_sync()
             if node_ip:
                 url = f"http://{node_ip}:{node_port}"
-                from ..foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_info("nodeport_url", f"NodePort external URL: {url}")
                 return url
-
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "nodeport_url", "Could not determine node external IP"
@@ -605,7 +593,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug("nodeport_url", f"Error getting NodePort URL: {e}")
             return None
@@ -649,7 +636,6 @@ class KubeRayClusterManager(ResourceManager):
                 if node.status.addresses:
                     for address in node.status.addresses:
                         if address.type == "InternalIP":
-                            from ..foundation.logging_utils import LoggingUtility
 
                             LoggingUtility.log_debug(
                                 "node_external_ip",
@@ -660,7 +646,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "node_external_ip", f"Error getting node external IP: {e}"
@@ -677,7 +662,6 @@ class KubeRayClusterManager(ResourceManager):
 
             # Simplified sync version - just return None for dashboard URL generation
             # The async version should be used for critical operations
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "node_external_ip_sync",
@@ -686,7 +670,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "node_external_ip_sync", f"Error in sync version: {e}"
@@ -717,7 +700,6 @@ class KubeRayClusterManager(ResourceManager):
                     break
 
             if not node_port:
-                from ..foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_debug(
                     "nodeport_url_async",
@@ -729,14 +711,12 @@ class KubeRayClusterManager(ResourceManager):
             node_ip = await self._get_node_external_ip()
             if node_ip:
                 url = f"http://{node_ip}:{node_port}"
-                from ..foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_info(
                     "nodeport_url_async", f"NodePort external URL: {url}"
                 )
                 return url
             else:
-                from ..foundation.logging_utils import LoggingUtility
 
                 LoggingUtility.log_debug(
                     "nodeport_url_async",
@@ -745,7 +725,6 @@ class KubeRayClusterManager(ResourceManager):
                 return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_debug(
                 "nodeport_url_async", f"Error getting NodePort URL: {e}"
@@ -776,7 +755,6 @@ class KubeRayClusterManager(ResourceManager):
                     except self._ApiException as e:
                         status = getattr(e, "status", "unknown")
                         if status == 404:
-                            from ..foundation.logging_utils import LoggingUtility
 
                             LoggingUtility.log_debug(
                                 "service_ready_check",
@@ -823,8 +801,6 @@ class KubeRayClusterManager(ResourceManager):
                                             )
                                             return external_url
 
-                        from ..foundation.logging_utils import LoggingUtility
-
                         LoggingUtility.log_debug(
                             "service_ready_check",
                             f"Attempt {attempt + 1}: LoadBalancer {service_name} external IP not assigned yet",
@@ -836,15 +812,12 @@ class KubeRayClusterManager(ResourceManager):
                             service, 8265, namespace
                         )
                         if external_url:
-                            from ..foundation.logging_utils import LoggingUtility
 
                             LoggingUtility.log_info(
                                 "service_ready",
                                 f"NodePort service {service_name} ready with external URL: {external_url}",
                             )
                             return external_url
-
-                        from ..foundation.logging_utils import LoggingUtility
 
                         LoggingUtility.log_debug(
                             "service_ready_check",
@@ -853,7 +826,6 @@ class KubeRayClusterManager(ResourceManager):
 
                     else:
                         # For ClusterIP, service is ready but no external access
-                        from ..foundation.logging_utils import LoggingUtility
 
                         LoggingUtility.log_debug(
                             "service_ready_check",
@@ -862,15 +834,12 @@ class KubeRayClusterManager(ResourceManager):
                         return None
 
                 except Exception as e:
-                    from ..foundation.logging_utils import LoggingUtility
 
                     LoggingUtility.log_debug(
                         "service_ready_check", f"Attempt {attempt + 1}: {e}"
                     )
 
                 await asyncio.sleep(10)
-
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_warning(
                 "service_ready_timeout",
@@ -879,7 +848,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_error(
                 "wait_for_service_ready", Exception(f"Error waiting for service: {e}")

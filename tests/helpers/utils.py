@@ -11,9 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent
 
-from ray_mcp.handlers import RayHandlers
-from ray_mcp.managers.unified_manager import RayUnifiedManager
-
 
 # E2E Test Environment Configuration
 class E2EConfig:

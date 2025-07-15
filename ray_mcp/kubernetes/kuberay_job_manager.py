@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from ..config import get_config_manager_sync
 from ..foundation.base_managers import ResourceManager
+from ..foundation.logging_utils import LoggingUtility
 from ..parsers import ActionParser
 from .manifest_generator import ManifestGenerator
 
@@ -77,7 +78,6 @@ class KubeRayJobManager(ResourceManager):
         so explicit configuration setting is not needed.
         """
         try:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_info(
                 "kuberay_job_set_k8s_config",
@@ -88,7 +88,6 @@ class KubeRayJobManager(ResourceManager):
                 "Using kubectl with current kubeconfig context",
             )
         except Exception as e:
-            from ..foundation.logging_utils import LoggingUtility
 
             LoggingUtility.log_error(
                 "kuberay_job_set_k8s_config",

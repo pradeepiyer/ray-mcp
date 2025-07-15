@@ -63,19 +63,21 @@ class KubernetesManager(ResourceManager):
     ) -> Dict[str, Any]:
         """Connect to Kubernetes cluster using unified configuration."""
         try:
-            from kubernetes import config
+            from kubernetes import config as k8s_config
 
-            k8s_config = self._config_manager.get_kubernetes_config()
+            k8s_config_data = self._config_manager.get_kubernetes_config()
 
             # Load configuration
-            config_file_path = config_file or k8s_config.get("kubeconfig_path")
+            config_file_path = config_file or k8s_config_data.get("kubeconfig_path")
             if config_file_path:
-                config.load_kube_config(config_file=config_file_path, context=context)
+                k8s_config.load_kube_config(
+                    config_file=config_file_path, context=context
+                )
             else:
-                config.load_kube_config(context=context)
+                k8s_config.load_kube_config(context=context)
 
             # Get current context
-            contexts, active_context = config.list_kube_config_contexts()
+            contexts, active_context = k8s_config.list_kube_config_contexts()
             current_context = active_context["name"] if active_context else context
 
             # Simple state tracking
@@ -109,10 +111,10 @@ class KubernetesManager(ResourceManager):
         try:
             self._ensure_kubernetes_connected()
 
-            from kubernetes import client, config
+            from kubernetes import client, config as k8s_config
 
             # Get cluster info
-            contexts, active_context = config.list_kube_config_contexts()
+            contexts, active_context = k8s_config.list_kube_config_contexts()
             current_context = active_context["name"] if active_context else "unknown"
 
             v1 = client.CoreV1Api()
@@ -189,9 +191,9 @@ class KubernetesManager(ResourceManager):
     async def _list_contexts(self) -> Dict[str, Any]:
         """List available Kubernetes contexts."""
         try:
-            from kubernetes import config
+            from kubernetes import config as k8s_config
 
-            contexts, active_context = config.list_kube_config_contexts()
+            contexts, active_context = k8s_config.list_kube_config_contexts()
             context_names = []
             if contexts:
                 for ctx in contexts:

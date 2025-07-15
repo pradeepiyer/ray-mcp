@@ -1,15 +1,15 @@
 """Prompt-to-manifest generation for Ray clusters and jobs - replaces entire CRD system."""
 
+import asyncio
+import json
+import os
 import re
 import tempfile
 from typing import Any, Dict, Optional
 
 
 class ManifestGenerator:
-    """Generates Kubernetes manifests from natural language prompts.
-
-    Replaces the entire CRD system (1,861 lines) with simple prompt-to-YAML generation.
-    """
+    """Generates Kubernetes manifests from natural language prompts."""
 
     @staticmethod
     def generate_ray_cluster_manifest(prompt: str, action: Dict[str, Any]) -> str:
@@ -207,7 +207,6 @@ spec:
             stdout, stderr = await process.communicate()
 
             # Clean up temp file
-            import os
 
             os.unlink(manifest_file)
 
@@ -290,7 +289,6 @@ spec:
     ) -> Dict[str, Any]:
         """Get Kubernetes resource status using kubectl."""
         import asyncio
-        import json
 
         try:
             # Get resource info using kubectl
@@ -358,7 +356,6 @@ spec:
     ) -> Dict[str, Any]:
         """List Kubernetes resources using kubectl."""
         import asyncio
-        import json
 
         try:
             # List resources using kubectl

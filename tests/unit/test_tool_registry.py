@@ -160,54 +160,47 @@ class TestRayHandlers:
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_with_valid_arguments(self):
-        """Test handle_tool_call with valid arguments."""
-        arguments = {"prompt": "create cluster"}
-        expected_response = {"status": "success", "message": "Cluster created"}
+        """Test call_tool with valid arguments."""
+        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
+            expected_response = {"status": "success", "message": "Cluster created"}
+            mock_handle_cluster.return_value = expected_response
 
-        self.unified_manager_mock.handle_cluster_request.return_value = (
-            expected_response
-        )
+            result = await call_tool("ray_cluster", {"prompt": "create cluster"})
 
-        result = await self.handlers.handle_tool_call("ray_cluster", arguments)
-
-        response_data = parse_tool_response(result)
-        assert response_data == expected_response
+            response_data = parse_tool_response(result)
+            assert response_data == expected_response
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_with_none_arguments(self):
-        """Test handle_tool_call with None arguments."""
-        result = await self.handlers.handle_tool_call("ray_cluster", None)
+        """Test call_tool with None arguments."""
+        result = await call_tool("ray_cluster", None)
 
         response_data = parse_tool_response(result)
         assert response_data["status"] == "error"
-        assert "Arguments required" in response_data["message"]
+        assert "prompt required" in response_data["message"]
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_with_empty_arguments(self):
-        """Test handle_tool_call with empty arguments dict."""
-        result = await self.handlers.handle_tool_call("ray_cluster", {})
+        """Test call_tool with empty arguments dict."""
+        result = await call_tool("ray_cluster", {})
 
         response_data = parse_tool_response(result)
         assert response_data["status"] == "error"
-        assert "Prompt required" in response_data["message"]
+        assert "prompt required" in response_data["message"]
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_with_missing_prompt(self):
-        """Test handle_tool_call with arguments missing prompt."""
-        arguments = {"other_field": "value"}
-
-        result = await self.handlers.handle_tool_call("ray_cluster", arguments)
+        """Test call_tool with arguments missing prompt."""
+        result = await call_tool("ray_cluster", {"other_field": "value"})
 
         response_data = parse_tool_response(result)
         assert response_data["status"] == "error"
-        assert "Prompt required" in response_data["message"]
+        assert "prompt required" in response_data["message"]
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_with_unknown_tool(self):
-        """Test handle_tool_call with unknown tool name."""
-        arguments = {"prompt": "test prompt"}
-
-        result = await self.handlers.handle_tool_call("unknown_tool", arguments)
+        """Test call_tool with unknown tool name."""
+        result = await call_tool("unknown_tool", {"prompt": "test prompt"})
 
         response_data = parse_tool_response(result)
         assert response_data["status"] == "error"
@@ -215,52 +208,45 @@ class TestRayHandlers:
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_with_exception_in_handler(self):
-        """Test handle_tool_call when handler raises exception."""
-        arguments = {"prompt": "create cluster"}
+        """Test call_tool when handler raises exception."""
+        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
+            mock_handle_cluster.side_effect = Exception("Test exception")
 
-        self.unified_manager_mock.handle_cluster_request.side_effect = Exception(
-            "Test exception"
-        )
+            result = await call_tool("ray_cluster", {"prompt": "create cluster"})
 
-        result = await self.handlers.handle_tool_call("ray_cluster", arguments)
-
-        response_data = parse_tool_response(result)
-        assert response_data["status"] == "error"
-        assert "Test exception" in response_data["message"]
+            response_data = parse_tool_response(result)
+            assert response_data["status"] == "error"
+            assert "Test exception" in response_data["message"]
 
     @pytest.mark.asyncio
     async def test_concurrent_tool_calls(self):
         """Test that handlers can handle concurrent tool calls."""
         import asyncio
 
-        # Set up different responses for different tools
-        self.unified_manager_mock.handle_cluster_request.return_value = {
-            "status": "success",
-            "type": "cluster",
-        }
-        self.unified_manager_mock.handle_job_request.return_value = {
-            "status": "success",
-            "type": "job",
-        }
-        self.unified_manager_mock.handle_cloud_request.return_value = {
-            "status": "success",
-            "type": "cloud",
-        }
+        with (
+            patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster,
+            patch("ray_mcp.main.handlers.handle_job") as mock_handle_job,
+            patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud,
+        ):
+            # Set up different responses for different tools
+            mock_handle_cluster.return_value = {"status": "success", "type": "cluster"}
+            mock_handle_job.return_value = {"status": "success", "type": "job"}
+            mock_handle_cloud.return_value = {"status": "success", "type": "cloud"}
 
-        # Make concurrent calls
-        tasks = [
-            self.handlers.handle_tool_call("ray_cluster", {"prompt": "create cluster"}),
-            self.handlers.handle_tool_call("ray_job", {"prompt": "submit job"}),
-            self.handlers.handle_tool_call("cloud", {"prompt": "authenticate"}),
-        ]
+            # Make concurrent calls
+            tasks = [
+                call_tool("ray_cluster", {"prompt": "create cluster"}),
+                call_tool("ray_job", {"prompt": "submit job"}),
+                call_tool("cloud", {"prompt": "authenticate"}),
+            ]
 
-        results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
 
-        # All should succeed
-        assert len(results) == 3
-        for result in results:
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "success"
+            # All should succeed
+            assert len(results) == 3
+            for result in results:
+                response_data = parse_tool_response(result)
+                assert response_data["status"] == "success"
 
 
 @pytest.mark.unit
@@ -457,84 +443,78 @@ class TestToolValidation:
 class TestErrorHandling:
     """Test comprehensive error handling in tool registry."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.unified_manager_mock = AsyncMock()
-        self.handlers = RayHandlers(self.unified_manager_mock)
-
     @pytest.mark.asyncio
     async def test_handler_error_propagation(self):
         """Test that errors from handlers are properly propagated."""
-        # Test different types of exceptions
-        exceptions = [
-            ValueError("Invalid input"),
-            RuntimeError("Runtime error"),
-            ConnectionError("Connection failed"),
-            Exception("Generic error"),
-        ]
+        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
+            # Test different types of exceptions
+            exceptions = [
+                ValueError("Invalid input"),
+                RuntimeError("Runtime error"),
+                ConnectionError("Connection failed"),
+                Exception("Generic error"),
+            ]
 
-        for exception in exceptions:
-            self.unified_manager_mock.handle_cluster_request.side_effect = exception
+            for exception in exceptions:
+                mock_handle_cluster.side_effect = exception
 
-            result = await self.handlers.handle_tool_call(
-                "ray_cluster", {"prompt": "test"}
-            )
+                result = await call_tool("ray_cluster", {"prompt": "test"})
 
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "error"
-            assert str(exception) in response_data["message"]
+                response_data = parse_tool_response(result)
+                assert response_data["status"] == "error"
+                assert str(exception) in response_data["message"]
 
     @pytest.mark.asyncio
     async def test_malformed_json_handling(self):
         """Test handling of malformed JSON in responses."""
-        # Mock handler returning invalid JSON structure
-        invalid_response = "not a json object"
-        self.unified_manager_mock.handle_cluster_request.return_value = invalid_response
+        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
+            # Mock handler returning invalid JSON structure
+            invalid_response = "not a json object"
+            mock_handle_cluster.return_value = invalid_response
 
-        result = await self.handlers.handle_tool_call("ray_cluster", {"prompt": "test"})
+            result = await call_tool("ray_cluster", {"prompt": "test"})
 
-        # Should still return valid JSON even with invalid input
-        response_data = parse_tool_response(result)
-        assert response_data == invalid_response
+            # Should still return valid JSON even with invalid input
+            response_data = parse_tool_response(result)
+            assert response_data == invalid_response
 
     @pytest.mark.asyncio
     async def test_timeout_handling(self):
         """Test handling of timeouts in tool calls."""
         import asyncio
 
-        # Mock handler that times out
-        async def timeout_handler(prompt):
-            await asyncio.sleep(10)  # Simulate timeout
-            return {"status": "success"}
+        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
+            # Mock handler that times out
+            async def timeout_handler(prompt):
+                await asyncio.sleep(10)  # Simulate timeout
+                return {"status": "success"}
 
-        self.unified_manager_mock.handle_cluster_request.side_effect = timeout_handler
+            mock_handle_cluster.side_effect = timeout_handler
 
-        # Test with timeout
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(
-                self.handlers.handle_tool_call("ray_cluster", {"prompt": "test"}),
-                timeout=0.1,
-            )
+            # Test with timeout
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    call_tool("ray_cluster", {"prompt": "test"}),
+                    timeout=0.1,
+                )
 
     @pytest.mark.asyncio
     async def test_memory_pressure_handling(self):
         """Test handling of memory pressure scenarios."""
+        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
+            # Mock handler that consumes excessive memory
+            def memory_intensive_handler(prompt):
+                # Simulate memory pressure
+                return {"status": "success", "large_data": "x" * 10000}
 
-        # Mock handler that consumes excessive memory
-        def memory_intensive_handler(prompt):
-            # Simulate memory pressure
-            return {"status": "success", "large_data": "x" * 10000}
+            mock_handle_cluster.side_effect = memory_intensive_handler
 
-        self.unified_manager_mock.handle_cluster_request.side_effect = (
-            memory_intensive_handler
-        )
+            result = await call_tool("ray_cluster", {"prompt": "test"})
 
-        result = await self.handlers.handle_tool_call("ray_cluster", {"prompt": "test"})
-
-        # Should handle large responses gracefully
-        response_data = parse_tool_response(result)
-        assert response_data["status"] == "success"
-        assert "large_data" in response_data
+            # Should handle large responses gracefully
+            response_data = parse_tool_response(result)
+            assert response_data["status"] == "success"
+            assert "large_data" in response_data
 
 
 if __name__ == "__main__":
