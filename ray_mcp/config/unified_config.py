@@ -338,25 +338,22 @@ class UnifiedConfigManager:
 
     def _is_gke_available(self) -> bool:
         """Check if GKE is available and configured."""
-        try:
-            # Try importing google cloud container module
-            try:
-                import google.cloud.container  # type: ignore
-            except ImportError:
-                return False
+        from ..foundation.import_utils import is_google_cloud_available
 
-            # Check if GCP credentials are available
-            credentials_available = (
-                (
-                    self._config.gcp_credentials_path
-                    and os.path.exists(self._config.gcp_credentials_path)
-                )
-                or bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-                or self._is_in_gke_cluster()
-            )
-            return credentials_available
-        except ImportError:
+        # Check if Google Cloud SDK is available
+        if not is_google_cloud_available():
             return False
+
+        # Check if GCP credentials are available
+        credentials_available = (
+            (
+                self._config.gcp_credentials_path
+                and os.path.exists(self._config.gcp_credentials_path)
+            )
+            or bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+            or self._is_in_gke_cluster()
+        )
+        return credentials_available
 
     def _is_in_kubernetes_cluster(self) -> bool:
         """Check if running inside a Kubernetes cluster."""
