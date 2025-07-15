@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -155,6 +156,8 @@ class UnifiedConfigManager:
 
     async def _load_environment_variables(self) -> None:
         """Load configuration from environment variables."""
+        logger = logging.getLogger(__name__)
+
         env_mappings = {
             # Ray settings
             "RAY_ADDRESS": "ray_address",
@@ -193,6 +196,10 @@ class UnifiedConfigManager:
                     try:
                         value = int(value)
                     except ValueError:
+                        logger.warning(
+                            f"Invalid integer value for environment variable {env_var}='{os.getenv(env_var)}'. "
+                            f"Expected integer for {config_key}. Keeping default value."
+                        )
                         continue
                 elif config_key == "enhanced_output":
                     value = value.lower() in ("true", "1", "yes", "on")
