@@ -162,130 +162,125 @@ class TestClusterManager:
 
 @pytest.mark.unit
 class TestJobManager:
-    """Test JobManager prompt-driven interface."""
+    """Test JobManager with Dashboard API."""
 
     def setup_method(self):
         """Set up test fixtures."""
         self.manager = JobManager()
 
-        # Mock Ray dependencies
+        # Mock Ray
         self.ray_mock = Mock()
         self.ray_mock.is_initialized.return_value = True
-        self.job_client_mock = Mock()
+        self.ray_mock.get_runtime_context.return_value.dashboard_url = (
+            "http://127.0.0.1:8265"
+        )
 
         # Inject mocks
         self.manager._ray = self.ray_mock
         self.manager._RAY_AVAILABLE = True
-        self.manager._JobSubmissionClient = Mock(return_value=self.job_client_mock)
 
     @pytest.mark.asyncio
     async def test_submit_job_prompt(self):
-        """Test job submission through natural language."""
-        prompt = "submit job with script train.py"
+        """Test job submission via Dashboard API."""
+        # Mock the Dashboard client in the JobManager module
+        with patch(
+            "ray_mcp.managers.job_manager.DashboardClient"
+        ) as mock_dashboard_client:
+            mock_client_instance = AsyncMock()
+            mock_dashboard_client.return_value.__aenter__.return_value = (
+                mock_client_instance
+            )
+            mock_client_instance.submit_job.return_value = {"job_id": "test_job_123"}
 
-        # Mock job submission
-        self.job_client_mock.submit_job.return_value = "raysubmit_123"
+            result = await self.manager.execute_request(
+                "submit job with script test.py"
+            )
 
-        with patch("ray_mcp.managers.job_manager.ActionParser") as parser_mock:
-            parser_mock.parse_job_action.return_value = {
-                "operation": "submit",
-                "script": "train.py",
-                "runtime_env": {},
-                "metadata": {},
-            }
-
-            result = await self.manager.execute_request(prompt)
-
-            # Verify job was submitted
-            self.job_client_mock.submit_job.assert_called_once()
+            if result["status"] != "success":
+                print(f"Test failed with result: {result}")
             assert result["status"] == "success"
-            assert result["job_status"] == "submitted"
-            assert result["job_id"] == "raysubmit_123"
-            assert "submitted successfully" in result["message"]
+            assert result["job_id"] == "test_job_123"
+            assert result["entrypoint"] == "test.py"
+            mock_client_instance.submit_job.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_list_jobs_prompt(self):
-        """Test listing jobs."""
-        prompt = "list all running jobs"
+        """Test job listing via Dashboard API."""
+        with patch(
+            "ray_mcp.managers.job_manager.DashboardClient"
+        ) as mock_dashboard_client:
+            mock_client_instance = AsyncMock()
+            mock_dashboard_client.return_value.__aenter__.return_value = (
+                mock_client_instance
+            )
+            mock_client_instance.list_jobs.return_value = {
+                "jobs": [
+                    {
+                        "job_id": "job123",
+                        "status": "RUNNING",
+                        "entrypoint": "python test.py",
+                        "start_time": 1234567890,
+                        "end_time": None,
+                        "metadata": {},
+                    }
+                ]
+            }
 
-        # Mock job list response
-        mock_job_info = Mock()
-        mock_job_info.status.value = "RUNNING"
-        mock_job_info.entrypoint = "train.py"
-        mock_job_info.start_time = "2024-01-01T00:00:00"
-        mock_job_info.end_time = None
-        mock_job_info.metadata = {}
-
-        self.job_client_mock.list_jobs.return_value = {"job_123": mock_job_info}
-
-        with patch("ray_mcp.managers.job_manager.ActionParser") as parser_mock:
-            parser_mock.parse_job_action.return_value = {"operation": "list"}
-
-            result = await self.manager.execute_request(prompt)
+            result = await self.manager.execute_request("list all jobs")
 
             assert result["status"] == "success"
-            assert "jobs" in result
             assert len(result["jobs"]) == 1
-            assert result["jobs"][0]["job_id"] == "job_123"
+            assert result["jobs"][0]["job_id"] == "job123"
             assert result["jobs"][0]["status"] == "RUNNING"
+            assert result["total_count"] == 1
 
     @pytest.mark.asyncio
     async def test_cancel_job_prompt(self):
-        """Test job cancellation."""
-        prompt = "cancel job raysubmit_456"
+        """Test job cancellation via Dashboard API."""
+        with patch(
+            "ray_mcp.managers.job_manager.DashboardClient"
+        ) as mock_dashboard_client:
+            mock_client_instance = AsyncMock()
+            mock_dashboard_client.return_value.__aenter__.return_value = (
+                mock_client_instance
+            )
+            mock_client_instance.stop_job.return_value = {"stopped": True}
 
-        self.job_client_mock.stop_job.return_value = True
+            result = await self.manager.execute_request("cancel job raysubmit_123")
 
-        with patch("ray_mcp.managers.job_manager.ActionParser") as parser_mock:
-            parser_mock.parse_job_action.return_value = {
-                "operation": "cancel",
-                "job_id": "raysubmit_456",
-            }
-
-            result = await self.manager.execute_request(prompt)
-
-            self.job_client_mock.stop_job.assert_called_once_with("raysubmit_456")
             assert result["status"] == "success"
-            assert "cancelled successfully" in result["message"]
+            assert "cancellation requested" in result["message"]
+            mock_client_instance.stop_job.assert_called_once_with("raysubmit_123")
 
     @pytest.mark.asyncio
     async def test_get_job_logs_prompt(self):
-        """Test retrieving job logs."""
-        prompt = "get logs for job raysubmit_789"
+        """Test job log retrieval via Dashboard API."""
+        with patch(
+            "ray_mcp.managers.job_manager.DashboardClient"
+        ) as mock_dashboard_client:
+            mock_client_instance = AsyncMock()
+            mock_dashboard_client.return_value.__aenter__.return_value = (
+                mock_client_instance
+            )
+            mock_client_instance.get_job_logs.return_value = {"logs": "Job output here"}
 
-        self.job_client_mock.get_job_logs.return_value = (
-            "Training started\\nEpoch 1 complete"
-        )
-
-        with patch("ray_mcp.managers.job_manager.ActionParser") as parser_mock:
-            parser_mock.parse_job_action.return_value = {
-                "operation": "logs",
-                "job_id": "raysubmit_789",
-            }
-
-            result = await self.manager.execute_request(prompt)
+            result = await self.manager.execute_request(
+                "get logs for job raysubmit_123"
+            )
 
             assert result["status"] == "success"
-            assert result["job_id"] == "raysubmit_789"
-            assert "Training started" in result["logs"]
+            assert result["logs"] == "Job output here"
+            mock_client_instance.get_job_logs.assert_called_once_with("raysubmit_123")
 
     @pytest.mark.asyncio
     async def test_ray_not_running_error(self):
-        """Test error when Ray cluster is not running."""
-        self.manager._ray.is_initialized.return_value = False
+        """Test error when Ray is not running."""
+        self.ray_mock.is_initialized.return_value = False
 
-        prompt = "submit job with script test.py"
+        result = await self.manager.execute_request("submit job with script test.py")
 
-        with patch("ray_mcp.managers.job_manager.ActionParser") as parser_mock:
-            parser_mock.parse_job_action.return_value = {
-                "operation": "submit",
-                "script": "test.py",
-            }
-
-            result = await self.manager.execute_request(prompt)
-
-            assert result["status"] == "error"
-            assert "Ray cluster is not running" in result["message"]
+        assert result["status"] == "error"
+        assert "Ray cluster is not running" in result["message"]
 
 
 @pytest.mark.unit

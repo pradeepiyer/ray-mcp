@@ -1,21 +1,19 @@
-"""Pure prompt-driven job management for Ray clusters."""
+"""Pure prompt-driven job management for Ray clusters using Dashboard API."""
 
-import asyncio
 from typing import Any, Dict
 
 from ..config import get_config_manager_sync
+from ..foundation.dashboard_client import DashboardAPIError, DashboardClient
 from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 
 
 class JobManager(ResourceManager):
-    """Pure prompt-driven Ray job management - no traditional APIs."""
+    """Pure prompt-driven Ray job management using Dashboard API."""
 
     def __init__(self, unified_manager=None):
         super().__init__(enable_ray=True)
         self._config_manager = get_config_manager_sync()
-        # Simple state tracking
-        self._job_client = None
         self._unified_manager = unified_manager
 
     async def execute_request(self, prompt: str) -> Dict[str, Any]:
@@ -63,14 +61,9 @@ class JobManager(ResourceManager):
         except Exception as e:
             return self._ResponseFormatter.format_error_response("execute_request", e)
 
-    # =================================================================
-    # INTERNAL IMPLEMENTATION: All methods are now private
-    # =================================================================
-
     async def _submit_job_from_prompt(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Submit job from parsed prompt action."""
         try:
-            # Extract job specification
             job_spec = {
                 "entrypoint": action.get("script") or action.get("entrypoint"),
                 "runtime_env": action.get("runtime_env", {}),
@@ -89,7 +82,7 @@ class JobManager(ResourceManager):
             )
 
     async def _submit_job(self, job_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Submit a job to the Ray cluster."""
+        """Submit a job to the Ray cluster using Dashboard API."""
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_error_response(
@@ -97,208 +90,193 @@ class JobManager(ResourceManager):
                     Exception("Ray cluster is not running. Start a cluster first."),
                 )
 
-            # Get or create job client
-            job_client = await self._get_job_client()
-            if not job_client:
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
                 return self._ResponseFormatter.format_error_response(
-                    "submit job", Exception("Could not create job client")
+                    "submit job", Exception("Could not determine Ray dashboard URL")
                 )
 
-            # Submit the job
-            job_id = await asyncio.to_thread(
-                job_client.submit_job,
-                entrypoint=job_spec["entrypoint"],
-                runtime_env=job_spec.get("runtime_env"),
-                metadata=job_spec.get("metadata"),
-                job_id=job_spec.get("job_id"),
-            )
+            async with DashboardClient(dashboard_url) as client:
+                result = await client.submit_job(
+                    entrypoint=job_spec["entrypoint"],
+                    runtime_env=job_spec.get("runtime_env"),
+                    job_id=job_spec.get("job_id"),
+                    metadata=job_spec.get("metadata"),
+                )
 
-            return self._ResponseFormatter.format_success_response(
-                job_id=job_id,
-                entrypoint=job_spec["entrypoint"],
-                job_status="submitted",
-                message=f"Job {job_id} submitted successfully",
-            )
+                # Dashboard API uses submission_id as the primary identifier
+                submitted_job_id = result.get("submission_id", result.get("job_id"))
 
+                return self._ResponseFormatter.format_success_response(
+                    job_id=submitted_job_id,
+                    entrypoint=job_spec["entrypoint"],
+                    job_status="submitted",
+                    message=f"Job submitted successfully",
+                )
+
+        except DashboardAPIError as e:
+            return self._ResponseFormatter.format_error_response(
+                "submit job", Exception(f"Dashboard API error: {e.message}")
+            )
         except Exception as e:
             return self._ResponseFormatter.format_error_response("submit job", e)
 
     async def _list_jobs(self) -> Dict[str, Any]:
-        """List all jobs in the cluster."""
+        """List all jobs in the cluster using Dashboard API."""
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_error_response(
                     "list jobs", Exception("Ray cluster is not running")
                 )
 
-            job_client = await self._get_job_client()
-            if not job_client:
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
                 return self._ResponseFormatter.format_error_response(
-                    "list jobs", Exception("Could not create job client")
+                    "list jobs", Exception("Could not determine Ray dashboard URL")
                 )
 
-            jobs = await asyncio.to_thread(job_client.list_jobs)
-            job_list = []
+            async with DashboardClient(dashboard_url) as client:
+                result = await client.list_jobs()
 
-            # Handle both dict and list responses from Ray
-            if isinstance(jobs, dict):
-                for job_id, job_info in jobs.items():
-                    job_list.append(
-                        {
-                            "job_id": job_id,
-                            "status": (
-                                job_info.status.value
-                                if hasattr(job_info.status, "value")
-                                else str(job_info.status)
-                            ),
-                            "entrypoint": getattr(job_info, "entrypoint", "unknown"),
-                            "start_time": getattr(job_info, "start_time", None),
-                            "end_time": getattr(job_info, "end_time", None),
-                            "metadata": getattr(job_info, "metadata", {}),
-                        }
-                    )
-            else:
-                # Handle list response
-                for job_info in jobs:
-                    # Try different attributes to get job_id
-                    job_id = (
-                        getattr(job_info, "job_id", None)
-                        or getattr(job_info, "submission_id", None)
-                        or getattr(job_info, "id", None)
-                        or "unknown"
-                    )
-                    job_list.append(
-                        {
-                            "job_id": job_id,
-                            "status": (
-                                job_info.status.value
-                                if hasattr(job_info.status, "value")
-                                else str(job_info.status)
-                            ),
-                            "entrypoint": getattr(job_info, "entrypoint", "unknown"),
-                            "start_time": getattr(job_info, "start_time", None),
-                            "end_time": getattr(job_info, "end_time", None),
-                            "metadata": getattr(job_info, "metadata", {}),
-                        }
-                    )
+                # Transform Dashboard API response to match expected format
+                job_list = []
+                jobs_data = (
+                    result if isinstance(result, list) else result.get("jobs", [])
+                )
 
-            return self._ResponseFormatter.format_success_response(
-                jobs=job_list,
-                total_count=len(job_list),
-                message=f"Found {len(job_list)} jobs",
+                for job in jobs_data:
+                    if isinstance(job, dict):
+                        # Dashboard API uses submission_id as the primary identifier
+                        job_id = job.get("submission_id") or job.get("job_id")
+
+                        job_list.append(
+                            {
+                                "job_id": job_id,
+                                "status": job.get("status"),
+                                "entrypoint": job.get("entrypoint", "unknown"),
+                                "start_time": job.get("start_time"),
+                                "end_time": job.get("end_time"),
+                                "metadata": job.get("metadata", {}),
+                            }
+                        )
+
+                return self._ResponseFormatter.format_success_response(
+                    jobs=job_list,
+                    total_count=len(job_list),
+                    message=f"Found {len(job_list)} jobs",
+                )
+
+        except DashboardAPIError as e:
+            return self._ResponseFormatter.format_error_response(
+                "list jobs", Exception(f"Dashboard API error: {e.message}")
             )
-
         except Exception as e:
             return self._ResponseFormatter.format_error_response("list jobs", e)
 
     async def _get_job_status(self, job_id: str) -> Dict[str, Any]:
-        """Get status of a specific job."""
+        """Get status of a specific job using Dashboard API."""
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_error_response(
                     "get job status", Exception("Ray cluster is not running")
                 )
 
-            job_client = await self._get_job_client()
-            if not job_client:
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
                 return self._ResponseFormatter.format_error_response(
-                    "get job status", Exception("Could not create job client")
+                    "get job status", Exception("Could not determine Ray dashboard URL")
                 )
 
-            job_info = await asyncio.to_thread(job_client.get_job_info, job_id)
+            async with DashboardClient(dashboard_url) as client:
+                job_info = await client.get_job_info(job_id)
 
-            return self._ResponseFormatter.format_success_response(
-                job_id=job_id,
-                job_status=(
-                    job_info.status.value
-                    if hasattr(job_info.status, "value")
-                    else str(job_info.status)
-                ),
-                entrypoint=getattr(job_info, "entrypoint", "unknown"),
-                start_time=getattr(job_info, "start_time", None),
-                end_time=getattr(job_info, "end_time", None),
-                metadata=getattr(job_info, "metadata", {}),
-                message=getattr(job_info, "message", None),
+                return self._ResponseFormatter.format_success_response(
+                    job_id=job_id,
+                    job_status=job_info.get("status"),
+                    entrypoint=job_info.get("entrypoint", "unknown"),
+                    start_time=job_info.get("start_time"),
+                    end_time=job_info.get("end_time"),
+                    metadata=job_info.get("metadata", {}),
+                    message=job_info.get("message"),
+                )
+
+        except DashboardAPIError as e:
+            if e.status_code == 404:
+                return self._ResponseFormatter.format_error_response(
+                    "get job status", Exception(f"Job {job_id} not found")
+                )
+            return self._ResponseFormatter.format_error_response(
+                "get job status", Exception(f"Dashboard API error: {e.message}")
             )
-
         except Exception as e:
             return self._ResponseFormatter.format_error_response("get job status", e)
 
     async def _cancel_job(self, job_id: str) -> Dict[str, Any]:
-        """Cancel a running job."""
+        """Cancel a running job using Dashboard API."""
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_error_response(
                     "cancel job", Exception("Ray cluster is not running")
                 )
 
-            job_client = await self._get_job_client()
-            if not job_client:
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
                 return self._ResponseFormatter.format_error_response(
-                    "cancel job", Exception("Could not create job client")
+                    "cancel job", Exception("Could not determine Ray dashboard URL")
                 )
 
-            success = await asyncio.to_thread(job_client.stop_job, job_id)
+            async with DashboardClient(dashboard_url) as client:
+                result = await client.stop_job(job_id)
 
-            if success:
                 return self._ResponseFormatter.format_success_response(
-                    job_id=job_id, message=f"Job {job_id} cancelled successfully"
-                )
-            else:
-                return self._ResponseFormatter.format_error_response(
-                    "cancel job", Exception(f"Failed to cancel job {job_id}")
+                    job_id=job_id, message=f"Job {job_id} cancellation requested"
                 )
 
+        except DashboardAPIError as e:
+            if e.status_code == 404:
+                return self._ResponseFormatter.format_error_response(
+                    "cancel job", Exception(f"Job {job_id} not found")
+                )
+            return self._ResponseFormatter.format_error_response(
+                "cancel job", Exception(f"Dashboard API error: {e.message}")
+            )
         except Exception as e:
             return self._ResponseFormatter.format_error_response("cancel job", e)
 
     async def _get_job_logs(self, job_id: str) -> Dict[str, Any]:
-        """Get logs for a specific job."""
+        """Get logs for a specific job using Dashboard API."""
         try:
             if not self._is_ray_ready():
                 return self._ResponseFormatter.format_error_response(
                     "get job logs", Exception("Ray cluster is not running")
                 )
 
-            job_client = await self._get_job_client()
-            if not job_client:
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
                 return self._ResponseFormatter.format_error_response(
-                    "get job logs", Exception("Could not create job client")
+                    "get job logs", Exception("Could not determine Ray dashboard URL")
                 )
 
-            logs = await asyncio.to_thread(job_client.get_job_logs, job_id)
+            async with DashboardClient(dashboard_url) as client:
+                logs_result = await client.get_job_logs(job_id)
 
-            return self._ResponseFormatter.format_success_response(
-                job_id=job_id, logs=logs, message=f"Retrieved logs for job {job_id}"
+                # Handle different response formats from Dashboard API
+                logs = logs_result.get("logs", str(logs_result))
+
+                return self._ResponseFormatter.format_success_response(
+                    job_id=job_id, logs=logs, message=f"Retrieved logs for job {job_id}"
+                )
+
+        except DashboardAPIError as e:
+            if e.status_code == 404:
+                return self._ResponseFormatter.format_error_response(
+                    "get job logs", Exception(f"Job {job_id} not found")
+                )
+            return self._ResponseFormatter.format_error_response(
+                "get job logs", Exception(f"Dashboard API error: {e.message}")
             )
-
         except Exception as e:
             return self._ResponseFormatter.format_error_response("get job logs", e)
-
-    async def _get_job_client(self):
-        """Get or create job submission client."""
-        try:
-            if self._job_client:
-                return self._job_client
-
-            if not self._is_ray_ready():
-                return None
-
-            # Try to get dashboard URL for job client
-            if not self._JobSubmissionClient:
-                return None
-
-            dashboard_url = self._get_dashboard_url()
-            if dashboard_url:
-                self._job_client = self._JobSubmissionClient(dashboard_url)
-            else:
-                # Try default dashboard URL
-                self._job_client = self._JobSubmissionClient("http://127.0.0.1:8265")
-
-            return self._job_client
-
-        except Exception:
-            return None
 
     def _get_dashboard_url(self) -> str:
         """Get dashboard URL for job client."""

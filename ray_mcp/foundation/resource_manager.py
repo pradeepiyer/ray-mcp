@@ -39,7 +39,6 @@ class ResourceManager(ABC):
 
         ray_imports = get_ray_imports()
         self._ray = ray_imports.get("ray")
-        self._JobSubmissionClient = ray_imports.get("JobSubmissionClient")
         self._RAY_AVAILABLE = ray_imports.get("RAY_AVAILABLE", False)
 
     def _setup_kubernetes_imports(self) -> None:

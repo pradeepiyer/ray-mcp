@@ -37,15 +37,13 @@ def get_ray_imports() -> Dict[str, Any]:
     """Get Ray imports with availability checking."""
     try:
         import ray
-        from ray.job_submission import JobSubmissionClient
 
         return {
             "ray": ray,
-            "JobSubmissionClient": JobSubmissionClient,
             "RAY_AVAILABLE": True,
         }
     except ImportError:
-        return {"ray": None, "JobSubmissionClient": None, "RAY_AVAILABLE": False}
+        return {"ray": None, "RAY_AVAILABLE": False}
 
 
 def get_kubernetes_imports() -> Dict[str, Any]:
