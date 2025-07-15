@@ -336,19 +336,19 @@ class CloudProviderManager(ResourceManager):
     async def _authenticate_local(self, auth_config: Dict[str, Any]) -> Dict[str, Any]:
         """Authenticate with local Kubernetes."""
         try:
-            from kubernetes import config as k8s_config
+            from kubernetes import config as kube_config
 
             # Load kubeconfig
             config_file = auth_config.get("config_file")
             context = auth_config.get("context")
 
             if config_file:
-                k8s_config.load_kube_config(config_file=config_file, context=context)
+                kube_config.load_kube_config(config_file=config_file, context=context)
             else:
-                k8s_config.load_kube_config(context=context)
+                kube_config.load_kube_config(context=context)
 
             # Get current context
-            contexts, active_context = k8s_config.list_kube_config_contexts()
+            contexts, active_context = kube_config.list_kube_config_contexts()
             current_context = active_context["name"] if active_context else context
 
             # Simple state tracking (no complex state manager)
@@ -370,9 +370,9 @@ class CloudProviderManager(ResourceManager):
     async def _list_local_contexts(self) -> Dict[str, Any]:
         """List local Kubernetes contexts."""
         try:
-            from kubernetes import config as k8s_config
+            from kubernetes import config as kube_config
 
-            contexts, active_context = k8s_config.list_kube_config_contexts()
+            contexts, active_context = kube_config.list_kube_config_contexts()
             context_names = []
             if contexts:
                 for ctx in contexts:
@@ -402,16 +402,16 @@ class CloudProviderManager(ResourceManager):
     ) -> Dict[str, Any]:
         """Connect to local Kubernetes cluster."""
         try:
-            from kubernetes import config as k8s_config
+            from kubernetes import config as kube_config
 
             # Load kubeconfig with the specified context
             config_file = kwargs.get("config_file")
             if config_file:
-                k8s_config.load_kube_config(
+                kube_config.load_kube_config(
                     config_file=config_file, context=cluster_name
                 )
             else:
-                k8s_config.load_kube_config(context=cluster_name)
+                kube_config.load_kube_config(context=cluster_name)
 
             # Update state
             # Simple state tracking (no complex state manager)
