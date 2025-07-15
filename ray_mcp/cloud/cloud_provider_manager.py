@@ -235,10 +235,7 @@ class CloudProviderManager(ResourceManager):
                         discovery_result = await self._gke_manager.execute_request(
                             "list all GKE clusters"
                         )
-                        if (
-                            discovery_result.get("status") == "success"
-                            and "clusters" in discovery_result
-                        ):
+                        if "clusters" in discovery_result:
                             for cluster in discovery_result["clusters"]:
                                 if cluster.get("name") == cluster_name:
                                     zone = cluster.get("location")

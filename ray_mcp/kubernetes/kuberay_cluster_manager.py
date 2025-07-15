@@ -41,24 +41,25 @@ class KubeRayClusterManager(ResourceManager):
             if operation == "create":
                 return await self._create_ray_cluster_from_prompt(action)
             elif operation == "list":
-                namespace = action.get("namespace", "default")
+                namespace = action.get("namespace") or "default"
                 return await self._list_ray_clusters(namespace)
             elif operation == "get":
                 name = action.get("name")
-                namespace = action.get("namespace", "default")
+                namespace = action.get("namespace") or "default"
                 if not name:
-                    return error_response("cluster name required")
+                    # No specific cluster name provided, try to find available clusters
+                    return await self._get_any_ray_cluster(namespace)
                 return await self._get_ray_cluster(name, namespace)
             elif operation == "scale":
                 name = action.get("name")
                 workers = action.get("workers", 1)
-                namespace = action.get("namespace", "default")
+                namespace = action.get("namespace") or "default"
                 if not name:
                     return error_response("cluster name required")
                 return await self._scale_ray_cluster(name, workers, namespace)
             elif operation == "delete":
                 name = action.get("name")
-                namespace = action.get("namespace", "default")
+                namespace = action.get("namespace") or "default"
                 if not name:
                     return error_response("cluster name required")
                 return await self._delete_ray_cluster(name, namespace)
@@ -112,7 +113,7 @@ class KubeRayClusterManager(ResourceManager):
     ) -> dict[str, Any]:
         """Create Ray cluster from parsed prompt action using manifest generation."""
         try:
-            namespace = action.get("namespace", "default")
+            namespace = action.get("namespace") or "default"
 
             # Generate manifest from action
             manifest = self._manifest_generator.generate_ray_cluster_manifest(
@@ -266,6 +267,32 @@ class KubeRayClusterManager(ResourceManager):
             )
         else:
             return result
+
+    async def _get_any_ray_cluster(self, namespace: str = "default") -> dict[str, Any]:
+        """Get status of any available Ray cluster when no specific name is provided."""
+        # First list all clusters in the namespace
+        list_result = await self._list_ray_clusters(namespace)
+
+        if list_result.get("status") != "success":
+            return list_result
+
+        clusters = list_result.get("clusters", [])
+
+        if not clusters:
+            return error_response(f"No Ray clusters found in namespace '{namespace}'")
+        elif len(clusters) == 1:
+            # If there's exactly one cluster, return its detailed status
+            cluster_name = clusters[0]["name"]
+            return await self._get_ray_cluster(cluster_name, namespace)
+        else:
+            # If there are multiple clusters, return a summary of all
+            return success_response(
+                message=f"Found {len(clusters)} Ray clusters in namespace '{namespace}'",
+                clusters=clusters,
+                total_count=len(clusters),
+                namespace=namespace,
+                suggestion="Specify a cluster name for detailed status, e.g., 'status of cluster <name>'",
+            )
 
     async def _update_ray_cluster(
         self, name: str, cluster_spec: dict[str, Any], namespace: str = "default"

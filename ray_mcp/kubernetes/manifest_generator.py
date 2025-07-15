@@ -53,7 +53,7 @@ class ManifestGenerator:
         # Extract parameters from action
         name = action.get("name", "ray-cluster")
         namespace = action.get("namespace", "default")
-        workers = action.get("workers", 1)
+        workers = action.get("workers") or 1  # Handle None workers
         head_resources = action.get("head_resources", {"cpu": "1", "memory": "2Gi"})
         worker_resources = action.get("worker_resources", {"cpu": "1", "memory": "2Gi"})
 

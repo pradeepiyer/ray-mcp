@@ -25,7 +25,7 @@ class ActionParser:
     # Cloud operations
     CLOUD_AUTH = r"(?:auth|login|authenticate).+(?:gcp|google|gke|cloud)"
     CLOUD_LIST = r"(?:list|show|get).+(?:cluster|k8s|kubernetes|gke|gcp)"
-    CLOUD_CONNECT = r"connect.+(?:gke|gcp|k8s|kubernetes)"
+    CLOUD_CONNECT = r"connect.+(?:cluster|gke|gcp|k8s|kubernetes).+(?:cluster|gke|gcp|k8s|kubernetes)"
     CLOUD_CREATE = r"create.+(?:cluster|gke|gcp|k8s)"
     CLOUD_CHECK = r"(?:check|verify|test).+(?:env|auth|setup)"
     CLOUD_INFO = (
@@ -42,20 +42,16 @@ class ActionParser:
 
     # KubeRay job operations
     KUBERAY_JOB_CREATE = (
-        r"(?:create|deploy|submit).+(?:ray.+job|job.+ray).+(?:kubernetes|k8s|kuberay)"
+        r"(?:create|deploy|submit).+job.+(?:kubernetes|k8s|kuberay|gke)"
     )
-    KUBERAY_JOB_LIST = r"(?:list|show).+(?:ray.+job|job).+(?:kubernetes|k8s|kuberay)"
+    KUBERAY_JOB_LIST = r"(?:list|show).+\bjobs?\b"
     KUBERAY_JOB_GET = r"(?:get|status|check).+(?:job|ray.+job)"
     KUBERAY_JOB_DELETE = r"(?:delete|remove|stop).+(?:job|ray.+job)"
     KUBERAY_JOB_LOGS = r"(?:logs?|log).+(?:job|ray.+job)"
 
     # KubeRay cluster operations
-    KUBERAY_CLUSTER_CREATE = (
-        r"(?:create|deploy).+(?:ray.+cluster|cluster.+ray).+(?:kubernetes|k8s|kuberay)"
-    )
-    KUBERAY_CLUSTER_LIST = (
-        r"(?:list|show).+(?:ray.+cluster|cluster).+(?:kubernetes|k8s|kuberay)"
-    )
+    KUBERAY_CLUSTER_CREATE = r"(?:create|deploy).+(?:ray.+?cluster|cluster)"
+    KUBERAY_CLUSTER_LIST = r"(?:list|show).+(?:ray.+?cluster|cluster)"
     KUBERAY_CLUSTER_GET = r"(?:get|status|check).+(?:cluster|ray.+cluster)"
     KUBERAY_CLUSTER_SCALE = r"scale.+(?:cluster|ray.+cluster)"
     KUBERAY_CLUSTER_DELETE = r"(?:delete|remove|destroy).+(?:cluster|ray.+cluster)"
@@ -239,11 +235,17 @@ class ActionParser:
         prompt_lower = prompt.lower()
 
         if re.search(cls.KUBERAY_CLUSTER_CREATE, prompt_lower):
+            head_only = "head only" in prompt_lower or "no worker" in prompt_lower
+            workers = cls._extract_number(prompt, "worker")
+            # If head-only is detected, set workers to 0
+            if head_only and workers is None:
+                workers = 0
             return {
                 "operation": "create",
                 "name": cls._extract_name(prompt),
                 "namespace": cls._extract_namespace(prompt),
-                "workers": cls._extract_number(prompt, "worker"),
+                "workers": workers,
+                "head_only": head_only,
                 "head_resources": cls._extract_head_resources(prompt),
                 "worker_resources": cls._extract_worker_resources(prompt),
             }
@@ -296,10 +298,43 @@ class ActionParser:
 
     @staticmethod
     def _extract_name(prompt: str) -> Optional[str]:
-        if match := re.search(
-            r"(?:named|cluster|called)\s+([^\s]+)", prompt, re.IGNORECASE
-        ):
-            return match.group(1)
+        # Try multiple patterns in order of preference
+        patterns = [
+            r"named\s+([a-zA-Z][a-zA-Z0-9-]*)",  # 'named X'
+            r"called\s+([a-zA-Z][a-zA-Z0-9-]*)",  # 'called X'
+            r"status\s+of\s+(?:cluster\s+)?([a-zA-Z][a-zA-Z0-9-]*)",  # 'status of X' or 'status of cluster X'
+            r"(?:cluster|ray.+cluster)\s+([a-zA-Z][a-zA-Z0-9-]*?)(?:\s+(?:on|with|in|from|to|at|by|for|of|located)|\s*$)",  # 'cluster X on/with/in' or 'cluster X' at end
+        ]
+
+        for pattern in patterns:
+            if match := re.search(pattern, prompt, re.IGNORECASE):
+                name = match.group(1)
+                # Filter out common words that aren't actual names
+                if name.lower() not in [
+                    "all",
+                    "the",
+                    "my",
+                    "this",
+                    "that",
+                    "a",
+                    "an",
+                    "with",
+                    "on",
+                    "in",
+                    "from",
+                    "to",
+                    "at",
+                    "by",
+                    "for",
+                    "of",
+                    "head",
+                    "worker",
+                    "workers",
+                    "ray",
+                    "cluster",
+                    "clusters",
+                ]:
+                    return name
         return None
 
     @staticmethod
@@ -351,8 +386,19 @@ class ActionParser:
 
     @staticmethod
     def _extract_zone(prompt: str) -> Optional[str]:
-        if match := re.search(r"(?:zone|region)\s+([^\s]+)", prompt, re.IGNORECASE):
-            return match.group(1)
+        # Try multiple patterns for zone extraction
+        patterns = [
+            r"(?:zone|region)\s+([^\s]+)",  # 'zone X' or 'region X'
+            r"(?:in|at)\s+([a-zA-Z0-9-]+)",  # 'in X' or 'at X' where X looks like a zone
+            r"located\s+in\s+([a-zA-Z0-9-]+)",  # 'located in X'
+        ]
+
+        for pattern in patterns:
+            if match := re.search(pattern, prompt, re.IGNORECASE):
+                zone = match.group(1)
+                # Basic validation: zone should look like a cloud zone (contains hyphens and numbers)
+                if "-" in zone or any(c.isdigit() for c in zone):
+                    return zone
         return None
 
     @staticmethod
@@ -369,8 +415,15 @@ class ActionParser:
 
     @staticmethod
     def _extract_namespace(prompt: str) -> Optional[str]:
-        if match := re.search(r"namespace\s+([^\s]+)", prompt, re.IGNORECASE):
-            return match.group(1)
+        # Try multiple patterns for namespace extraction
+        patterns = [
+            r"namespace\s+([a-zA-Z][a-zA-Z0-9-]*)",  # 'namespace X'
+            r"(?:in|from)\s+([a-zA-Z][a-zA-Z0-9-]*)\s+namespace",  # 'in X namespace'
+        ]
+
+        for pattern in patterns:
+            if match := re.search(pattern, prompt, re.IGNORECASE):
+                return match.group(1)
         return None
 
     @staticmethod
@@ -391,11 +444,8 @@ class ActionParser:
 
     @staticmethod
     def _extract_cluster_name(prompt: str) -> Optional[str]:
-        if match := re.search(
-            r"(?:cluster|ray.+cluster)\s+([^\s]+)", prompt, re.IGNORECASE
-        ):
-            return match.group(1)
-        return None
+        # Use the same logic as _extract_name for consistency
+        return ActionParser._extract_name(prompt)
 
     @staticmethod
     def _extract_head_resources(prompt: str) -> dict[str, str]:

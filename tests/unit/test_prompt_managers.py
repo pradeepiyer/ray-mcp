@@ -149,10 +149,14 @@ class TestRayUnifiedManager:
         with patch.object(self.manager, "_cluster_manager") as cluster_mock:
             cluster_mock.execute_request = AsyncMock(return_value=expected_response)
 
-            result = await self.manager.handle_cluster_request("create cluster")
+            # Mock the Kubernetes connectivity check to ensure it returns False
+            with patch.object(
+                self.manager, "_is_kubernetes_connected", return_value=False
+            ):
+                result = await self.manager.handle_cluster_request("create cluster")
 
-            cluster_mock.execute_request.assert_called_once_with("create cluster")
-            assert result["status"] == "success"
+                cluster_mock.execute_request.assert_called_once_with("create cluster")
+                assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_job_operation_delegation(self):
@@ -165,10 +169,14 @@ class TestRayUnifiedManager:
         with patch.object(self.manager, "_job_manager") as job_mock:
             job_mock.execute_request = AsyncMock(return_value=expected_response)
 
-            result = await self.manager.handle_job_request("submit job")
+            # Mock the Kubernetes connectivity check to ensure it returns False
+            with patch.object(
+                self.manager, "_is_kubernetes_connected", return_value=False
+            ):
+                result = await self.manager.handle_job_request("submit job")
 
-            job_mock.execute_request.assert_called_once_with("submit job")
-            assert result["status"] == "success"
+                job_mock.execute_request.assert_called_once_with("submit job")
+                assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_cloud_operation_delegation(self):

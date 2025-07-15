@@ -70,6 +70,7 @@ class RayUnifiedManager:
         """
         try:
             # Detect environment and route to appropriate manager
+            # Now prioritizes actual Kubernetes connectivity over prompt keywords
             if self._is_kubernetes_environment(prompt):
                 return await self._kuberay_job_manager.execute_request(prompt)
             else:
@@ -97,7 +98,18 @@ class RayUnifiedManager:
     # =================================================================
 
     def _is_kubernetes_environment(self, prompt: str) -> bool:
-        """Detect if prompt is for Kubernetes/KubeRay operations."""
+        """Detect if prompt is for Kubernetes/KubeRay operations.
+
+        This method checks both:
+        1. If the prompt explicitly mentions Kubernetes keywords
+        2. If we're actually connected to a Kubernetes cluster (higher priority)
+        """
+        # First check if we're actually connected to a Kubernetes cluster
+        # This takes priority over prompt keywords
+        if self._is_kubernetes_connected():
+            return True
+
+        # Fallback to prompt keyword detection
         k8s_keywords = [
             "kubernetes",
             "k8s",
@@ -110,6 +122,14 @@ class RayUnifiedManager:
         ]
         prompt_lower = prompt.lower()
         return any(keyword in prompt_lower for keyword in k8s_keywords)
+
+    def _is_kubernetes_connected(self) -> bool:
+        """Check if we're actually connected to a Kubernetes cluster."""
+        try:
+            # Check if Kubernetes client is available and we can load kube config
+            return self._kuberay_job_manager._is_kubernetes_ready()
+        except Exception:
+            return False
 
     def get_dashboard_url(self) -> str:
         """Get the dashboard URL from the cluster manager."""
