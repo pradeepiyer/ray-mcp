@@ -178,8 +178,7 @@ async def cleanup_ray():
                     ]
                 ):
                     try:
-                        if hasattr(thread, "_stop"):
-                            thread._stop()
+                        # Set as daemon thread to allow process to exit
                         if not thread.daemon:
                             thread.daemon = True
                     except:

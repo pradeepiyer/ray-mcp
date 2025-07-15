@@ -412,7 +412,7 @@ class TestUnifiedManager:
         assert self.manager._is_kubernetes_environment("list namespaces in k8s")
         assert self.manager._is_kubernetes_environment("create kuberay cluster")
         assert self.manager._is_kubernetes_environment("use kubectl to get pods")
-        
+
         # Test GKE/GCP keywords (should be detected as Kubernetes environment)
         assert self.manager._is_kubernetes_environment("submit job to GKE cluster")
         assert self.manager._is_kubernetes_environment("connect to GCP cluster")
