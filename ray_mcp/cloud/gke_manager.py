@@ -304,7 +304,9 @@ class GKEManager(ResourceManager):
         )
 
         discovered_clusters = []
-        for cluster in clusters_response.clusters:
+        # Handle the case where clusters_response.clusters is None
+        clusters = clusters_response.clusters or []
+        for cluster in clusters:
             # Safely determine location type based on location format
             location_type = (
                 "zonal"
