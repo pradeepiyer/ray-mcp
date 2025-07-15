@@ -227,7 +227,7 @@ class TestActionParser:
             "show all gke clusters",  # Added test case with 'all'
             # Test GCP/GKE synonyms for listing
             "list GCP clusters",
-            "get gcp clusters", 
+            "get gcp clusters",
             "show GCP clusters",
             "list all gcp clusters",
         ]
@@ -265,7 +265,7 @@ class TestActionParser:
             {
                 "prompt": "connect to gcp cluster test in zone us-west1-b",
                 "expected": {
-                    "operation": "connect_cluster", 
+                    "operation": "connect_cluster",
                     "cluster_name": "test",
                     "zone": "us-west1-b",
                 },
