@@ -119,12 +119,15 @@ async def test_local_error_handling():
     response = parse_tool_result(result)
     print(f"✅ No cluster error handling: {response['status']}")
 
-    # Test invalid cluster connection
-    result = await call_tool(
-        "ray_cluster", {"prompt": "connect to cluster at invalid:9999"}
-    )
+    # Test invalid cluster operations (use quick-failing operations)
+    result = await call_tool("ray_cluster", {"prompt": "stop nonexistent cluster"})
     response = parse_tool_result(result)
-    print(f"✅ Invalid connection error handling: {response['status']}")
+    print(f"✅ Invalid cluster operation handling: {response['status']}")
+
+    # Test invalid job operations
+    result = await call_tool("ray_job", {"prompt": "cancel nonexistent job"})
+    response = parse_tool_result(result)
+    print(f"✅ Invalid job operation handling: {response['status']}")
 
     return True
 
@@ -140,6 +143,13 @@ async def test_all_tools_consistency():
         "cloud": "check environment",
     }
 
+    # Expected behaviors for each tool when no cluster is running
+    expected_behaviors = {
+        "ray_cluster": ["success", "error"],  # May return success (no cluster) or error
+        "ray_job": ["error"],  # Should return error when no cluster is running
+        "cloud": ["success", "error"],  # May return success or error depending on setup
+    }
+
     for tool_name in tools:
         prompt = minimal_prompts[tool_name]
         result = await call_tool(tool_name, {"prompt": prompt})
@@ -147,10 +157,10 @@ async def test_all_tools_consistency():
 
         # All tools should return valid responses
         assert "status" in response
-        assert response["status"] in ["success", "error"]
+        assert response["status"] in expected_behaviors[tool_name], f"{tool_name} returned unexpected status: {response['status']}"
         assert "message" in response
 
-        print(f"✅ {tool_name}: {response['status']}")
+        print(f"✅ {tool_name}: {response['status']} (expected: {expected_behaviors[tool_name]})")
 
     return True
 
@@ -195,13 +205,42 @@ async def main():
     return passed == total
 
 
+async def cleanup_resources():
+    """Ensure all Ray resources are properly cleaned up."""
+    try:
+        import ray
+        import subprocess
+        
+        # Force shutdown Ray if it's still running
+        if ray.is_initialized():
+            ray.shutdown()
+        
+        # Run ray stop to clean up any external processes
+        subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=5)
+        
+        print("✅ Resource cleanup completed")
+    except Exception as e:
+        print(f"⚠️  Resource cleanup warning: {e}")
+
+
 if __name__ == "__main__":
     try:
         success = asyncio.run(main())
+        # Basic cleanup before exit
+        asyncio.run(cleanup_resources())
+        
+        if success:
+            print("🎉 All tests completed successfully!")
+        else:
+            print("💥 Some tests failed!")
+        
         sys.exit(0 if success else 1)
+        
     except KeyboardInterrupt:
         print("\n🛑 Testing interrupted by user")
+        asyncio.run(cleanup_resources())
         sys.exit(1)
     except Exception as e:
         print(f"\n💥 Testing failed with error: {e}")
+        asyncio.run(cleanup_resources())
         sys.exit(1)
