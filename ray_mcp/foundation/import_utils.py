@@ -1,5 +1,7 @@
 """Simplified import utilities for Ray MCP."""
 
+from typing import TYPE_CHECKING, Any, Optional
+
 # Ray imports
 try:
     import ray
@@ -24,6 +26,12 @@ except ImportError:
     KUBERNETES_AVAILABLE = False
 
 # Google Cloud imports
+if TYPE_CHECKING:
+    from google.auth import default
+    from google.auth.exceptions import DefaultCredentialsError
+    from google.auth.transport import requests as google_auth_transport
+    from google.cloud import container_v1
+
 try:
     from google.auth import default
     from google.auth.exceptions import DefaultCredentialsError
