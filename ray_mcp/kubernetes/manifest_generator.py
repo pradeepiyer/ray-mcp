@@ -3,7 +3,7 @@
 import asyncio
 import json
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -48,7 +48,7 @@ class ManifestGenerator:
                 raise RuntimeError(f"Failed to initialize Kubernetes client: {str(e)}")
 
     @staticmethod
-    def generate_ray_cluster_manifest(prompt: str, action: Dict[str, Any]) -> str:
+    def generate_ray_cluster_manifest(prompt: str, action: dict[str, Any]) -> str:
         """Generate RayCluster manifest from prompt and parsed action."""
         # Extract parameters from action
         name = action.get("name", "ray-cluster")
@@ -132,7 +132,7 @@ spec:
         return manifest
 
     @staticmethod
-    def generate_ray_job_manifest(prompt: str, action: Dict[str, Any]) -> str:
+    def generate_ray_job_manifest(prompt: str, action: dict[str, Any]) -> str:
         """Generate RayJob manifest from prompt and parsed action."""
         # Extract parameters from action
         name = action.get("name", "ray-job")
@@ -215,7 +215,7 @@ spec:
 
     async def apply_manifest(
         self, manifest: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Apply Kubernetes manifest using native Kubernetes API."""
         try:
             self._ensure_kubernetes_client()
@@ -246,8 +246,8 @@ spec:
             }
 
     async def _apply_single_resource(
-        self, resource: Dict[str, Any], namespace: str
-    ) -> Dict[str, Any]:
+        self, resource: dict[str, Any], namespace: str
+    ) -> dict[str, Any]:
         """Apply a single Kubernetes resource."""
         api_version = resource.get("apiVersion", "")
         kind = resource.get("kind", "")
@@ -358,7 +358,7 @@ spec:
 
     async def delete_resource(
         self, resource_type: str, name: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Delete Kubernetes resource using native Kubernetes API."""
         try:
             self._ensure_kubernetes_client()
@@ -418,7 +418,7 @@ spec:
 
     async def get_resource_status(
         self, resource_type: str, name: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get Kubernetes resource status using native Kubernetes API."""
         try:
             self._ensure_kubernetes_client()
@@ -514,7 +514,7 @@ spec:
 
     async def list_resources(
         self, resource_type: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List Kubernetes resources using native Kubernetes API."""
         try:
             self._ensure_kubernetes_client()
@@ -603,7 +603,7 @@ spec:
             }
 
     @staticmethod
-    def extract_gpu_resources(prompt: str) -> Dict[str, str]:
+    def extract_gpu_resources(prompt: str) -> dict[str, str]:
         """Extract GPU resource requirements from prompt."""
         resources = {}
 

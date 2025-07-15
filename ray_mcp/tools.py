@@ -1,11 +1,9 @@
 """Clean 3-tool definitions for Ray MCP server."""
 
-from typing import List
-
 from mcp.types import Tool
 
 
-def get_ray_tools() -> List[Tool]:
+def get_ray_tools() -> list[Tool]:
     """The 3 Ray MCP tools with natural language interfaces."""
     return [
         Tool(

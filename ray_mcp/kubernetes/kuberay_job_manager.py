@@ -1,10 +1,10 @@
 """Pure prompt-driven KubeRay job management for Ray MCP."""
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from ..config import get_config_manager_sync
-from ..foundation.logging_utils import LoggingUtility
+from ..config import config
+from ..foundation.logging_utils import LoggingUtility, error_response, success_response
 from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 from .manifest_generator import ManifestGenerator
@@ -20,10 +20,9 @@ class KubeRayJobManager(ResourceManager):
             enable_cloud=False,
         )
 
-        self._config_manager = get_config_manager_sync()
         self._manifest_generator = ManifestGenerator()
 
-    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+    async def execute_request(self, prompt: str) -> dict[str, Any]:
         """Execute KubeRay job operations using natural language prompts.
 
         Examples:
@@ -46,27 +45,27 @@ class KubeRayJobManager(ResourceManager):
                 name = action.get("name")
                 namespace = action.get("namespace", "default")
                 if not name:
-                    return {"status": "error", "message": "job name required"}
+                    return error_response("job name required")
                 return await self._get_ray_job(name, namespace)
             elif operation == "delete":
                 name = action.get("name")
                 namespace = action.get("namespace", "default")
                 if not name:
-                    return {"status": "error", "message": "job name required"}
+                    return error_response("job name required")
                 return await self._delete_ray_job(name, namespace)
             elif operation == "logs":
                 name = action.get("name")
                 namespace = action.get("namespace", "default")
                 if not name:
-                    return {"status": "error", "message": "job name required"}
+                    return error_response("job name required")
                 return await self._get_ray_job_logs(name, namespace)
             else:
-                return {"status": "error", "message": f"Unknown operation: {operation}"}
+                return error_response(f"Unknown operation: {operation}")
 
         except ValueError as e:
-            return {"status": "error", "message": f"Could not parse request: {str(e)}"}
+            return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("execute_request", e)
+            return self._handle_error("execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -96,8 +95,8 @@ class KubeRayJobManager(ResourceManager):
             )
 
     async def _create_ray_job_from_prompt(
-        self, action: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, action: dict[str, Any]
+    ) -> dict[str, Any]:
         """Create Ray job from parsed prompt action using manifest generation."""
         try:
             namespace = action.get("namespace", "default")
@@ -113,7 +112,7 @@ class KubeRayJobManager(ResourceManager):
             if result.get("status") == "success":
                 job_name = action.get("name", "ray-job")
 
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     job_name=job_name,
                     namespace=namespace,
                     job_status="creating",
@@ -123,26 +122,23 @@ class KubeRayJobManager(ResourceManager):
                     manifest_applied=True,
                 )
             else:
-                return self._ResponseFormatter.format_error_response(
-                    "create ray job", Exception(result.get("message", "Unknown error"))
-                )
+                return error_response(result.get("message", "Unknown error"))
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "create ray job from prompt", e
-            )
+            return self._handle_error("create ray job from prompt", e)
 
     async def _create_ray_job(
-        self, job_spec: Dict[str, Any], namespace: str = "default"
-    ) -> Dict[str, Any]:
+        self, job_spec: dict[str, Any], namespace: str = "default"
+    ) -> dict[str, Any]:
         """Create a Ray job using KubeRay CRD."""
-        return await self._execute_operation(
-            "create ray job", self._create_ray_job_operation, job_spec, namespace
-        )
+        try:
+            return await self._create_ray_job_operation(job_spec, namespace)
+        except Exception as e:
+            return self._handle_error("create ray job", e)
 
     async def _create_ray_job_operation(
-        self, job_spec: Dict[str, Any], namespace: str = "default"
-    ) -> Dict[str, Any]:
+        self, job_spec: dict[str, Any], namespace: str = "default"
+    ) -> dict[str, Any]:
         """Execute Ray job creation operation using manifest generation."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
@@ -191,7 +187,7 @@ class KubeRayJobManager(ResourceManager):
 
     async def _get_ray_job(
         self, name: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get Ray job status."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
@@ -226,7 +222,7 @@ class KubeRayJobManager(ResourceManager):
             running = job_status_value in ["RUNNING", "PENDING"]
             complete = job_status_value in ["SUCCEEDED", "FAILED", "STOPPED"]
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 job=job_status,
                 raw_resource=resource,
                 running=running,
@@ -235,7 +231,7 @@ class KubeRayJobManager(ResourceManager):
         else:
             return result
 
-    async def _list_ray_jobs(self, namespace: str = "default") -> Dict[str, Any]:
+    async def _list_ray_jobs(self, namespace: str = "default") -> dict[str, Any]:
         """List Ray jobs."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
@@ -256,7 +252,7 @@ class KubeRayJobManager(ResourceManager):
                 }
                 jobs.append(job_info)
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 jobs=jobs, total_count=len(jobs), namespace=namespace
             )
         else:
@@ -264,7 +260,7 @@ class KubeRayJobManager(ResourceManager):
 
     async def _delete_ray_job(
         self, name: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Delete Ray job."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
@@ -274,7 +270,7 @@ class KubeRayJobManager(ResourceManager):
         )
 
         if result.get("status") == "success":
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 job_name=name,
                 namespace=namespace,
                 deleted=True,
@@ -286,7 +282,7 @@ class KubeRayJobManager(ResourceManager):
 
     async def _get_ray_job_logs(
         self, name: str, namespace: str = "default"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get Ray job logs."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
@@ -306,10 +302,7 @@ class KubeRayJobManager(ResourceManager):
             ray_cluster_name = status.get("rayClusterName")
 
         if not ray_cluster_name:
-            return self._ResponseFormatter.format_error_response(
-                "get ray job logs",
-                Exception(f"No Ray cluster associated with job '{name}'"),
-            )
+            return error_response(f"No Ray cluster associated with job '{name}'")
 
         # Try to get logs using Kubernetes client for compatibility with tests
         try:
@@ -343,7 +336,7 @@ class KubeRayJobManager(ResourceManager):
             # Check if we got job-specific pods or need to fall back
             if len(logs) > 0:
                 # Found job-specific pods
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     job_name=name,
                     namespace=namespace,
                     ray_cluster_name=ray_cluster_name,
@@ -377,7 +370,7 @@ class KubeRayJobManager(ResourceManager):
                     except Exception:
                         continue
 
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     job_name=name,
                     namespace=namespace,
                     ray_cluster_name=ray_cluster_name,
@@ -389,10 +382,7 @@ class KubeRayJobManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                f"kubernetes logs for job {name}",
-                e,
-            )
+            return self._handle_error(f"kubernetes logs for job {name}", e)
 
     def _ensure_kuberay_ready(self) -> None:
         """Ensure KubeRay operator is available and ready."""

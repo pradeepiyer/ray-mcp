@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray_mcp.foundation.logging_utils import ResponseFormatter
+from ray_mcp.foundation.logging_utils import error_response, success_response
 from ray_mcp.parsers import ActionParser
 
 
@@ -360,21 +360,19 @@ class TestActionParser:
 
 
 @pytest.mark.unit
-class TestResponseFormatter:
-    """Test ResponseFormatter for consistent output formatting."""
+class TestResponseHelpers:
+    """Test response helper functions for consistent output formatting."""
 
-    def test_format_success_response(self):
+    def test_success_response(self):
         """Test successful response formatting."""
         # Test basic success response
-        result = ResponseFormatter.format_success_response(
-            message="Operation completed successfully"
-        )
+        result = success_response(message="Operation completed successfully")
 
         assert result["status"] == "success"
         assert result["message"] == "Operation completed successfully"
 
         # Test success response with additional data
-        result = ResponseFormatter.format_success_response(
+        result = success_response(
             job_id="raysubmit_123",
             entrypoint="train.py",
             message="Job submitted successfully",
@@ -385,28 +383,28 @@ class TestResponseFormatter:
         assert result["entrypoint"] == "train.py"
         assert result["message"] == "Job submitted successfully"
 
-    def test_format_error_response(self):
+    def test_error_response(self):
         """Test error response formatting."""
-        # Test with Exception object
-        error = Exception("Something went wrong")
-        result = ResponseFormatter.format_error_response("test_operation", error)
+        # Test basic error response
+        result = error_response("Something went wrong")
 
         assert result["status"] == "error"
-        assert "Something went wrong" in result["message"]
-        assert "test_operation" in result["message"]
+        assert result["message"] == "Something went wrong"
 
-        # Test with string error
-        result = ResponseFormatter.format_error_response(
-            "another_operation", Exception("Custom error message")
+        # Test error response with additional data
+        result = error_response(
+            "Custom error message", operation="test_operation", error_code="ERR_001"
         )
 
         assert result["status"] == "error"
-        assert "Custom error message" in result["message"]
+        assert result["message"] == "Custom error message"
+        assert result["operation"] == "test_operation"
+        assert result["error_code"] == "ERR_001"
 
     def test_response_format_consistency(self):
         """Test that all responses follow consistent format."""
         # Success responses should always have status and can have additional fields
-        success = ResponseFormatter.format_success_response(
+        success = success_response(
             cluster_address="localhost:8265", dashboard_url="http://localhost:8265"
         )
 
@@ -416,7 +414,7 @@ class TestResponseFormatter:
         assert "dashboard_url" in success
 
         # Error responses should always have status and message
-        error = ResponseFormatter.format_error_response("test", Exception("Test error"))
+        error = error_response("Test error")
 
         assert "status" in error
         assert error["status"] == "error"
@@ -428,7 +426,7 @@ class TestResponseFormatter:
         import json
 
         # Test success response serialization
-        success = ResponseFormatter.format_success_response(
+        success = success_response(
             job_id="test_123", status_details={"running": True, "progress": 0.5}
         )
 
@@ -442,9 +440,7 @@ class TestResponseFormatter:
         assert deserialized["job_id"] == "test_123"
 
         # Test error response serialization
-        error = ResponseFormatter.format_error_response(
-            "test_op", Exception("Test error with special chars: àñ™")
-        )
+        error = error_response("Test error with special chars: àñ™")
 
         json_str = json.dumps(error)
         deserialized = json.loads(json_str)

@@ -1,9 +1,11 @@
 """Pure prompt-driven Kubernetes cluster management for Ray MCP."""
 
 import asyncio
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Optional
 
-from ..config import get_config_manager_sync
+from ..config import config
+from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 
@@ -18,9 +20,7 @@ class KubernetesManager(ResourceManager):
             enable_cloud=False,
         )
 
-        self._config_manager = get_config_manager_sync()
-
-    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+    async def execute_request(self, prompt: str) -> dict[str, Any]:
         """Execute kubernetes operations using natural language prompts.
 
         Examples:
@@ -48,12 +48,12 @@ class KubernetesManager(ResourceManager):
             elif operation == "list_contexts":
                 return await self._list_contexts()
             else:
-                return {"status": "error", "message": f"Unknown operation: {operation}"}
+                return error_response(f"Unknown operation: {operation}")
 
         except ValueError as e:
-            return {"status": "error", "message": f"Could not parse request: {str(e)}"}
+            return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("execute_request", e)
+            return self._handle_error("execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -61,15 +61,13 @@ class KubernetesManager(ResourceManager):
 
     async def _connect_cluster(
         self, config_file: Optional[str] = None, context: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Connect to Kubernetes cluster using unified configuration."""
         try:
             from kubernetes import config as k8s_config
 
-            k8s_config_data = self._config_manager.get_kubernetes_config()
-
             # Load configuration
-            config_file_path = config_file or k8s_config_data.get("kubeconfig_path")
+            config_file_path = config_file or os.getenv("KUBECONFIG")
             if config_file_path:
                 await asyncio.to_thread(
                     k8s_config.load_kube_config,
@@ -88,30 +86,26 @@ class KubernetesManager(ResourceManager):
             # Simple state tracking
             self._last_connected_context = current_context
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 message="Connected to Kubernetes cluster successfully",
                 context=current_context,
             )
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "connect to kubernetes", e
-            )
+            return self._handle_error("connect to kubernetes", e)
 
-    async def _disconnect_cluster(self) -> Dict[str, Any]:
+    async def _disconnect_cluster(self) -> dict[str, Any]:
         """Disconnect from Kubernetes cluster."""
         try:
             # Simple state tracking
             self._last_connected_context = None
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 message="Disconnected from Kubernetes cluster successfully"
             )
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "disconnect from kubernetes", e
-            )
+            return self._handle_error("disconnect from kubernetes", e)
 
-    async def _inspect_cluster(self) -> Dict[str, Any]:
+    async def _inspect_cluster(self) -> dict[str, Any]:
         """Get basic cluster information."""
         try:
             self._ensure_kubernetes_connected()
@@ -136,13 +130,11 @@ class KubernetesManager(ResourceManager):
             # Can be enhanced later with proper type annotations
             cluster_info["server_version"] = "unknown"
 
-            return self._ResponseFormatter.format_success_response(**cluster_info)
+            return success_response(**cluster_info)
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "inspect kubernetes cluster", e
-            )
+            return self._handle_error("inspect kubernetes cluster", e)
 
-    async def _check_cluster_health(self) -> Dict[str, Any]:
+    async def _check_cluster_health(self) -> dict[str, Any]:
         """Check cluster health status."""
         try:
             self._ensure_kubernetes_connected()
@@ -171,13 +163,11 @@ class KubernetesManager(ResourceManager):
                 "ready_nodes": len(ready_nodes),
             }
 
-            return self._ResponseFormatter.format_success_response(**health_status)
+            return success_response(**health_status)
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "check cluster health", e
-            )
+            return self._handle_error("check cluster health", e)
 
-    async def _list_namespaces(self) -> Dict[str, Any]:
+    async def _list_namespaces(self) -> dict[str, Any]:
         """List all namespaces in the cluster."""
         try:
             self._ensure_kubernetes_connected()
@@ -189,13 +179,13 @@ class KubernetesManager(ResourceManager):
 
             namespace_list = [ns.metadata.name for ns in namespaces.items]
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 namespaces=namespace_list, count=len(namespace_list)
             )
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("list namespaces", e)
+            return self._handle_error("list namespaces", e)
 
-    async def _list_contexts(self) -> Dict[str, Any]:
+    async def _list_contexts(self) -> dict[str, Any]:
         """List available Kubernetes contexts."""
         try:
             from kubernetes import config as k8s_config
@@ -216,13 +206,13 @@ class KubernetesManager(ResourceManager):
             ):
                 active_context_name = active_context["name"]
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 contexts=context_names,
                 active_context=active_context_name,
                 count=len(context_names),
             )
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("list contexts", e)
+            return self._handle_error("list contexts", e)
 
     def _ensure_kubernetes_connected(self) -> None:
         """Ensure Kubernetes is connected and ready."""

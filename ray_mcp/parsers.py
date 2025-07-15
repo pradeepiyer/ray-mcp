@@ -1,7 +1,7 @@
 """Natural language parsing for Ray operations."""
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class ActionParser:
@@ -61,7 +61,7 @@ class ActionParser:
     KUBERAY_CLUSTER_DELETE = r"(?:delete|remove|destroy).+(?:cluster|ray.+cluster)"
 
     @classmethod
-    def parse_cluster_action(cls, prompt: str) -> Dict[str, Any]:
+    def parse_cluster_action(cls, prompt: str) -> dict[str, Any]:
         """Parse cluster action from prompt."""
         prompt_lower = prompt.lower()
 
@@ -105,7 +105,7 @@ class ActionParser:
         raise ValueError(f"Cannot understand cluster action: {prompt}")
 
     @classmethod
-    def parse_job_action(cls, prompt: str) -> Dict[str, Any]:
+    def parse_job_action(cls, prompt: str) -> dict[str, Any]:
         """Parse job action from prompt."""
         prompt_lower = prompt.lower()
 
@@ -132,7 +132,7 @@ class ActionParser:
         raise ValueError(f"Cannot understand job action: {prompt}")
 
     @classmethod
-    def parse_cloud_action(cls, prompt: str) -> Dict[str, Any]:
+    def parse_cloud_action(cls, prompt: str) -> dict[str, Any]:
         """Parse cloud action from prompt."""
         prompt_lower = prompt.lower()
 
@@ -171,7 +171,7 @@ class ActionParser:
         raise ValueError(f"Cannot understand cloud action: {prompt}")
 
     @classmethod
-    def parse_kubernetes_action(cls, prompt: str) -> Dict[str, Any]:
+    def parse_kubernetes_action(cls, prompt: str) -> dict[str, Any]:
         """Parse kubernetes action from prompt."""
         prompt_lower = prompt.lower()
 
@@ -195,7 +195,7 @@ class ActionParser:
         raise ValueError(f"Cannot understand kubernetes action: {prompt}")
 
     @classmethod
-    def parse_kuberay_job_action(cls, prompt: str) -> Dict[str, Any]:
+    def parse_kuberay_job_action(cls, prompt: str) -> dict[str, Any]:
         """Parse KubeRay job action from prompt."""
         prompt_lower = prompt.lower()
 
@@ -234,7 +234,7 @@ class ActionParser:
         raise ValueError(f"Cannot understand KubeRay job action: {prompt}")
 
     @classmethod
-    def parse_kuberay_cluster_action(cls, prompt: str) -> Dict[str, Any]:
+    def parse_kuberay_cluster_action(cls, prompt: str) -> dict[str, Any]:
         """Parse KubeRay cluster action from prompt."""
         prompt_lower = prompt.lower()
 
@@ -282,7 +282,7 @@ class ActionParser:
         return "local"
 
     @staticmethod
-    def _extract_resources(prompt: str) -> Dict[str, Any]:
+    def _extract_resources(prompt: str) -> dict[str, Any]:
         resources = {}
         if match := re.search(r"(\d+)\s*(?:cpu|core)", prompt, re.IGNORECASE):
             resources["cpu"] = int(match.group(1))
@@ -373,7 +373,7 @@ class ActionParser:
         return None
 
     @staticmethod
-    def _extract_runtime_env(prompt: str) -> Optional[Dict[str, Any]]:
+    def _extract_runtime_env(prompt: str) -> Optional[dict[str, Any]]:
         # Extract runtime environment specifications from prompt
         runtime_env = {}
         if re.search(r"pip\s+install", prompt, re.IGNORECASE):
@@ -391,7 +391,7 @@ class ActionParser:
         return None
 
     @staticmethod
-    def _extract_head_resources(prompt: str) -> Dict[str, str]:
+    def _extract_head_resources(prompt: str) -> dict[str, str]:
         resources = {"cpu": "1", "memory": "2Gi"}  # defaults
         if match := re.search(r"head.+(\d+)\s*(?:cpu|core)", prompt, re.IGNORECASE):
             resources["cpu"] = match.group(1)
@@ -400,7 +400,7 @@ class ActionParser:
         return resources
 
     @staticmethod
-    def _extract_worker_resources(prompt: str) -> Dict[str, str]:
+    def _extract_worker_resources(prompt: str) -> dict[str, str]:
         resources = {"cpu": "1", "memory": "2Gi"}  # defaults
         if match := re.search(r"worker.+(\d+)\s*(?:cpu|core)", prompt, re.IGNORECASE):
             resources["cpu"] = match.group(1)

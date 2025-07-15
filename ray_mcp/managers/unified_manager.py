@@ -1,8 +1,9 @@
 """Pure prompt-driven unified Ray MCP manager that composes focused components."""
 
-from typing import Any, Dict
+from typing import Any
 
 from ..cloud.cloud_provider_manager import CloudProviderManager
+from ..foundation.logging_utils import error_response
 from ..kubernetes.kuberay_cluster_manager import KubeRayClusterManager
 from ..kubernetes.kuberay_job_manager import KubeRayJobManager
 from ..kubernetes.kubernetes_manager import KubernetesManager
@@ -32,7 +33,7 @@ class RayUnifiedManager:
     # PUBLIC PROMPT-DRIVEN INTERFACE: Only 3 methods
     # =================================================================
 
-    async def handle_cluster_request(self, prompt: str) -> Dict[str, Any]:
+    async def handle_cluster_request(self, prompt: str) -> dict[str, Any]:
         """Handle cluster operations using natural language prompts.
 
         Examples:
@@ -54,9 +55,9 @@ class RayUnifiedManager:
             else:
                 return await self._cluster_manager.execute_request(prompt)
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return error_response(str(e))
 
-    async def handle_job_request(self, prompt: str) -> Dict[str, Any]:
+    async def handle_job_request(self, prompt: str) -> dict[str, Any]:
         """Handle job operations using natural language prompts.
 
         Examples:
@@ -74,9 +75,9 @@ class RayUnifiedManager:
             else:
                 return await self._job_manager.execute_request(prompt)
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return error_response(str(e))
 
-    async def handle_cloud_request(self, prompt: str) -> Dict[str, Any]:
+    async def handle_cloud_request(self, prompt: str) -> dict[str, Any]:
         """Handle cloud operations using natural language prompts.
 
         Examples:
@@ -89,7 +90,7 @@ class RayUnifiedManager:
         try:
             return await self._cloud_provider_manager.execute_request(prompt)
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return error_response(str(e))
 
     # =================================================================
     # PRIVATE IMPLEMENTATION: Utilities only

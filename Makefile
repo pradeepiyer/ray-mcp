@@ -39,6 +39,14 @@ lint:
 	@uv run pyright ray_mcp/ examples/ tests/
 	@echo "✅ All linting checks passed!"
 
+# Linting core files only (excluding tests)
+lint-core:
+	@echo "🔍 Running linting checks on core files..."
+	@uv run black --check ray_mcp/ examples/
+	@uv run isort --check-only ray_mcp/ examples/
+	@uv run pyright ray_mcp/ examples/
+	@echo "✅ Core linting checks passed!"
+
 # Tool function specific linting for 3-tool architecture
 lint-tool-functions:
 	@echo "🔧 Running tool function linting for prompt-driven tools..."

@@ -5,19 +5,21 @@ import json
 import os
 import re
 import subprocess
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
-from ..config import get_config_manager_sync
+from ..config import config
+from ..foundation.base_execute_mixin import BaseExecuteRequestMixin
+from ..foundation.import_utils import ray
+from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 
 
-class ClusterManager(ResourceManager):
+class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
     """Pure prompt-driven Ray cluster management - no traditional APIs."""
 
     def __init__(self):
         super().__init__(enable_ray=True)
-        self._config_manager = get_config_manager_sync()
         # Simple state tracking without complex state manager
         self._cluster_address = None
         self._dashboard_url = None
@@ -25,55 +27,42 @@ class ClusterManager(ResourceManager):
         # Synchronization for cluster operations
         self._cluster_lock = asyncio.Lock()
 
-    async def execute_request(self, prompt: str) -> Dict[str, Any]:
-        """Execute cluster operations using natural language prompts.
+    def get_action_parser(self):
+        """Get the action parser for cluster operations."""
+        return ActionParser.parse_cluster_action
 
-        Examples:
-            - "create a local cluster with 4 CPUs"
-            - "connect to cluster at 10.0.0.1:10001"
-            - "stop the current cluster"
-            - "inspect cluster status"
-        """
-        try:
-            action = ActionParser.parse_cluster_action(prompt)
-            operation = action["operation"]
+    def get_operation_handlers(self) -> dict[str, Any]:
+        """Get mapping of operation names to handler methods."""
+        return {
+            "create": self._create_cluster_from_prompt,
+            "connect": self._handle_connect,
+            "inspect": self._inspect_cluster,
+            "stop": self._stop_cluster,
+            "list": self._list_clusters,
+            "scale": self._handle_scale,
+        }
 
-            if operation == "create":
-                return await self._create_cluster_from_prompt(action)
-            elif operation == "connect":
-                address = action.get("address")
-                if not address:
-                    return {"status": "error", "message": "cluster address required"}
-                return await self._connect_to_cluster(address)
-            elif operation == "inspect":
-                return await self._inspect_cluster()
-            elif operation == "stop":
-                return await self._stop_cluster()
-            elif operation == "list":
-                return await self._list_clusters()
-            elif operation == "scale":
-                workers = action.get("workers")
-                if workers is None:
-                    return {
-                        "status": "error",
-                        "message": "number of workers required for scaling",
-                    }
-                return await self._scale_cluster(workers)
-            else:
-                return {"status": "error", "message": f"Unknown operation: {operation}"}
+    async def _handle_connect(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Handle connect operation with validation."""
+        address = action.get("address")
+        if not address:
+            return error_response("cluster address required")
+        return await self._connect_to_cluster(address)
 
-        except ValueError as e:
-            return {"status": "error", "message": f"Could not parse request: {str(e)}"}
-        except Exception as e:
-            return self._ResponseFormatter.format_error_response("execute_request", e)
+    async def _handle_scale(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Handle scale operation with validation."""
+        workers = action.get("workers")
+        if workers is None:
+            return error_response("number of workers required for scaling")
+        return await self._scale_cluster(workers)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
     # =================================================================
 
     async def _create_cluster_from_prompt(
-        self, action: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, action: dict[str, Any]
+    ) -> dict[str, Any]:
         """Create cluster from parsed prompt action."""
         try:
             # Extract parameters with simple defaults
@@ -89,11 +78,9 @@ class ClusterManager(ResourceManager):
             return await self._create_cluster(cluster_spec)
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "create cluster from prompt", e
-            )
+            return self._handle_error("create cluster from prompt", e)
 
-    async def _create_cluster(self, cluster_spec: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_cluster(self, cluster_spec: dict[str, Any]) -> dict[str, Any]:
         """Create a new Ray cluster."""
         async with self._cluster_lock:
             try:
@@ -101,11 +88,8 @@ class ClusterManager(ResourceManager):
 
                 # Check if Ray is already running
                 if self._is_ray_ready():
-                    return self._ResponseFormatter.format_error_response(
-                        "create cluster",
-                        Exception(
-                            "Ray cluster is already running. Stop it first or connect to it."
-                        ),
+                    return error_response(
+                        "Ray cluster is already running. Stop it first or connect to it."
                     )
 
                 # Simple port allocation - use default or provided port
@@ -126,7 +110,7 @@ class ClusterManager(ResourceManager):
                     config["temp_dir"] = cluster_spec["temp_dir"]
 
                 # Initialize Ray
-                ray_info = self._ray.init(**config)
+                ray_info = ray.init(**config)
 
                 # Update simple state tracking
                 self._cluster_address = ray_info.get("redis_address") or ray_info.get(
@@ -134,7 +118,7 @@ class ClusterManager(ResourceManager):
                 )
                 self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
 
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     cluster_address=self._cluster_address,
                     dashboard_url=self._dashboard_url,
                     dashboard_port=dashboard_port,
@@ -144,11 +128,9 @@ class ClusterManager(ResourceManager):
                 )
 
             except Exception as e:
-                return self._ResponseFormatter.format_error_response(
-                    "create cluster", e
-                )
+                return self._handle_error("create cluster", e)
 
-    async def _connect_to_cluster(self, address: str) -> Dict[str, Any]:
+    async def _connect_to_cluster(self, address: str) -> dict[str, Any]:
         """Connect to an existing Ray cluster."""
         async with self._cluster_lock:
             try:
@@ -158,22 +140,19 @@ class ClusterManager(ResourceManager):
                 if self._is_ray_ready():
                     current_address = self._cluster_address
                     if current_address == address:
-                        return self._ResponseFormatter.format_success_response(
+                        return success_response(
                             cluster_address=address,
                             message="Already connected to this cluster",
                         )
                     else:
-                        return self._ResponseFormatter.format_error_response(
-                            "connect to cluster",
-                            Exception(
-                                f"Already connected to {current_address}. Disconnect first."
-                            ),
+                        return error_response(
+                            f"Already connected to {current_address}. Disconnect first."
                         )
 
                 # Connect to the cluster with timeout
                 try:
                     ray_info = await asyncio.wait_for(
-                        asyncio.to_thread(self._ray.init, address=address),
+                        asyncio.to_thread(ray.init, address=address),
                         timeout=30,  # 30 second timeout for connection attempts
                     )
                 except asyncio.TimeoutError:
@@ -191,22 +170,20 @@ class ClusterManager(ResourceManager):
                 except Exception:
                     self._dashboard_url = None
 
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     cluster_address=address,
                     dashboard_url=self._dashboard_url,
                     message=f"Connected to Ray cluster at {address}",
                 )
 
             except Exception as e:
-                return self._ResponseFormatter.format_error_response(
-                    "connect to cluster", e
-                )
+                return self._handle_error("connect to cluster", e)
 
-    async def _inspect_cluster(self) -> Dict[str, Any]:
+    async def _inspect_cluster(self, action: dict[str, Any]) -> dict[str, Any]:
         """Inspect current cluster status."""
         try:
             if not self._is_ray_ready():
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     cluster_status="not_running",
                     message="No Ray cluster is currently running",
                 )
@@ -221,34 +198,32 @@ class ClusterManager(ResourceManager):
                 "message": "Cluster inspection completed successfully",
             }
 
-            return self._ResponseFormatter.format_success_response(**cluster_info)
+            return success_response(**cluster_info)
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("inspect cluster", e)
+            return self._handle_error("inspect cluster", e)
 
-    async def _stop_cluster(self) -> Dict[str, Any]:
+    async def _stop_cluster(self, action: dict[str, Any]) -> dict[str, Any]:
         """Stop the current Ray cluster."""
         async with self._cluster_lock:
             try:
                 if not self._is_ray_ready():
-                    return self._ResponseFormatter.format_success_response(
+                    return success_response(
                         message="No Ray cluster is currently running"
                     )
 
                 # Shutdown Ray
-                self._ray.shutdown()
+                ray.shutdown()
 
                 # Clear simple state tracking
                 self._cluster_address = None
                 self._dashboard_url = None
                 self._job_client = None
 
-                return self._ResponseFormatter.format_success_response(
-                    message="Ray cluster stopped successfully"
-                )
+                return success_response(message="Ray cluster stopped successfully")
 
             except Exception as e:
-                return self._ResponseFormatter.format_error_response("stop cluster", e)
+                return self._handle_error("stop cluster", e)
 
     def _get_dashboard_url(self) -> Optional[str]:
         """Get dashboard URL from Ray cluster."""
@@ -257,7 +232,7 @@ class ClusterManager(ResourceManager):
                 return None
 
             # Try to get dashboard URL from Ray
-            runtime_context = self._ray.get_runtime_context()
+            runtime_context = ray.get_runtime_context()
             if hasattr(runtime_context, "dashboard_url"):
                 return runtime_context.dashboard_url
 
@@ -267,13 +242,13 @@ class ClusterManager(ResourceManager):
         except Exception:
             return None
 
-    def _get_cluster_nodes(self) -> List[Dict[str, Any]]:
+    def _get_cluster_nodes(self) -> list[dict[str, Any]]:
         """Get information about cluster nodes."""
         try:
             if not self._is_ray_ready():
                 return []
 
-            nodes = self._ray.nodes()
+            nodes = ray.nodes()
             return [
                 {
                     "node_id": node.get("NodeID", "unknown"),
@@ -286,14 +261,14 @@ class ClusterManager(ResourceManager):
         except Exception:
             return []
 
-    def _get_cluster_resources(self) -> Dict[str, Any]:
+    def _get_cluster_resources(self) -> dict[str, Any]:
         """Get cluster resource information."""
         try:
             if not self._is_ray_ready():
                 return {}
 
-            cluster_resources = self._ray.cluster_resources()
-            available_resources = self._ray.available_resources()
+            cluster_resources = ray.cluster_resources()
+            available_resources = ray.available_resources()
 
             return {
                 "total": cluster_resources,
@@ -303,7 +278,7 @@ class ClusterManager(ResourceManager):
         except Exception:
             return {}
 
-    async def _list_clusters(self) -> Dict[str, Any]:
+    async def _list_clusters(self, action: dict[str, Any]) -> dict[str, Any]:
         """List available Ray clusters."""
         try:
             clusters = []
@@ -320,22 +295,20 @@ class ClusterManager(ResourceManager):
                 }
                 clusters.append(cluster_info)
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 clusters=clusters,
                 total_count=len(clusters),
                 message=f"Found {len(clusters)} Ray cluster(s)",
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("list clusters", e)
+            return self._handle_error("list clusters", e)
 
-    async def _scale_cluster(self, workers: int) -> Dict[str, Any]:
+    async def _scale_cluster(self, workers: int) -> dict[str, Any]:
         """Scale the Ray cluster to the specified number of workers."""
         try:
             if not self._is_ray_ready():
-                return self._ResponseFormatter.format_error_response(
-                    "scale cluster", Exception("No Ray cluster is currently running")
-                )
+                return error_response("No Ray cluster is currently running")
 
             # For local clusters, scaling is limited since Ray doesn't provide
             # direct scaling APIs for local clusters
@@ -345,7 +318,7 @@ class ClusterManager(ResourceManager):
             )
 
             if workers == current_worker_count:
-                return self._ResponseFormatter.format_success_response(
+                return success_response(
                     message=f"Cluster already has {workers} workers",
                     current_workers=current_worker_count,
                     requested_workers=workers,
@@ -353,12 +326,9 @@ class ClusterManager(ResourceManager):
 
             # Note: For local Ray clusters, manual scaling is not directly supported
             # This is more relevant for cloud/kubernetes clusters
-            return self._ResponseFormatter.format_error_response(
-                "scale cluster",
-                Exception(
-                    f"Manual scaling not supported for local Ray clusters. Current workers: {current_worker_count}, requested: {workers}. Consider using KubeRay for dynamic scaling."
-                ),
+            return error_response(
+                f"Manual scaling not supported for local Ray clusters. Current workers: {current_worker_count}, requested: {workers}. Consider using KubeRay for dynamic scaling."
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("scale cluster", e)
+            return self._handle_error("scale cluster", e)

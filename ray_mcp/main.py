@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import sys
-from typing import List, Optional
+from typing import Optional
 
 from mcp import stdio_server
 from mcp.server import Server
@@ -12,14 +12,14 @@ from mcp.server.models import InitializationOptions
 from mcp.types import ServerCapabilities, TextContent, Tool
 
 from . import __version__
-from .foundation.import_utils import is_ray_available
+from .foundation.import_utils import RAY_AVAILABLE
 from .foundation.logging_utils import LoggingUtility
 from .handlers import RayHandlers
 from .managers.unified_manager import RayUnifiedManager
 from .tools import get_ray_tools
 
 # Check Ray availability
-RAY_AVAILABLE = is_ray_available()
+# RAY_AVAILABLE is imported from import_utils
 
 # Initialize server and components
 server = Server("ray-mcp")
@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 
 @server.list_tools()
-async def list_tools() -> List[Tool]:
+async def list_tools() -> list[Tool]:
     """Return the 3 Ray tools with natural language interfaces."""
     return get_ray_tools()
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: Optional[dict] = None) -> List[TextContent]:
+async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextContent]:
     """Handle tool calls with natural language prompts."""
     if not arguments or "prompt" not in arguments:
         return [

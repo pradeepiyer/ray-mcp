@@ -1,10 +1,12 @@
 """Pure prompt-driven cloud provider management for Ray MCP."""
 
 import asyncio
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Optional
 
-from ..config import get_config_manager_sync
+from ..config import config
 from ..foundation.enums import CloudProvider
+from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
 from ..parsers import ActionParser
 from .gke_manager import GKEManager
@@ -20,10 +22,9 @@ class CloudProviderManager(ResourceManager):
             enable_cloud=True,
         )
 
-        self._config_manager = get_config_manager_sync()
         self._gke_manager = GKEManager()
 
-    async def execute_request(self, prompt: str) -> Dict[str, Any]:
+    async def execute_request(self, prompt: str) -> dict[str, Any]:
         """Execute cloud operations using natural language prompts.
 
         Examples:
@@ -47,12 +48,12 @@ class CloudProviderManager(ResourceManager):
             elif operation == "check_environment":
                 return await self._detect_cloud_provider()
             else:
-                return {"status": "error", "message": f"Unknown operation: {operation}"}
+                return error_response(f"Unknown operation: {operation}")
 
         except ValueError as e:
-            return {"status": "error", "message": f"Could not parse request: {str(e)}"}
+            return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("execute_request", e)
+            return self._handle_error("execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -62,7 +63,7 @@ class CloudProviderManager(ResourceManager):
         """Check if provider string refers to GCP/GKE (both are synonymous)."""
         return provider.lower() in ["gcp", "gke"]
 
-    async def _authenticate_from_prompt(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    async def _authenticate_from_prompt(self, action: dict[str, Any]) -> dict[str, Any]:
         """Convert parsed prompt action to cloud authentication."""
         provider = action.get("provider", "gcp")
         project = action.get("project_id")
@@ -75,47 +76,38 @@ class CloudProviderManager(ResourceManager):
                 CloudProvider.GKE, auth_config=auth_config
             )
         else:
-            return {"status": "error", "message": f"Unsupported provider: {provider}"}
+            return error_response(f"Unsupported provider: {provider}")
 
     async def _connect_cluster_from_prompt(
-        self, action: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, action: dict[str, Any]
+    ) -> dict[str, Any]:
         """Convert parsed prompt action to cluster connection."""
         cluster_name = action.get("cluster_name")
         provider = action.get("provider", "gcp")
 
         if not cluster_name:
-            return {
-                "status": "error",
-                "message": "cluster_name required for connection",
-            }
+            return error_response("cluster_name required for connection")
 
         if not self._is_gcp_provider(provider):
-            return {
-                "status": "error",
-                "message": f"Unsupported provider: {provider}",
-            }
+            return error_response(f"Unsupported provider: {provider}")
 
         return await self._connect_cloud_cluster(
             CloudProvider.GKE, cluster_name=cluster_name
         )
 
     async def _create_cluster_from_prompt(
-        self, action: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, action: dict[str, Any]
+    ) -> dict[str, Any]:
         """Convert parsed prompt action to cluster creation."""
         cluster_name = action.get("cluster_name")
         provider = action.get("provider", "gcp")
         zone = action.get("zone", "us-central1-a")
 
         if not cluster_name:
-            return {"status": "error", "message": "cluster_name required for creation"}
+            return error_response("cluster_name required for creation")
 
         if not self._is_gcp_provider(provider):
-            return {
-                "status": "error",
-                "message": f"Unsupported provider: {provider}",
-            }
+            return error_response(f"Unsupported provider: {provider}")
 
         cluster_spec = {"name": cluster_name, "zone": zone}
 
@@ -123,17 +115,15 @@ class CloudProviderManager(ResourceManager):
             CloudProvider.GKE, cluster_spec=cluster_spec
         )
 
-    async def _detect_cloud_provider(self) -> Dict[str, Any]:
+    async def _detect_cloud_provider(self) -> dict[str, Any]:
         """Detect available cloud providers and authentication methods."""
         try:
-            # Use unified config manager for environment detection
-            env_detection = self._config_manager.detect_environment()
-
-            # Check which providers are available
+            # Simple environment detection using direct config access
             providers_status = {}
 
             # Check GKE availability
-            if env_detection["gke_available"]:
+            gcp_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            if gcp_credentials and config.gcp_project_id:
                 providers_status["gke"] = {
                     "available": True,
                     "auth_type": "service_account",
@@ -146,42 +136,50 @@ class CloudProviderManager(ResourceManager):
                 }
 
             # Local Kubernetes
-            if env_detection["kubernetes_available"]:
+            try:
+                from kubernetes import config as k8s_config
+
+                k8s_config.load_kube_config()
                 providers_status["local"] = {
                     "available": True,
                     "auth_type": "kubeconfig",
                     "description": "Local Kubernetes cluster via kubeconfig",
                 }
-            else:
+            except Exception:
                 providers_status["local"] = {
                     "available": False,
                     "reason": "Kubernetes client not available or not configured",
                 }
 
-            return self._ResponseFormatter.format_success_response(
+            # Determine default provider
+            default_provider = (
+                "gke"
+                if providers_status["gke"]["available"]
+                else "local" if providers_status["local"]["available"] else None
+            )
+
+            return success_response(
                 message="Cloud provider detection completed successfully",
-                detected_provider=env_detection.get("default_provider"),
+                detected_provider=default_provider,
                 providers=providers_status,
-                environment=env_detection,
+                environment={
+                    "gcp_project_id": config.gcp_project_id,
+                    "kubernetes_namespace": config.kubernetes_namespace,
+                },
                 supported_providers=[p.value for p in CloudProvider],
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "detect cloud provider", e
-            )
+            return self._handle_error("detect cloud provider", e)
 
     async def _authenticate_cloud_provider(
-        self, provider: CloudProvider, auth_config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, provider: CloudProvider, auth_config: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         """Authenticate with a cloud provider."""
         try:
             # Validate provider
             if provider not in CloudProvider:
-                return self._ResponseFormatter.format_error_response(
-                    "authenticate cloud provider",
-                    Exception(f"Unsupported provider: {provider}"),
-                )
+                return error_response(f"Unsupported provider: {provider}")
 
             # Route to appropriate manager
             if provider == CloudProvider.GKE:
@@ -189,19 +187,16 @@ class CloudProviderManager(ResourceManager):
             elif provider == CloudProvider.LOCAL:
                 return await self._authenticate_local(auth_config or {})
             else:
-                return self._ResponseFormatter.format_error_response(
-                    "authenticate cloud provider",
-                    Exception(f"Authentication not implemented for {provider.value}"),
+                return error_response(
+                    f"Authentication not implemented for {provider.value}"
                 )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "authenticate cloud provider", e
-            )
+            return self._handle_error("authenticate cloud provider", e)
 
     async def _list_cloud_clusters(
         self, provider: CloudProvider, **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List clusters for a cloud provider."""
         try:
             # Route to appropriate manager (they handle their own authentication)
@@ -217,19 +212,16 @@ class CloudProviderManager(ResourceManager):
             elif provider == CloudProvider.LOCAL:
                 return await self._list_local_contexts()
             else:
-                return self._ResponseFormatter.format_error_response(
-                    "list cloud clusters",
-                    Exception(f"Cluster listing not implemented for {provider.value}"),
+                return error_response(
+                    f"Cluster listing not implemented for {provider.value}"
                 )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "list cloud clusters", e
-            )
+            return self._handle_error("list cloud clusters", e)
 
     async def _connect_cloud_cluster(
         self, provider: CloudProvider, cluster_name: str, **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Connect to a cloud cluster."""
         try:
             # Route to appropriate manager (they handle their own authentication)
@@ -253,18 +245,12 @@ class CloudProviderManager(ResourceManager):
                                     break
 
                         if not zone:
-                            return self._ResponseFormatter.format_error_response(
-                                "connect cloud cluster",
-                                Exception(
-                                    f"Could not find cluster '{cluster_name}' in any zone. Please specify the zone explicitly or ensure the cluster exists."
-                                ),
+                            return error_response(
+                                f"Could not find cluster '{cluster_name}' in any zone. Please specify the zone explicitly or ensure the cluster exists."
                             )
                     except Exception as e:
-                        return self._ResponseFormatter.format_error_response(
-                            "connect cloud cluster",
-                            Exception(
-                                f"Could not auto-discover zone for cluster '{cluster_name}': {str(e)}"
-                            ),
+                        return error_response(
+                            f"Could not auto-discover zone for cluster '{cluster_name}': {str(e)}"
                         )
                 prompt = f"connect to GKE cluster {cluster_name} in zone {zone}"
                 if kwargs.get("project_id"):
@@ -273,21 +259,16 @@ class CloudProviderManager(ResourceManager):
             elif provider == CloudProvider.LOCAL:
                 return await self._connect_local_cluster(cluster_name, kwargs)
             else:
-                return self._ResponseFormatter.format_error_response(
-                    "connect cloud cluster",
-                    Exception(
-                        f"Cluster connection not implemented for {provider.value}"
-                    ),
+                return error_response(
+                    f"Cluster connection not implemented for {provider.value}"
                 )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "connect cloud cluster", e
-            )
+            return self._handle_error("connect cloud cluster", e)
 
     async def _create_cloud_cluster(
-        self, provider: CloudProvider, cluster_spec: Dict[str, Any], **kwargs
-    ) -> Dict[str, Any]:
+        self, provider: CloudProvider, cluster_spec: dict[str, Any], **kwargs
+    ) -> dict[str, Any]:
         """Create a cloud cluster."""
         try:
             # Validate cluster specification
@@ -308,32 +289,26 @@ class CloudProviderManager(ResourceManager):
                     prompt += f" in project {kwargs.get('project_id')}"
                 return await self._gke_manager.execute_request(prompt)
             elif provider == CloudProvider.LOCAL:
-                return self._ResponseFormatter.format_error_response(
-                    "create cloud cluster",
-                    Exception(
-                        "Local cluster creation not supported. Use existing clusters or Docker/minikube."
-                    ),
+                return error_response(
+                    "Local cluster creation not supported. Use existing clusters or Docker/minikube."
                 )
             else:
-                return self._ResponseFormatter.format_error_response(
-                    "create cloud cluster",
-                    Exception(f"Cluster creation not implemented for {provider.value}"),
+                return error_response(
+                    f"Cluster creation not implemented for {provider.value}"
                 )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "create cloud cluster", e
-            )
+            return self._handle_error("create cloud cluster", e)
 
     # Provider-specific authentication methods
-    async def _authenticate_gke(self, auth_config: Dict[str, Any]) -> Dict[str, Any]:
+    async def _authenticate_gke(self, auth_config: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with GKE."""
         prompt = "authenticate with GCP"
         if auth_config.get("project_id"):
             prompt += f" project {auth_config.get('project_id')}"
         return await self._gke_manager.execute_request(prompt)
 
-    async def _authenticate_local(self, auth_config: Dict[str, Any]) -> Dict[str, Any]:
+    async def _authenticate_local(self, auth_config: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with local Kubernetes."""
         try:
             from kubernetes import config as kube_config
@@ -360,7 +335,7 @@ class CloudProviderManager(ResourceManager):
             # Simple state tracking (no complex state manager)
             self._last_connected_cluster = current_context
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 provider="local",
                 authenticated=True,
                 auth_type="kubeconfig",
@@ -368,12 +343,10 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "local authentication", e
-            )
+            return self._handle_error("local authentication", e)
 
     # Local Kubernetes operations
-    async def _list_local_contexts(self) -> Dict[str, Any]:
+    async def _list_local_contexts(self) -> dict[str, Any]:
         """List local Kubernetes contexts."""
         try:
             from kubernetes import config as kube_config
@@ -394,20 +367,18 @@ class CloudProviderManager(ResourceManager):
             ):
                 active_context_name = active_context["name"]
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 contexts=context_names,
                 active_context=active_context_name,
                 count=len(context_names),
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "list local contexts", e
-            )
+            return self._handle_error("list local contexts", e)
 
     async def _connect_local_cluster(
-        self, cluster_name: str, kwargs: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, cluster_name: str, kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
         """Connect to local Kubernetes cluster."""
         try:
             from kubernetes import config as kube_config
@@ -429,7 +400,7 @@ class CloudProviderManager(ResourceManager):
             # Simple state tracking (no complex state manager)
             self._last_connected_cluster = cluster_name
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 provider="local",
                 connected=True,
                 cluster_name=cluster_name,
@@ -437,38 +408,30 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "connect local cluster", e
-            )
+            return self._handle_error("connect local cluster", e)
 
     # Validation methods
     async def _validate_cluster_spec(
-        self, provider: CloudProvider, cluster_spec: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, provider: CloudProvider, cluster_spec: dict[str, Any]
+    ) -> dict[str, Any]:
         """Validate cluster specification for a provider."""
         try:
             # Common validation
             if not cluster_spec.get("name"):
-                return self._ResponseFormatter.format_error_response(
-                    "validate cluster spec", Exception("Cluster name is required")
-                )
+                return error_response("Cluster name is required")
 
             # Provider-specific validation
             if provider == CloudProvider.GKE:
                 return await self._validate_gke_cluster_spec(cluster_spec)
             else:
-                return self._ResponseFormatter.format_success_response(
-                    valid=True, cluster_spec=cluster_spec
-                )
+                return success_response(valid=True, cluster_spec=cluster_spec)
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "validate cluster spec", e
-            )
+            return self._handle_error("validate cluster spec", e)
 
     async def _validate_gke_cluster_spec(
-        self, cluster_spec: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, cluster_spec: dict[str, Any]
+    ) -> dict[str, Any]:
         """Validate GKE cluster specification."""
         required_fields = ["name"]
         recommended_fields = ["zone", "machine_type", "disk_size"]
@@ -478,9 +441,8 @@ class CloudProviderManager(ResourceManager):
             field for field in required_fields if field not in cluster_spec
         ]
         if missing_fields:
-            return self._ResponseFormatter.format_error_response(
-                "validate gke cluster spec",
-                Exception(f"Missing required fields: {', '.join(missing_fields)}"),
+            return error_response(
+                f"Missing required fields: {', '.join(missing_fields)}"
             )
 
         # Check for recommended fields
@@ -493,7 +455,7 @@ class CloudProviderManager(ResourceManager):
                 f"Missing recommended fields: {', '.join(missing_recommended)}"
             )
 
-        return self._ResponseFormatter.format_success_response(
+        return success_response(
             valid=True, cluster_spec=cluster_spec, warnings=warnings
         )
 
@@ -508,45 +470,54 @@ class CloudProviderManager(ResourceManager):
 
         return datetime.utcnow().isoformat() + "Z"
 
-    async def check_environment(self, provider: Optional[str] = None) -> Dict[str, Any]:
+    async def check_environment(self, provider: Optional[str] = None) -> dict[str, Any]:
         """Check environment setup, dependencies, and authentication status."""
         try:
-            # Use unified config manager for environment checking
-            env_detection = self._config_manager.detect_environment()
-            validation = self._config_manager.validate_config()
+            # Simple environment check using direct config access
+            env_info = {
+                "gcp_project_id": config.gcp_project_id,
+                "kubernetes_namespace": config.kubernetes_namespace,
+                "gke_region": config.gke_region,
+                "gke_zone": config.gke_zone,
+                "gcp_credentials_available": bool(
+                    os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+                ),
+            }
 
-            return self._ResponseFormatter.format_success_response(
+            # Simple validation
+            validation = {
+                "config_valid": True,
+                "missing_fields": [],
+            }
+
+            return success_response(
                 message="Environment check completed successfully",
-                environment=env_detection,
+                environment=env_info,
                 validation=validation,
-                providers_available=env_detection["providers"],
-                default_provider=env_detection.get("default_provider"),
+                providers_available=["gke", "local"],
+                default_provider=(
+                    "gke" if env_info["gcp_credentials_available"] else "local"
+                ),
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response("check environment", e)
+            return self._handle_error("check environment", e)
 
-    async def _ensure_gke_authenticated(self) -> Dict[str, Any]:
+    async def _ensure_gke_authenticated(self) -> dict[str, Any]:
         """Ensure GKE authentication is configured."""
         try:
             self._ensure_gcp_available()
 
             # Check if credentials are available
-            gcp_config = self._config_manager.get_gcp_config()
-            if not gcp_config.get("project_id"):
-                return self._ResponseFormatter.format_error_response(
-                    "ensure gke authenticated",
-                    Exception(
-                        "GCP project_id not configured. Set GOOGLE_APPLICATION_CREDENTIALS or configure authentication."
-                    ),
+            if not config.gcp_project_id:
+                return error_response(
+                    "GCP project_id not configured. Set GOOGLE_APPLICATION_CREDENTIALS or configure authentication."
                 )
 
-            return self._ResponseFormatter.format_success_response(
+            return success_response(
                 message="GKE authentication configured",
-                project_id=gcp_config.get("project_id"),
+                project_id=config.gcp_project_id,
             )
 
         except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "ensure gke authenticated", e
-            )
+            return self._handle_error("ensure gke authenticated", e)

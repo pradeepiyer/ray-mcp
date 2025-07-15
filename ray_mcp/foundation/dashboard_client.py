@@ -1,7 +1,7 @@
 """Ray Dashboard API client for job operations."""
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import aiohttp
 
@@ -10,7 +10,7 @@ class DashboardAPIError(Exception):
     """Dashboard API specific errors."""
 
     def __init__(
-        self, status_code: int, message: str, details: Optional[Dict[str, Any]] = None
+        self, status_code: int, message: str, details: Optional[dict[str, Any]] = None
     ):
         self.status_code = status_code
         self.message = message
@@ -37,10 +37,10 @@ class DashboardClient:
     async def submit_job(
         self,
         entrypoint: str,
-        runtime_env: Optional[Dict[str, Any]] = None,
+        runtime_env: Optional[dict[str, Any]] = None,
         job_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Submit a job to the Ray cluster."""
         payload = {
             "entrypoint": entrypoint,
@@ -55,26 +55,26 @@ class DashboardClient:
         ) as response:
             return await self._handle_response(response)
 
-    async def get_job_info(self, job_id: str) -> Dict[str, Any]:
+    async def get_job_info(self, job_id: str) -> dict[str, Any]:
         """Get information about a specific job."""
         async with self._session.get(
             f"{self.dashboard_url}/api/jobs/{job_id}"
         ) as response:
             return await self._handle_response(response)
 
-    async def list_jobs(self) -> Dict[str, Any]:
+    async def list_jobs(self) -> dict[str, Any]:
         """List all jobs in the cluster."""
         async with self._session.get(f"{self.dashboard_url}/api/jobs/") as response:
             return await self._handle_response(response)
 
-    async def stop_job(self, job_id: str) -> Dict[str, Any]:
+    async def stop_job(self, job_id: str) -> dict[str, Any]:
         """Stop a running job."""
         async with self._session.post(
             f"{self.dashboard_url}/api/jobs/{job_id}/stop"
         ) as response:
             return await self._handle_response(response)
 
-    async def get_job_logs(self, job_id: str) -> Dict[str, Any]:
+    async def get_job_logs(self, job_id: str) -> dict[str, Any]:
         """Get logs for a specific job."""
         async with self._session.get(
             f"{self.dashboard_url}/api/jobs/{job_id}/logs"
@@ -83,7 +83,7 @@ class DashboardClient:
 
     async def _handle_response(
         self, response: aiohttp.ClientResponse
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Handle HTTP response with proper error handling."""
         try:
             data = await response.json()
