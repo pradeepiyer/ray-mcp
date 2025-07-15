@@ -246,7 +246,7 @@ class LogManager(ResourceManager):
         self,
         identifier: str,
         log_type: str,
-        num_lines: int = 0,
+        num_lines: int = 100,
         max_size_mb: int = 10,
         page: Optional[int] = None,
         page_size: Optional[int] = None,
