@@ -2,11 +2,10 @@
 # 
 # Modern Testing Strategy:
 # - test-fast:  Unit tests with 100% mocking (fast development feedback)
-# - test-smoke: Critical functionality validation (quick confidence)
 # - test-e2e:   End-to-end tests without mocking (integration validation)
 # - test:       Complete test suite including E2E (full validation)
 
-.PHONY: test test-fast test-smoke test-e2e install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
+.PHONY: test test-fast test-e2e install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
 
 # ================================================================================
 # TESTING TARGETS
@@ -27,10 +26,6 @@ test-e2e:
 	@echo "🚀 Running end-to-end tests without mocking..."
 	@python test_runner.py e2e
 
-# Smoke tests - critical functionality validation for quick confidence
-test-smoke:
-	@echo "💨 Running smoke tests for critical functionality..."
-	@python test_runner.py smoke
 
 # ================================================================================
 # LINTING AND FORMATTING TARGETS
@@ -215,7 +210,7 @@ help:
 	@echo "🧪 Testing (New Test Runner):"
 	@echo "  test             Run complete test suite (unit + e2e)"
 	@echo "  test-fast        Run unit tests with 100% mocking (fast development)"
-	@echo "  test-smoke       Run smoke tests for critical functionality"
+	@echo ""
 	@echo "  test-e2e         Run end-to-end tests without mocking (integration)"
 	@echo "  test-cov         Run unit tests with coverage reporting"
 	@echo ""

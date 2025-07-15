@@ -31,5 +31,4 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "e2e: mark test as end-to-end integration test")
     config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line("markers", "fast: mark test as fast running")
-    config.addinivalue_line("markers", "smoke: mark test as smoke test")
     config.addinivalue_line("markers", "gke: mark test as requiring GKE cluster access")

@@ -4,13 +4,11 @@
 This script provides convenient commands for running different test categories:
 - Unit tests: Fast, fully mocked tests
 - E2E tests: End-to-end integration tests
-- Smoke tests: Quick validation tests
 - All tests: Complete test suite
 
 Usage:
     python test_runner.py unit          # Run unit tests only
     python test_runner.py e2e           # Run E2E tests only
-    python test_runner.py smoke         # Run smoke tests only
     python test_runner.py all           # Run all tests
     python test_runner.py --help        # Show help
 """
@@ -77,15 +75,6 @@ class TestRunner:
         ]
         return self.run_command(cmd, "Running E2E tests")
     
-    def run_smoke_tests(self) -> bool:
-        """Run quick smoke tests for basic validation."""
-        cmd = [
-            "uv", "run", "pytest",
-            "-m", "smoke or (unit and fast)",
-            "--tb=short",
-            "-v"
-        ]
-        return self.run_command(cmd, "Running smoke tests")
     
     def run_all_tests(self) -> bool:
         """Run the complete test suite."""
@@ -165,12 +154,12 @@ class TestRunner:
         print("\nTest Categories:")
         print("- unit: Fast tests with full mocking (< 1s each)")
         print("- e2e: Integration tests without mocking (5-60s each)")
-        print("- smoke: Quick validation tests for CI/CD")
+        print("")
         
         print("\nUsage Examples:")
         print("  python test_runner.py unit     # Fast feedback during development")
         print("  python test_runner.py e2e      # Validate real functionality")
-        print("  python test_runner.py smoke    # Quick health check")
+        print("")
         print("  python test_runner.py all      # Complete validation")
 
 
@@ -183,7 +172,6 @@ def main():
 Examples:
   python test_runner.py unit          # Fast unit tests
   python test_runner.py e2e           # Integration tests  
-  python test_runner.py smoke         # Quick smoke tests
   python test_runner.py all           # Complete test suite
   python test_runner.py info          # Show test information
         """
@@ -191,7 +179,7 @@ Examples:
     
     parser.add_argument(
         'suite',
-        choices=['unit', 'e2e', 'smoke', 'all', 'info'],
+        choices=['unit', 'e2e', 'all', 'info'],
         help='Test suite to run'
     )
     
@@ -222,8 +210,6 @@ Examples:
         success = runner.run_unit_tests()
     elif args.suite == 'e2e':
         success = runner.run_e2e_tests() 
-    elif args.suite == 'smoke':
-        success = runner.run_smoke_tests()
     elif args.suite == 'all':
         success = runner.run_all_tests()
     

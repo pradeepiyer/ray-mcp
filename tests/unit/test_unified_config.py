@@ -2,8 +2,9 @@
 
 import logging
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from ray_mcp.config.unified_config import UnifiedConfigManager
 
@@ -36,19 +37,23 @@ class TestUnifiedConfigManager:
                 await config_manager._load_environment_variables()
 
         # Check that warnings were logged for each invalid value
-        warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
-        
+        warning_messages = [
+            record.message for record in caplog.records if record.levelname == "WARNING"
+        ]
+
         expected_warnings = [
             "RAY_DASHBOARD_PORT",
-            "RAY_NUM_CPUS", 
+            "RAY_NUM_CPUS",
             "RAY_NUM_GPUS",
             "RAY_OBJECT_STORE_MEMORY",
-            "RAY_MCP_TIMEOUT"
+            "RAY_MCP_TIMEOUT",
         ]
-        
+
         for env_var in expected_warnings:
-            assert any(env_var in warning for warning in warning_messages), f"Expected warning for {env_var}"
-        
+            assert any(
+                env_var in warning for warning in warning_messages
+            ), f"Expected warning for {env_var}"
+
         # Verify configuration keeps default values
         assert config_manager._config.ray_dashboard_port == 8265  # default
         assert config_manager._config.ray_num_cpus is None  # default
@@ -93,6 +98,8 @@ class TestUnifiedConfigManager:
         ]
 
         for value, expected in test_cases:
-            with patch.dict(os.environ, {"RAY_MCP_ENHANCED_OUTPUT": value}, clear=False):
+            with patch.dict(
+                os.environ, {"RAY_MCP_ENHANCED_OUTPUT": value}, clear=False
+            ):
                 await config_manager._load_environment_variables()
                 assert config_manager._config.enhanced_output == expected

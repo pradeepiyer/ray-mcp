@@ -106,17 +106,13 @@ kubectl get pods -n kuberay-system
 
 ## Testing Strategy
 
-### Three-Tier Testing
+### Two-Tier Testing
 
 **Unit Tests** (`make test-fast`)
 - 100% mocked for fast execution
 - Tests individual components in isolation
 - Focused on logic and edge cases
 
-**Smoke Tests** (`make test-smoke`)
-- Critical functionality validation
-- Quick system health checks
-- Essential workflows verification
 
 **End-to-End Tests** (`make test-e2e`)
 - No mocking, real system integration
@@ -143,7 +139,6 @@ tests/
 make test-fast      # Quick feedback during development
 
 # System validation
-make test-smoke     # Critical functionality check
 
 # Complete validation
 make test-e2e       # Integration testing

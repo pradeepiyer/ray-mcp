@@ -36,10 +36,9 @@ ray_mcp/
 
 ## Development Commands
 
-### Testing Strategy (Modern 3-Tier)
+### Testing Strategy (Modern 2-Tier)
 ```bash
 make test-fast     # Unit tests with 100% mocking (fast development feedback)
-make test-smoke    # Critical functionality validation (quick confidence)
 make test-e2e      # End-to-end tests without mocking (integration validation)
 make test          # Complete test suite (unit + e2e)
 ```
@@ -47,7 +46,6 @@ make test          # Complete test suite (unit + e2e)
 ### Alternative Test Runner
 ```bash
 python test_runner.py unit     # Fast feedback for development
-python test_runner.py smoke    # Quick health check
 python test_runner.py e2e      # Integration validation
 python test_runner.py all      # Complete validation
 ```
@@ -124,7 +122,6 @@ tests/
 ### Test Markers
 - `@pytest.mark.unit` - Fast mocked tests
 - `@pytest.mark.e2e` - Integration tests
-- `@pytest.mark.smoke` - Quick validation tests
 - `@pytest.mark.gke` - GKE-specific tests
 
 ## Configuration & Environment
@@ -210,13 +207,13 @@ This validates that exactly 3 tools exist with proper prompt parameters.
 ### Debugging Common Issues
 - **GKE Connection**: Check `GOOGLE_APPLICATION_CREDENTIALS` and project permissions
 - **KubeRay Operator**: Verify with `kubectl get pods -n kuberay-system`
-- **Test Failures**: Use `make test-smoke` for quick system validation
+- **Test Failures**: Use `make test-fast` for quick system validation
 - **Tool Validation**: Use `make lint-tool-functions` to verify architecture
 
 ## Entry Points
 
 - **MCP Server**: `uv run ray-mcp` (maps to `ray_mcp.main:run_server`)
-- **Test Runner**: `python test_runner.py [unit|smoke|e2e|all]`
+- **Test Runner**: `python test_runner.py [unit|e2e|all]`
 - **Direct Module**: `python -m ray_mcp.main`
 
 ## Code Standards

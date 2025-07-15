@@ -4,7 +4,7 @@ Comprehensive test suite for Ray MCP Server's prompt-driven architecture.
 
 ## Test Strategy
 
-### Three-Tier Testing Architecture
+### Two-Tier Testing Architecture
 
 **Unit Tests** (`tests/unit/`)
 - 100% mocked for fast execution
@@ -16,10 +16,6 @@ Comprehensive test suite for Ray MCP Server's prompt-driven architecture.
 - Complete workflows from prompt to result
 - Validates actual Ray/Kubernetes operations
 
-**Smoke Tests** (subset of unit tests)
-- Critical functionality validation
-- Quick system health checks
-- Essential workflow verification
 
 ## Test Structure
 
@@ -48,8 +44,6 @@ tests/
 # Fast unit tests with mocking
 make test-fast
 
-# Critical functionality check
-make test-smoke
 
 # Integration testing
 make test-e2e
@@ -64,7 +58,6 @@ make test
 # Run specific test types
 python test_runner.py unit      # Unit tests only
 python test_runner.py e2e       # End-to-end tests only
-python test_runner.py smoke     # Smoke tests only
 python test_runner.py all       # All tests
 
 # With coverage

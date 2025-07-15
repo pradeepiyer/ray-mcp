@@ -22,6 +22,8 @@ class ClusterManager(ResourceManager):
         self._cluster_address = None
         self._dashboard_url = None
         self._job_client = None
+        # Synchronization for cluster operations
+        self._cluster_lock = asyncio.Lock()
 
     async def execute_request(self, prompt: str) -> Dict[str, Any]:
         """Execute cluster operations using natural language prompts.
@@ -93,108 +95,112 @@ class ClusterManager(ResourceManager):
 
     async def _create_cluster(self, cluster_spec: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new Ray cluster."""
-        try:
-            self._ensure_ray_available()
+        async with self._cluster_lock:
+            try:
+                self._ensure_ray_available()
 
-            # Check if Ray is already running
-            if self._is_ray_ready():
-                return self._ResponseFormatter.format_error_response(
-                    "create cluster",
-                    Exception(
-                        "Ray cluster is already running. Stop it first or connect to it."
-                    ),
-                )
-
-            # Simple port allocation - use default or provided port
-            dashboard_port = cluster_spec.get("dashboard_port", 8265)
-
-            # Start Ray with simple configuration
-            config = {
-                "num_cpus": cluster_spec.get("num_cpus", 4),
-                "num_gpus": cluster_spec.get("num_gpus", 0),
-                "dashboard_port": dashboard_port,
-                "include_dashboard": cluster_spec.get("include_dashboard", True),
-            }
-
-            # Add optional parameters if provided
-            if cluster_spec.get("object_store_memory"):
-                config["object_store_memory"] = cluster_spec["object_store_memory"]
-            if cluster_spec.get("temp_dir"):
-                config["temp_dir"] = cluster_spec["temp_dir"]
-
-            # Initialize Ray
-            ray_info = self._ray.init(**config)
-
-            # Update simple state tracking
-            self._cluster_address = ray_info.get("redis_address") or ray_info.get(
-                "gcs_address"
-            )
-            self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
-
-            return self._ResponseFormatter.format_success_response(
-                cluster_address=self._cluster_address,
-                dashboard_url=self._dashboard_url,
-                dashboard_port=dashboard_port,
-                num_cpus=config["num_cpus"],
-                num_gpus=config["num_gpus"],
-                message="Ray cluster created successfully",
-            )
-
-        except Exception as e:
-            return self._ResponseFormatter.format_error_response("create cluster", e)
-
-    async def _connect_to_cluster(self, address: str) -> Dict[str, Any]:
-        """Connect to an existing Ray cluster."""
-        try:
-            self._ensure_ray_available()
-
-            # Check if already connected to a different cluster
-            if self._is_ray_ready():
-                current_address = self._cluster_address
-                if current_address == address:
-                    return self._ResponseFormatter.format_success_response(
-                        cluster_address=address,
-                        message="Already connected to this cluster",
-                    )
-                else:
+                # Check if Ray is already running
+                if self._is_ray_ready():
                     return self._ResponseFormatter.format_error_response(
-                        "connect to cluster",
+                        "create cluster",
                         Exception(
-                            f"Already connected to {current_address}. Disconnect first."
+                            "Ray cluster is already running. Stop it first or connect to it."
                         ),
                     )
 
-            # Connect to the cluster with timeout
-            try:
-                ray_info = await asyncio.wait_for(
-                    asyncio.to_thread(self._ray.init, address=address),
-                    timeout=30,  # 30 second timeout for connection attempts
+                # Simple port allocation - use default or provided port
+                dashboard_port = cluster_spec.get("dashboard_port", 8265)
+
+                # Start Ray with simple configuration
+                config = {
+                    "num_cpus": cluster_spec.get("num_cpus", 4),
+                    "num_gpus": cluster_spec.get("num_gpus", 0),
+                    "dashboard_port": dashboard_port,
+                    "include_dashboard": cluster_spec.get("include_dashboard", True),
+                }
+
+                # Add optional parameters if provided
+                if cluster_spec.get("object_store_memory"):
+                    config["object_store_memory"] = cluster_spec["object_store_memory"]
+                if cluster_spec.get("temp_dir"):
+                    config["temp_dir"] = cluster_spec["temp_dir"]
+
+                # Initialize Ray
+                ray_info = self._ray.init(**config)
+
+                # Update simple state tracking
+                self._cluster_address = ray_info.get("redis_address") or ray_info.get(
+                    "gcs_address"
                 )
-            except asyncio.TimeoutError:
-                raise Exception(
-                    f"Connection to cluster at {address} timed out after 30 seconds"
+                self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
+
+                return self._ResponseFormatter.format_success_response(
+                    cluster_address=self._cluster_address,
+                    dashboard_url=self._dashboard_url,
+                    dashboard_port=dashboard_port,
+                    num_cpus=config["num_cpus"],
+                    num_gpus=config["num_gpus"],
+                    message="Ray cluster created successfully",
                 )
 
-            # Update simple state tracking
-            self._cluster_address = address
+            except Exception as e:
+                return self._ResponseFormatter.format_error_response(
+                    "create cluster", e
+                )
 
-            # Try to determine dashboard URL
+    async def _connect_to_cluster(self, address: str) -> Dict[str, Any]:
+        """Connect to an existing Ray cluster."""
+        async with self._cluster_lock:
             try:
-                dashboard_url = self._get_dashboard_url()
-                self._dashboard_url = dashboard_url
-            except Exception:
-                self._dashboard_url = None
+                self._ensure_ray_available()
 
-            return self._ResponseFormatter.format_success_response(
-                cluster_address=address,
-                dashboard_url=self._dashboard_url,
-                message=f"Connected to Ray cluster at {address}",
-            )
+                # Check if already connected to a different cluster
+                if self._is_ray_ready():
+                    current_address = self._cluster_address
+                    if current_address == address:
+                        return self._ResponseFormatter.format_success_response(
+                            cluster_address=address,
+                            message="Already connected to this cluster",
+                        )
+                    else:
+                        return self._ResponseFormatter.format_error_response(
+                            "connect to cluster",
+                            Exception(
+                                f"Already connected to {current_address}. Disconnect first."
+                            ),
+                        )
 
-        except Exception as e:
-            return self._ResponseFormatter.format_error_response(
-                "connect to cluster", e
-            )
+                # Connect to the cluster with timeout
+                try:
+                    ray_info = await asyncio.wait_for(
+                        asyncio.to_thread(self._ray.init, address=address),
+                        timeout=30,  # 30 second timeout for connection attempts
+                    )
+                except asyncio.TimeoutError:
+                    raise Exception(
+                        f"Connection to cluster at {address} timed out after 30 seconds"
+                    )
+
+                # Update simple state tracking
+                self._cluster_address = address
+
+                # Try to determine dashboard URL
+                try:
+                    dashboard_url = self._get_dashboard_url()
+                    self._dashboard_url = dashboard_url
+                except Exception:
+                    self._dashboard_url = None
+
+                return self._ResponseFormatter.format_success_response(
+                    cluster_address=address,
+                    dashboard_url=self._dashboard_url,
+                    message=f"Connected to Ray cluster at {address}",
+                )
+
+            except Exception as e:
+                return self._ResponseFormatter.format_error_response(
+                    "connect to cluster", e
+                )
 
     async def _inspect_cluster(self) -> Dict[str, Any]:
         """Inspect current cluster status."""
@@ -222,26 +228,27 @@ class ClusterManager(ResourceManager):
 
     async def _stop_cluster(self) -> Dict[str, Any]:
         """Stop the current Ray cluster."""
-        try:
-            if not self._is_ray_ready():
+        async with self._cluster_lock:
+            try:
+                if not self._is_ray_ready():
+                    return self._ResponseFormatter.format_success_response(
+                        message="No Ray cluster is currently running"
+                    )
+
+                # Shutdown Ray
+                self._ray.shutdown()
+
+                # Clear simple state tracking
+                self._cluster_address = None
+                self._dashboard_url = None
+                self._job_client = None
+
                 return self._ResponseFormatter.format_success_response(
-                    message="No Ray cluster is currently running"
+                    message="Ray cluster stopped successfully"
                 )
 
-            # Shutdown Ray
-            self._ray.shutdown()
-
-            # Clear simple state tracking
-            self._cluster_address = None
-            self._dashboard_url = None
-            self._job_client = None
-
-            return self._ResponseFormatter.format_success_response(
-                message="Ray cluster stopped successfully"
-            )
-
-        except Exception as e:
-            return self._ResponseFormatter.format_error_response("stop cluster", e)
+            except Exception as e:
+                return self._ResponseFormatter.format_error_response("stop cluster", e)
 
     def _get_dashboard_url(self) -> Optional[str]:
         """Get dashboard URL from Ray cluster."""
