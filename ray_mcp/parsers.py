@@ -16,11 +16,11 @@ class ActionParser:
     CLUSTER_LIST = r"list.+cluster|show.+clusters"
 
     # Job operations
-    JOB_LIST = r"(?:list|show|get).+job"
-    JOB_SUBMIT = r"(?:submit|execute|start).+job|run\s+job"
-    JOB_INSPECT = r"(?:inspect|status|check).+job"
-    JOB_LOGS = r"(?:logs?|log).+job|get.+logs?"
-    JOB_CANCEL = r"(?:cancel|stop|kill).+job"
+    JOB_LIST = r"(?:list|show|get).+\bjobs?\b"
+    JOB_SUBMIT = r"(?:submit|execute|start).+\bjob\b|run\s+\bjob\b"
+    JOB_INSPECT = r"(?:inspect|status|check).+\bjob\b"
+    JOB_LOGS = r"(?:logs?|log).+\bjob\b|get.+logs?"
+    JOB_CANCEL = r"(?:cancel|stop|kill).+\bjob\b"
 
     # Cloud operations
     CLOUD_AUTH = r"(?:auth|login|authenticate).+(?:gcp|google|gke|cloud)"
