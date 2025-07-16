@@ -163,10 +163,16 @@ class TestRayUnifiedManager:
         with patch.object(self.manager, "_cluster_manager") as cluster_mock:
             cluster_mock.execute_request = AsyncMock(return_value=expected_response)
 
-            # Mock the Kubernetes connectivity check to ensure it returns False
-            with patch.object(
-                self.manager, "_is_kubernetes_connected", return_value=False
-            ):
+            # Mock the LLM parser to return local environment
+            with patch("ray_mcp.llm_parser.get_parser") as parser_mock:
+                parser_mock.return_value.parse_cluster_action = AsyncMock(
+                    return_value={
+                        "type": "cluster",
+                        "operation": "create",
+                        "environment": "local",
+                    }
+                )
+
                 result = await self.manager.handle_cluster_request("create cluster")
 
                 cluster_mock.execute_request.assert_called_once_with("create cluster")
@@ -183,10 +189,16 @@ class TestRayUnifiedManager:
         with patch.object(self.manager, "_job_manager") as job_mock:
             job_mock.execute_request = AsyncMock(return_value=expected_response)
 
-            # Mock the Kubernetes connectivity check to ensure it returns False
-            with patch.object(
-                self.manager, "_is_kubernetes_connected", return_value=False
-            ):
+            # Mock the LLM parser to return local environment
+            with patch("ray_mcp.llm_parser.get_parser") as parser_mock:
+                parser_mock.return_value.parse_job_action = AsyncMock(
+                    return_value={
+                        "type": "job",
+                        "operation": "create",
+                        "environment": "local",
+                    }
+                )
+
                 result = await self.manager.handle_job_request("submit job")
 
                 job_mock.execute_request.assert_called_once_with("submit job")

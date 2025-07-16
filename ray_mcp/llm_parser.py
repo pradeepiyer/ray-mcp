@@ -39,7 +39,7 @@ Based on the request, determine:
 Return JSON in this exact format:
 {{
     "type": "cluster|job|cloud",
-    "operation": "create|connect|status|list|scale|stop|submit|inspect|logs|cancel|authenticate|list_clusters|connect_cluster|create_cluster|check_environment|get_cluster_info",
+    "operation": "create|connect|list|scale|delete|get|logs|cancel|authenticate|list_clusters|connect_cluster|create_cluster|check_environment|get_cluster_info|disconnect|health_check|list_namespaces|list_contexts",
     "name": "cluster-name or job-id or null",
     "namespace": "namespace or null", 
     "zone": "zone or null",
@@ -65,8 +65,10 @@ Return JSON in this exact format:
 }}
 
 Important parsing rules:
-- For cluster status/info/inspect operations, set operation to "inspect"
 - For listing operations, set operation to "list" 
+- For job submit operations, set operation to "create"
+- For status/info/inspect operations, set operation to "get"
+- For stop/delete/terminate operations, set operation to "delete"
 - Detect "kubernetes", "k8s", "gke" keywords to set environment to "kubernetes"
 - CRITICAL: If request mentions "GCP", "GKE", "authenticate", "cloud", prioritize as cloud operation
 - GKE cluster operations are CLOUD operations, not local cluster operations
@@ -80,13 +82,16 @@ Important parsing rules:
 
 Examples:
 - "Create a Ray cluster named test-cluster with 3 workers" → {{"type": "cluster", "operation": "create", "name": "test-cluster", "workers": 3, "environment": "local"}}
-- "Check status of Ray cluster" → {{"type": "cluster", "operation": "inspect", "environment": "local"}}
+- "Check status of Ray cluster" → {{"type": "cluster", "operation": "get", "environment": "local"}}
 - "List jobs" → {{"type": "job", "operation": "list"}}
 - "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001"}}
 - "Create kubernetes cluster with head only" → {{"type": "cluster", "operation": "create", "environment": "kubernetes", "head_only": true, "workers": 0}}
+- "Submit job script train.py to kubernetes" → {{"type": "job", "operation": "create", "script": "train.py", "environment": "kubernetes"}}
+- "Stop local cluster" → {{"type": "cluster", "operation": "delete", "environment": "local"}}
+- "Delete kubernetes cluster" → {{"type": "cluster", "operation": "delete", "environment": "kubernetes"}}
+- "Get status of job on kubernetes" → {{"type": "job", "operation": "get", "environment": "kubernetes"}}
 - "Authenticate with GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
 - "List GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
-- "Authenticate with GCP and list all GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
 - "Connect to GKE cluster my-cluster in zone us-central1-a" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-central1-a", "provider": "gcp"}}
 
 Parse the user request above and return only the JSON object, no additional text.

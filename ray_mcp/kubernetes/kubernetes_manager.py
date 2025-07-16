@@ -39,8 +39,8 @@ class KubernetesManager(ResourceManager):
                 return await self._connect_cluster(config_file, context)
             elif operation == "disconnect":
                 return await self._disconnect_cluster()
-            elif operation == "inspect":
-                return await self._inspect_cluster()
+            elif operation == "get":
+                return await self._get_cluster()
             elif operation == "health_check":
                 return await self._check_cluster_health()
             elif operation == "list_namespaces":
@@ -105,7 +105,7 @@ class KubernetesManager(ResourceManager):
         except Exception as e:
             return self._handle_error("disconnect from kubernetes", e)
 
-    async def _inspect_cluster(self) -> dict[str, Any]:
+    async def _get_cluster(self) -> dict[str, Any]:
         """Get basic cluster information."""
         try:
             self._ensure_kubernetes_connected()

@@ -19,7 +19,7 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Dict, List
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from mcp.types import TextContent
 import pytest
@@ -362,7 +362,10 @@ class TestCriticalWorkflows:
 
         # Mock parse_cluster_action responses
         async def mock_parse_cluster_action(prompt):
-            if "create a local cluster" in prompt.lower():
+            if (
+                "create a local cluster" in prompt.lower()
+                or "create cluster" in prompt.lower()
+            ):
                 return {
                     "type": "cluster",
                     "operation": "create",
@@ -374,7 +377,7 @@ class TestCriticalWorkflows:
             elif "inspect cluster" in prompt.lower():
                 return {
                     "type": "cluster",
-                    "operation": "inspect",
+                    "operation": "get",
                     "environment": "local",
                 }
             elif "connect to cluster" in prompt.lower():
@@ -384,10 +387,16 @@ class TestCriticalWorkflows:
                     "address": "192.0.2.1:9999",
                     "environment": "local",
                 }
+            elif "stop cluster" in prompt.lower():
+                return {
+                    "type": "cluster",
+                    "operation": "delete",
+                    "environment": "local",
+                }
             else:
                 return {
                     "type": "cluster",
-                    "operation": "inspect",
+                    "operation": "get",
                     "environment": "local",
                 }
 
@@ -401,25 +410,40 @@ class TestCriticalWorkflows:
                 script_path = (
                     script_match.group(1) if script_match else "nonexistent.py"
                 )
-                return {"type": "job", "operation": "submit", "script": script_path}
+                return {
+                    "type": "job",
+                    "operation": "create",
+                    "script": script_path,
+                    "environment": "local",
+                }
             elif "get status" in prompt.lower():
                 # Extract job_id from prompt
                 import re
 
                 job_id_match = re.search(r"job\s+([^\s]+)", prompt)
                 job_id = job_id_match.group(1) if job_id_match else "test-job-id"
-                return {"type": "job", "operation": "get", "job_id": job_id}
+                return {
+                    "type": "job",
+                    "operation": "get",
+                    "job_id": job_id,
+                    "environment": "local",
+                }
             elif "get logs" in prompt.lower():
                 # Extract job_id from prompt
                 import re
 
                 job_id_match = re.search(r"job\s+([^\s]+)", prompt)
                 job_id = job_id_match.group(1) if job_id_match else "test-job-id"
-                return {"type": "job", "operation": "logs", "job_id": job_id}
+                return {
+                    "type": "job",
+                    "operation": "logs",
+                    "job_id": job_id,
+                    "environment": "local",
+                }
             elif "list jobs" in prompt.lower():
-                return {"type": "job", "operation": "list"}
+                return {"type": "job", "operation": "list", "environment": "local"}
             else:
-                return {"type": "job", "operation": "list"}
+                return {"type": "job", "operation": "list", "environment": "local"}
 
         # Mock parse_cloud_action responses
         async def mock_parse_cloud_action(prompt):
@@ -428,10 +452,25 @@ class TestCriticalWorkflows:
             else:
                 return {"type": "cloud", "operation": "check_environment"}
 
-        # Configure the mock parser methods
-        self.mock_parser.parse_cluster_action = mock_parse_cluster_action
-        self.mock_parser.parse_job_action = mock_parse_job_action
-        self.mock_parser.parse_cloud_action = mock_parse_cloud_action
+        # Configure the mock parser methods using AsyncMock
+        self.mock_parser.parse_cluster_action = AsyncMock(
+            side_effect=mock_parse_cluster_action
+        )
+        self.mock_parser.parse_job_action = AsyncMock(side_effect=mock_parse_job_action)
+        self.mock_parser.parse_cloud_action = AsyncMock(
+            side_effect=mock_parse_cloud_action
+        )
+
+        # Mock the specialized parser methods used by kubernetes managers
+        self.mock_parser.parse_kubernetes_action = AsyncMock(
+            side_effect=mock_parse_cluster_action
+        )
+        self.mock_parser.parse_kuberay_cluster_action = AsyncMock(
+            side_effect=mock_parse_cluster_action
+        )
+        self.mock_parser.parse_kuberay_job_action = AsyncMock(
+            side_effect=mock_parse_job_action
+        )
 
     async def teardown_method(self):
         """Clean up after each test."""

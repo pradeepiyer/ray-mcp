@@ -45,15 +45,33 @@ class RayUnifiedManager:
             - "connect to kubernetes cluster with context my-cluster"
         """
         try:
-            # Detect environment and route to appropriate manager
-            if self._is_kubernetes_environment(prompt):
+            # Parse the action first to get the environment
+            from ..llm_parser import get_parser
+
+            action = await get_parser().parse_cluster_action(prompt)
+            environment = action.get("environment", "auto")
+
+            # Route based on parsed environment, with fallback to prompt detection
+            if environment == "local":
+                return await self._cluster_manager.execute_request(prompt)
+            elif environment == "kubernetes":
                 # Check if it's KubeRay or general Kubernetes
                 if "ray" in prompt.lower():
                     return await self._kuberay_cluster_manager.execute_request(prompt)
                 else:
                     return await self._kubernetes_manager.execute_request(prompt)
             else:
-                return await self._cluster_manager.execute_request(prompt)
+                # Fallback to prompt-based detection for "auto" or unspecified environment
+                if self._is_kubernetes_environment(prompt):
+                    # Check if it's KubeRay or general Kubernetes
+                    if "ray" in prompt.lower():
+                        return await self._kuberay_cluster_manager.execute_request(
+                            prompt
+                        )
+                    else:
+                        return await self._kubernetes_manager.execute_request(prompt)
+                else:
+                    return await self._cluster_manager.execute_request(prompt)
         except Exception as e:
             return error_response(str(e))
 
@@ -69,12 +87,23 @@ class RayUnifiedManager:
             - "get logs for job data-processing in namespace production"
         """
         try:
-            # Detect environment and route to appropriate manager
-            # Now prioritizes actual Kubernetes connectivity over prompt keywords
-            if self._is_kubernetes_environment(prompt):
+            # Parse the action first to get the environment
+            from ..llm_parser import get_parser
+
+            action = await get_parser().parse_job_action(prompt)
+            environment = action.get("environment", "auto")
+
+            # Route based on parsed environment, with fallback to prompt detection
+            if environment == "local":
+                return await self._job_manager.execute_request(prompt)
+            elif environment == "kubernetes":
                 return await self._kuberay_job_manager.execute_request(prompt)
             else:
-                return await self._job_manager.execute_request(prompt)
+                # Fallback to prompt-based detection for "auto" or unspecified environment
+                if self._is_kubernetes_environment(prompt):
+                    return await self._kuberay_job_manager.execute_request(prompt)
+                else:
+                    return await self._job_manager.execute_request(prompt)
         except Exception as e:
             return error_response(str(e))
 
@@ -100,16 +129,20 @@ class RayUnifiedManager:
     def _is_kubernetes_environment(self, prompt: str) -> bool:
         """Detect if prompt is for Kubernetes/KubeRay operations.
 
-        This method checks both:
-        1. If the prompt explicitly mentions Kubernetes keywords
-        2. If we're actually connected to a Kubernetes cluster (higher priority)
+        Priority order:
+        1. If prompt explicitly mentions "local" -> route to local (False)
+        2. If prompt explicitly mentions Kubernetes keywords -> route to kubernetes (True)
+        3. If we're connected to Kubernetes cluster -> route to kubernetes as default (True)
+        4. Otherwise -> route to local (False)
         """
-        # First check if we're actually connected to a Kubernetes cluster
-        # This takes priority over prompt keywords
-        if self._is_kubernetes_connected():
-            return True
+        prompt_lower = prompt.lower()
 
-        # Fallback to prompt keyword detection
+        # First priority: Check if prompt explicitly mentions "local"
+        local_keywords = ["local", "localhost", "127.0.0.1"]
+        if any(keyword in prompt_lower for keyword in local_keywords):
+            return False
+
+        # Second priority: Check if prompt explicitly mentions Kubernetes keywords
         k8s_keywords = [
             "kubernetes",
             "k8s",
@@ -120,8 +153,16 @@ class RayUnifiedManager:
             "kubectl",
             "kubeconfig",
         ]
-        prompt_lower = prompt.lower()
-        return any(keyword in prompt_lower for keyword in k8s_keywords)
+        if any(keyword in prompt_lower for keyword in k8s_keywords):
+            return True
+
+        # Third priority: Check if we're connected to a Kubernetes cluster
+        # This is only used as a default when no explicit environment is mentioned
+        if self._is_kubernetes_connected():
+            return True
+
+        # Fallback: Route to local
+        return False
 
     def _is_kubernetes_connected(self) -> bool:
         """Check if we're actually connected to a Kubernetes cluster."""

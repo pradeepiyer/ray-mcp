@@ -25,36 +25,35 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
     def get_operation_handlers(self) -> dict[str, Any]:
         """Get mapping of operation names to handler methods."""
         return {
-            "submit": self._submit_job_from_prompt,
+            "create": self._create_job_from_prompt,  # normalized from submit
             "list": self._list_jobs,
-            "get": self._handle_get_job,
-            "inspect": self._handle_get_job,
-            "cancel": self._handle_cancel_job,
-            "logs": self._handle_get_logs,
+            "get": self._get_job,  # already normalized
+            "cancel": self._cancel_job,
+            "logs": self._get_job_logs,
         }
 
-    async def _handle_get_job(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def _get_job(self, action: dict[str, Any]) -> dict[str, Any]:
         """Handle get/inspect job operation with validation."""
         job_id = action.get("job_id")
         if not job_id:
             return error_response("job_id required")
-        return await self._get_job_status(job_id)
+        return await self._get_job_internal(job_id)
 
-    async def _handle_cancel_job(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def _cancel_job(self, action: dict[str, Any]) -> dict[str, Any]:
         """Handle cancel job operation with validation."""
         job_id = action.get("job_id")
         if not job_id:
             return error_response("job_id required")
-        return await self._cancel_job(job_id)
+        return await self._cancel_job_internal(job_id)
 
-    async def _handle_get_logs(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def _get_job_logs(self, action: dict[str, Any]) -> dict[str, Any]:
         """Handle get logs operation with validation."""
         job_id = action.get("job_id")
         if not job_id:
             return error_response("job_id required")
-        return await self._get_job_logs(job_id)
+        return await self._get_job_logs_internal(job_id)
 
-    async def _submit_job_from_prompt(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def _create_job_from_prompt(self, action: dict[str, Any]) -> dict[str, Any]:
         """Submit job from parsed prompt action."""
         try:
             job_spec = {
@@ -67,12 +66,12 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
             if not job_spec["entrypoint"]:
                 return error_response("script/entrypoint required")
 
-            return await self._submit_job(job_spec)
+            return await self._create_job_internal(job_spec)
 
         except Exception as e:
             return self._handle_error("submit job from prompt", e)
 
-    async def _submit_job(self, job_spec: dict[str, Any]) -> dict[str, Any]:
+    async def _create_job_internal(self, job_spec: dict[str, Any]) -> dict[str, Any]:
         """Submit a job to the Ray cluster using Dashboard API."""
         try:
             if not self._is_ray_ready():
@@ -153,7 +152,7 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
         except Exception as e:
             return self._handle_error("list jobs", e)
 
-    async def _get_job_status(self, job_id: str) -> dict[str, Any]:
+    async def _get_job_internal(self, job_id: str) -> dict[str, Any]:
         """Get status of a specific job using Dashboard API."""
         try:
             if not self._is_ray_ready():
@@ -183,7 +182,7 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
         except Exception as e:
             return self._handle_error("get job status", e)
 
-    async def _cancel_job(self, job_id: str) -> dict[str, Any]:
+    async def _cancel_job_internal(self, job_id: str) -> dict[str, Any]:
         """Cancel a running job using Dashboard API."""
         try:
             if not self._is_ray_ready():
@@ -207,7 +206,7 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
         except Exception as e:
             return self._handle_error("cancel job", e)
 
-    async def _get_job_logs(self, job_id: str) -> dict[str, Any]:
+    async def _get_job_logs_internal(self, job_id: str) -> dict[str, Any]:
         """Get logs for a specific job using Dashboard API."""
         try:
             if not self._is_ray_ready():

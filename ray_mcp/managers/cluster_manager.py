@@ -36,8 +36,8 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
         return {
             "create": self._create_cluster_from_prompt,
             "connect": self._handle_connect,
-            "inspect": self._inspect_cluster,
-            "stop": self._stop_cluster,
+            "get": self._get_cluster,  # normalized from inspect
+            "delete": self._delete_cluster,  # normalized from stop
             "list": self._list_clusters,
             "scale": self._handle_scale,
         }
@@ -193,7 +193,7 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
             except Exception as e:
                 return self._handle_error("connect to cluster", e)
 
-    async def _inspect_cluster(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def _get_cluster(self, action: dict[str, Any]) -> dict[str, Any]:
         """Inspect current cluster status."""
         try:
             if not self._is_ray_ready():
@@ -217,7 +217,7 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
         except Exception as e:
             return self._handle_error("inspect cluster", e)
 
-    async def _stop_cluster(self, action: dict[str, Any]) -> dict[str, Any]:
+    async def _delete_cluster(self, action: dict[str, Any]) -> dict[str, Any]:
         """Stop the current Ray cluster."""
         async with self._cluster_lock:
             try:

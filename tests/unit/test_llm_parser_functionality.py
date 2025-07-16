@@ -242,7 +242,7 @@ class TestErrorHandling:
 
         # Mock response with wrong type
         with patch.object(parser, "parse_action") as mock_parse:
-            mock_parse.return_value = {"type": "job", "operation": "submit"}
+            mock_parse.return_value = {"type": "job", "operation": "create"}
 
             # Should raise error when expecting cluster but got job
             with pytest.raises(
@@ -299,7 +299,7 @@ class TestLLMParserIntegration:
         result = await parser.parse_job_action("submit job with script train.py")
 
         assert result["type"] == "job"
-        assert result["operation"] == "submit"
+        assert result["operation"] == "create"
         assert "train.py" in str(result.get("script", ""))
 
     @pytest.mark.asyncio
