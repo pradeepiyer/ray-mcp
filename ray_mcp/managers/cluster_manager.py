@@ -113,9 +113,9 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
                 ray_info = ray.init(**config)
 
                 # Update simple state tracking
-                self._cluster_address = ray_info.address_info.get("redis_address") or ray_info.address_info.get(
-                    "gcs_address"
-                )
+                self._cluster_address = ray_info.address_info.get(
+                    "redis_address"
+                ) or ray_info.address_info.get("gcs_address")
                 # Get dashboard URL from Ray context, add http:// prefix if needed
                 dashboard_url = (
                     ray_info.dashboard_url

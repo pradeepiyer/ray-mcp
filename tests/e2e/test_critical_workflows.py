@@ -332,33 +332,34 @@ class TestCriticalWorkflows:
         os.environ["RAY_worker_register_timeout_seconds"] = (
             "10"  # Faster worker timeout
         )
-        
+
         # Mock the LLM parser to avoid real API calls
         self.mock_parser = Mock()
-        
+
         # Patch get_parser in all modules that use it
         self.parser_patchers = []
         parser_locations = [
-            'ray_mcp.llm_parser.get_parser',
-            'ray_mcp.managers.cluster_manager.get_parser',
-            'ray_mcp.managers.job_manager.get_parser',
-            'ray_mcp.cloud.cloud_provider_manager.get_parser',
-            'ray_mcp.cloud.gke_manager.get_parser',
-            'ray_mcp.kubernetes.kubernetes_manager.get_parser',
-            'ray_mcp.kubernetes.kuberay_cluster_manager.get_parser',
-            'ray_mcp.kubernetes.kuberay_job_manager.get_parser',
+            "ray_mcp.llm_parser.get_parser",
+            "ray_mcp.managers.cluster_manager.get_parser",
+            "ray_mcp.managers.job_manager.get_parser",
+            "ray_mcp.cloud.cloud_provider_manager.get_parser",
+            "ray_mcp.cloud.gke_manager.get_parser",
+            "ray_mcp.kubernetes.kubernetes_manager.get_parser",
+            "ray_mcp.kubernetes.kuberay_cluster_manager.get_parser",
+            "ray_mcp.kubernetes.kuberay_job_manager.get_parser",
         ]
-        
+
         for location in parser_locations:
             patcher = patch(location, return_value=self.mock_parser)
             patcher.start()
             self.parser_patchers.append(patcher)
-        
+
         # Configure mock parser responses for common test prompts
         self._setup_parser_responses()
 
     def _setup_parser_responses(self):
         """Configure mock parser responses for test prompts."""
+
         # Mock parse_cluster_action responses
         async def mock_parse_cluster_action(prompt):
             if "create a local cluster" in prompt.lower():
@@ -368,26 +369,26 @@ class TestCriticalWorkflows:
                     "cpus": E2ETestConfig.CPU_LIMIT,
                     "gpus": 0,
                     "dashboard_port": E2ETestConfig.DASHBOARD_PORT,
-                    "environment": "local"
+                    "environment": "local",
                 }
             elif "inspect cluster" in prompt.lower():
                 return {
                     "type": "cluster",
                     "operation": "inspect",
-                    "environment": "local"
+                    "environment": "local",
                 }
             elif "connect to cluster" in prompt.lower():
                 return {
                     "type": "cluster",
                     "operation": "connect",
                     "address": "192.0.2.1:9999",
-                    "environment": "local"
+                    "environment": "local",
                 }
             else:
                 return {
                     "type": "cluster",
                     "operation": "inspect",
-                    "environment": "local"
+                    "environment": "local",
                 }
 
         # Mock parse_job_action responses
@@ -395,56 +396,37 @@ class TestCriticalWorkflows:
             if "submit job" in prompt.lower():
                 # Extract script path from prompt if provided
                 import re
-                script_match = re.search(r'script\s+([^\s]+)', prompt)
-                script_path = script_match.group(1) if script_match else "nonexistent.py"
-                return {
-                    "type": "job",
-                    "operation": "submit",
-                    "script": script_path
-                }
+
+                script_match = re.search(r"script\s+([^\s]+)", prompt)
+                script_path = (
+                    script_match.group(1) if script_match else "nonexistent.py"
+                )
+                return {"type": "job", "operation": "submit", "script": script_path}
             elif "get status" in prompt.lower():
                 # Extract job_id from prompt
                 import re
-                job_id_match = re.search(r'job\s+([^\s]+)', prompt)
+
+                job_id_match = re.search(r"job\s+([^\s]+)", prompt)
                 job_id = job_id_match.group(1) if job_id_match else "test-job-id"
-                return {
-                    "type": "job",
-                    "operation": "get",
-                    "job_id": job_id
-                }
+                return {"type": "job", "operation": "get", "job_id": job_id}
             elif "get logs" in prompt.lower():
                 # Extract job_id from prompt
                 import re
-                job_id_match = re.search(r'job\s+([^\s]+)', prompt)
+
+                job_id_match = re.search(r"job\s+([^\s]+)", prompt)
                 job_id = job_id_match.group(1) if job_id_match else "test-job-id"
-                return {
-                    "type": "job",
-                    "operation": "logs",
-                    "job_id": job_id
-                }
+                return {"type": "job", "operation": "logs", "job_id": job_id}
             elif "list jobs" in prompt.lower():
-                return {
-                    "type": "job",
-                    "operation": "list"
-                }
+                return {"type": "job", "operation": "list"}
             else:
-                return {
-                    "type": "job",
-                    "operation": "list"
-                }
+                return {"type": "job", "operation": "list"}
 
         # Mock parse_cloud_action responses
         async def mock_parse_cloud_action(prompt):
             if "check environment" in prompt.lower():
-                return {
-                    "type": "cloud",
-                    "operation": "check_environment"
-                }
+                return {"type": "cloud", "operation": "check_environment"}
             else:
-                return {
-                    "type": "cloud",
-                    "operation": "check_environment"
-                }
+                return {"type": "cloud", "operation": "check_environment"}
 
         # Configure the mock parser methods
         self.mock_parser.parse_cluster_action = mock_parse_cluster_action
@@ -456,7 +438,7 @@ class TestCriticalWorkflows:
         # Stop all parser patchers
         for patcher in self.parser_patchers:
             patcher.stop()
-        
+
         # Restore original Ray environment variables
         if self.original_gcs_timeout is not None:
             os.environ["RAY_gcs_server_request_timeout_seconds"] = (

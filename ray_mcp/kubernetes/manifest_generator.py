@@ -231,12 +231,26 @@ spec:
                 result = await self._apply_single_resource(doc, namespace)
                 applied_resources.append(result)
 
-            return {
-                "status": "success",
-                "message": "Manifest applied successfully",
-                "applied_resources": applied_resources,
-                "namespace": namespace,
-            }
+            # Check if any resources failed
+            failed_resources = [
+                r for r in applied_resources if r.get("status") == "error"
+            ]
+
+            if failed_resources:
+                return {
+                    "status": "error",
+                    "message": f"Failed to apply {len(failed_resources)} of {len(applied_resources)} resources",
+                    "applied_resources": applied_resources,
+                    "failed_resources": failed_resources,
+                    "namespace": namespace,
+                }
+            else:
+                return {
+                    "status": "success",
+                    "message": "Manifest applied successfully",
+                    "applied_resources": applied_resources,
+                    "namespace": namespace,
+                }
 
         except Exception as e:
             return {
