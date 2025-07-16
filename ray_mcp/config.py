@@ -37,13 +37,19 @@ class Config:
             """Safely convert string to int with default fallback."""
             if not value or value.strip() == "":
                 return int(default)
-            return int(value)
+            try:
+                return int(value)
+            except ValueError:
+                return int(default)
 
         def safe_optional_int(value: str) -> Optional[int]:
             """Safely convert string to optional int."""
             if not value or value.strip() == "":
                 return None
-            return int(value)
+            try:
+                return int(value)
+            except ValueError:
+                return None
 
         return cls(
             ray_address=os.getenv("RAY_ADDRESS") or None,
