@@ -1,159 +1,68 @@
-# CLAUDE.md
+# Ray MCP Server
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+**3-tool prompt-driven Ray cluster management via natural language.**
 
-## Project Overview
+## Architecture
+- **3 Tools**: `ray_cluster`, `ray_job`, `cloud` (single `prompt` parameter each)
+- **Natural Language**: Anthropic Claude parses prompts into Ray operations
+- **Dual Environment**: Local Ray + Kubernetes/KubeRay support
 
-Ray MCP Server is a Model Context Protocol (MCP) server for Ray distributed computing. It enables LLM agents to programmatically manage Ray clusters, submit jobs, and monitor distributed workloads across local and Kubernetes environments.
+## Configuration
 
-## Development Commands
-
-### Testing
-- `make test-fast` - Run unit tests only (fast development feedback)
-- `make test-smoke` - Run smoke tests for critical functionality validation
-- `make test` - Run complete test suite including E2E (default, includes coverage)
-- `make test-e2e` - Run comprehensive end-to-end server tests
-- `uv run pytest tests/test_kubernetes.py` - Run Kubernetes/KubeRay specific tests
-- `uv run pytest -m gke` - Run GKE integration tests (requires credentials)
-
-### Code Quality & Linting
-- `make lint` - Run all linting checks (black, isort, pyright)
-- `make lint-enhanced` - Enhanced linting including tool function checks
-- `make format` - Apply code formatting (black, isort, pyright)
-- `make lint-tool-functions` - Lint tool function signatures specifically
-
-### Development Setup
-- `make sync` or `uv sync` - Install all dependencies including dev dependencies
-- `make dev-install` - Complete development installation
-- `uv sync --extra all` - Install with all optional dependencies (GKE, etc.)
-- `uv sync --extra gke` - Install with GKE support only
-
-### Utility Commands
-- `make clean` - Clean build artifacts and cache files
-- `make clean-all` - Clean all generated files including coverage
-- `make wc` - Count lines of code with directory breakdown
-- `uv run ray-mcp` - Run the MCP server locally
-
-### Environment Variables for Development
-- `RAY_MCP_ENHANCED_OUTPUT=true` - Enable enhanced LLM-friendly output
-- `RAY_MCP_LOG_LEVEL=DEBUG` - Set debug logging
-- `GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json` - GKE authentication
-- `RAY_DISABLE_USAGE_STATS=1` - Disable Ray usage statistics
-
-## Architecture Overview
-
-### Modular Component Architecture
-The project uses a layered architecture with focused, composable components:
-
-**Core Layers:**
-1. **Foundation Layer** (`ray_mcp/foundation/`) - Base classes, interfaces, logging, import utilities
-2. **Manager Layer** (`ray_mcp/managers/`) - Business logic managers for clusters, jobs, logs, ports, state
-3. **Kubernetes Layer** (`ray_mcp/kubernetes/`) - KubeRay integration, CRD management, K8s operations
-4. **Cloud Layer** (`ray_mcp/cloud/`) - Cloud provider integration (GKE, etc.)
-5. **Tools Layer** (`ray_mcp/tools/`) - MCP tool schemas and validation
-
-### Key Components
-
-**Unified Manager (`ray_mcp/managers/unified_manager.py`)**
-- Central orchestration layer that composes all specialized managers
-- Provides unified interface for local and Kubernetes Ray operations
-- Handles automatic detection between local Ray and KubeRay workflows
-
-**Tool Registry (`ray_mcp/tool_registry.py`)**
-- Centralized registration and routing for all MCP tools
-- Maps tool names to handlers and manages parameter validation
-- Handles automatic job/cluster type detection for unified tools
-
-**Main Entry Point (`ray_mcp/main.py`)**
-- MCP server initialization and protocol handling
-- Global manager instances: `ray_manager = RayUnifiedManager()` and `tool_registry = ToolRegistry(ray_manager)`
-
-### Dual Environment Support
-The system supports both local Ray clusters and Kubernetes-based KubeRay deployments:
-- **Local Mode**: Traditional Ray clusters on local machines
-- **Kubernetes Mode**: KubeRay operators for cloud-native deployments
-- **Automatic Detection**: Tools automatically detect and route to appropriate backend
-
-### Cloud Provider Integration
-- **Google Cloud (GKE)**: Full integration with service account authentication
-- **Local Kubernetes**: Support for minikube, Docker Desktop, etc.
-- **Provider Detection**: Automatic cloud environment detection
-
-## Development Patterns
-
-### Testing Strategy
-- **Unit Tests**: Fast tests with full mocking (`test_managers.py`, `test_core_functionality.py`)
-- **Integration Tests**: Component interaction tests (`test_kubernetes.py`)
-- **E2E Tests**: Complete workflows (`test_mcp_server.py`)
-- **Smoke Tests**: Quick system validation for CI/CD
-
-### Error Handling
-All operations use `ResponseFormatter` for consistent error responses:
-```python
-from ray_mcp.foundation.logging_utils import ResponseFormatter
-return ResponseFormatter.format_error_response("operation_name", exception)
+### Required Environment Variables
+```bash
+ANTHROPIC_API_KEY=your_api_key_here    # Required for LLM parsing
 ```
 
-### Tool Development
-1. Define schema in appropriate `ray_mcp/tools/*_tools.py` file
-2. Register in `ToolRegistry._register_all_tools()`
-3. Implement handler method in `ToolRegistry`
-4. Add corresponding manager method in `RayUnifiedManager`
-5. Add comprehensive tests
+### Optional Environment Variables
+```bash
+LLM_MODEL=claude-3-haiku-20240307      # Claude model (default: claude-3-haiku-20240307)
+RAY_MCP_ENHANCED_OUTPUT=true           # LLM-friendly responses with suggestions
+RAY_MCP_LOG_LEVEL=DEBUG                # Logging level
+GOOGLE_APPLICATION_CREDENTIALS=path    # GKE authentication
+RAY_DISABLE_USAGE_STATS=1              # Disable Ray telemetry
+```
 
-### State Management
-- Thread-safe state management via `StateManager`
-- Centralized cluster and job state tracking
-- Supports both local and distributed state scenarios
+## Commands
 
-## Important Implementation Details
+### Development
+```bash
+make test-fast     # Unit tests (mocked)
+make test-e2e      # Integration tests
+make lint          # Code quality
+make dev-install   # Setup development environment
+uv run ray-mcp     # Run MCP server
+```
 
-### Port Management
-- Automatic port allocation with conflict resolution
-- Cleanup of stale port locks via `PortManager`
-- Supports concurrent cluster operations
+### Testing
+```bash
+python test_runner.py unit    # Fast feedback
+python test_runner.py e2e     # Integration validation
+python test_runner.py all     # Complete test suite
+```
 
-### Log Processing
-- Unified log retrieval supporting both local Ray and KubeRay
-- Pagination and size limits for large log files
-- Error analysis and filtering capabilities
+## Dependencies
+- `ray[default]>=2.47.0`
+- `mcp>=1.0.0` 
+- `anthropic>=0.25.0,<1.0.0`
+- `kubernetes>=26.1.0`
+- `pydantic>=2.0.0`
+- Python 3.10+
 
-### Authentication Flows
-- Service account-based GKE authentication
-- Kubernetes config file support for local clusters
-- Credential validation and environment checks
+## Entry Points
+- `uv run ray-mcp` - Start MCP server
+- `python test_runner.py [unit|e2e|all]` - Run tests
+- `python -m ray_mcp.main` - Direct module execution
 
-### Kubernetes Integration
-- Custom Resource Definition (CRD) management for RayCluster and RayJob
-- Automatic KubeRay operator discovery and validation
-- Namespace-aware operations with proper resource cleanup
+## Key Files
+- `ray_mcp/tools.py` - 3-tool definitions
+- `ray_mcp/parsers.py` - Natural language parsing
+- `ray_mcp/handlers.py` - MCP protocol handlers
+- `ray_mcp/managers/` - Business logic
+- `ray_mcp/llm_parser.py` - Claude API integration
 
-## Common Development Tasks
-
-### Adding Support for a New Cloud Provider
-1. Create provider manager in `ray_mcp/cloud/providers/`
-2. Update cloud provider enum in `ray_mcp/foundation/interfaces.py`
-3. Add detection logic in `CloudProviderDetector`
-4. Update tool schemas in `ray_mcp/tools/cloud_tools.py`
-5. Add comprehensive tests for the new provider
-
-### Extending KubeRay Functionality
-1. Extend CRD specifications in `ray_mcp/kubernetes/crds/`
-2. Add manager methods in `ray_mcp/kubernetes/managers/`
-3. Update unified manager delegation in `RayUnifiedManager`
-4. Add tool schemas and handlers as needed
-
-### Debugging Common Issues
-- **GKE Connection Issues**: Check `GOOGLE_APPLICATION_CREDENTIALS` and project permissions
-- **KubeRay Operator**: Verify operator installation with `kubectl get pods -n kuberay-system`
-- **Port Conflicts**: Clean stale locks with port manager cleanup methods
-- **Test Failures**: Use `make test-smoke` for quick system validation
-
-## Configuration Files
-
-- `pyproject.toml` - Project metadata, dependencies, tool configuration (black, isort, pyright, coverage)
-- `pytest.ini` - Test configuration, markers, async settings
-- `Makefile` - Development automation and command shortcuts
-- `uv.lock` - Dependency lock file (managed by uv)
-
-The codebase follows Python 3.10+ standards with comprehensive type hints and async/await patterns throughout.
+## Debugging
+- **LLM Issues**: Verify `ANTHROPIC_API_KEY` is set
+- **GKE Issues**: Check `GOOGLE_APPLICATION_CREDENTIALS`
+- **KubeRay Issues**: `kubectl get pods -n kuberay-system`
+- **Architecture Validation**: `make lint-tool-functions`

@@ -11,8 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent
 
-from ray_mcp.tool_registry import ToolRegistry
-
 
 # E2E Test Environment Configuration
 class E2EConfig:
@@ -57,12 +55,20 @@ async def call_tool(
 ) -> List[TextContent]:
     """Helper function to call tools using the ToolRegistry architecture."""
     # Use the same RayManager instance that the MCP tools use
-    from ray_mcp.main import ray_manager
+    from ray_mcp.main import handlers
 
-    registry = ToolRegistry(ray_manager)
-
-    # Execute the tool
-    result = await registry.execute_tool(tool_name, arguments or {})
+    # Convert tool name and arguments to prompt format
+    if tool_name == "ray_cluster":
+        prompt = arguments.get("prompt", "list clusters")
+        result = await handlers.handle_cluster(prompt)
+    elif tool_name == "ray_job":
+        prompt = arguments.get("prompt", "list jobs")
+        result = await handlers.handle_job(prompt)
+    elif tool_name == "cloud":
+        prompt = arguments.get("prompt", "check environment")
+        result = await handlers.handle_cloud(prompt)
+    else:
+        result = {"status": "error", "message": f"Unknown tool: {tool_name}"}
 
     # Convert the result to the expected MCP format
     result_text = json.dumps(result, indent=2)
@@ -85,11 +91,21 @@ class TempScriptManager:
 
     def __enter__(self) -> str:
         """Create temporary script and return path."""
+        # Add shebang line if it's not already present
+        if not self.script_content.startswith("#!"):
+            script_with_shebang = "#!/usr/bin/env python3\n" + self.script_content
+        else:
+            script_with_shebang = self.script_content
+
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=self.suffix, delete=False
         ) as f:
-            f.write(self.script_content)
+            f.write(script_with_shebang)
             self.script_path = f.name
+
+        # Make the script executable
+        os.chmod(self.script_path, 0o755)
+
         return self.script_path
 
     def __exit__(self, exc_type, exc_val, exc_tb):

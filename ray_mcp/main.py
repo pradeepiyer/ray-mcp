@@ -1,10 +1,10 @@
-"""Ray MCP Server - Main entry point for the Ray Model Context Protocol server."""
+"""Ray MCP Server - Clean 3-tool natural language interface."""
 
 import asyncio
 import json
 import logging
 import sys
-from typing import List, Optional
+from typing import Optional
 
 from mcp import stdio_server
 from mcp.server import Server
@@ -12,18 +12,19 @@ from mcp.server.models import InitializationOptions
 from mcp.types import ServerCapabilities, TextContent, Tool
 
 from . import __version__
-from .foundation.import_utils import is_ray_available
+from .foundation.import_utils import RAY_AVAILABLE
 from .foundation.logging_utils import LoggingUtility
+from .handlers import RayHandlers
 from .managers.unified_manager import RayUnifiedManager
-from .tool_registry import ToolRegistry
+from .tools import get_ray_tools
 
 # Check Ray availability
-RAY_AVAILABLE = is_ray_available()
+# RAY_AVAILABLE is imported from import_utils
 
-# Initialize server and ray manager
+# Initialize server and components
 server = Server("ray-mcp")
 ray_manager = RayUnifiedManager()
-tool_registry = ToolRegistry(ray_manager)
+handlers = RayHandlers(ray_manager)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,61 +32,54 @@ logger = logging.getLogger(__name__)
 
 
 @server.list_tools()
-async def list_tools() -> List[Tool]:
-    """List available Ray tools with their schemas and descriptions.
-
-    Returns a comprehensive list of all available Ray cluster management tools
-    that can be called by LLM agents. Each tool includes detailed input schemas
-    with parameter descriptions, types, and validation rules.
-
-    Returns:
-        List[Tool]: List of Tool objects containing:
-            - name: Tool identifier (e.g., "init_ray", "submit_job")
-            - description: Human-readable description of tool functionality
-            - inputSchema: JSON schema defining required and optional parameters
-                with types, constraints, and descriptions for each parameter
-
-    The tools are organized into categories:
-    - Basic cluster management: init_ray, stop_ray, inspect_ray
-    - Job management: submit_job, list_jobs, inspect_job, cancel_job
-    - Logs & debugging: retrieve_logs
-
-    Failure modes:
-        - No tools available: Returns empty list (should not occur in normal operation)
-        - Schema generation errors: Returns tools with basic schemas
-    """
-    return tool_registry.get_tool_list()
+async def list_tools() -> list[Tool]:
+    """Return the 3 Ray tools with natural language interfaces."""
+    return get_ray_tools()
 
 
-# Dispatcher for all tool calls
 @server.call_tool()
-async def dispatch_tool_call(
-    name: str, arguments: Optional[dict] = None
-) -> List[TextContent]:
-    """Dispatch tool call to the correct tool handler by name."""
-    result = await tool_registry.execute_tool(name, arguments)
-    if "enhanced_output" in result:
-        return [TextContent(type="text", text=result["enhanced_output"])]
-    else:
+async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextContent]:
+    """Handle tool calls with natural language prompts."""
+    if not arguments or "prompt" not in arguments:
+        return [
+            TextContent(
+                type="text", text='{"status": "error", "message": "prompt required"}'
+            )
+        ]
+
+    prompt = arguments["prompt"]
+
+    try:
+        if name == "ray_cluster":
+            result = await handlers.handle_cluster(prompt)
+        elif name == "ray_job":
+            result = await handlers.handle_job(prompt)
+        elif name == "cloud":
+            result = await handlers.handle_cloud(prompt)
+        else:
+            result = {"status": "error", "message": f"Unknown tool: {name}"}
+
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    except Exception as e:
+        error_result = {"status": "error", "message": str(e)}
+        return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
 
 
 async def main():
-    """Main entry point for the Ray MCP server."""
+    """Run the Ray MCP server."""
     if not RAY_AVAILABLE:
         LoggingUtility.log_warning(
             "server",
             "Ray is not available. The MCP server will start but Ray operations will fail.",
         )
 
-    # Start the server
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,
             write_stream,
             InitializationOptions(
                 server_name="ray-mcp",
-                # Version automatically synced from pyproject.toml via package metadata
                 server_version=__version__,
                 capabilities=ServerCapabilities(),
             ),
@@ -93,7 +87,7 @@ async def main():
 
 
 def run_server():
-    """Run the Ray MCP server."""
+    """Entry point for the Ray MCP server."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

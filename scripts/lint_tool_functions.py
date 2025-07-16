@@ -50,8 +50,8 @@ class ToolFunctionLinter(ast.NodeVisitor):
             self.issues.append({
                 'line': node.lineno,
                 'message': f"locals() usage detected in tool function '{self.function_name}'. "
-                          f"This can cause unexpected parameters to be passed. "
-                          f"Use explicit parameter dictionaries instead."
+                          "This can cause unexpected parameters to be passed. "
+                          "Use explicit parameter dictionaries instead."
             })
         
         # Check for execute_tool calls with locals()
@@ -65,8 +65,8 @@ class ToolFunctionLinter(ast.NodeVisitor):
                     self.issues.append({
                         'line': node.lineno,
                         'message': f"execute_tool() called with locals() in function '{self.function_name}'. "
-                                  f"This can pass unexpected parameters like 'tool_registry'. "
-                                  f"Use explicit parameter dictionaries instead."
+                                  "This can pass unexpected parameters like 'tool_registry'. "
+                                  "Use explicit parameter dictionaries instead."
                     })
         
         self.generic_visit(node)

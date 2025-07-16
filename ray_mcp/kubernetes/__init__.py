@@ -2,17 +2,14 @@
 
 This package provides comprehensive Kubernetes support including:
 - KubeRay cluster and job management
-- Native Kubernetes configuration and client handling
+- Native Kubernetes operations
 """
 
-from .config import KubernetesClient, KubernetesConfig
-from .managers import KubeRayClusterManager, KubeRayJobManager, KubernetesManager
+from .kuberay_cluster_manager import KubeRayClusterManager
+from .kuberay_job_manager import KubeRayJobManager
+from .kubernetes_manager import KubernetesManager
 
 __all__ = [
-    # Configuration
-    "KubernetesConfig",
-    "KubernetesClient",
-    # Managers
     "KubernetesManager",
     "KubeRayClusterManager",
     "KubeRayJobManager",

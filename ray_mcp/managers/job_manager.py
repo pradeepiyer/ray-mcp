@@ -1,379 +1,260 @@
-"""Centralized job management for Ray clusters."""
+"""Pure prompt-driven job management for Ray clusters using Dashboard API."""
 
-import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ..foundation.base_managers import ResourceManager
-from ..foundation.interfaces import ManagedComponent
+from ..config import config
+from ..foundation.base_execute_mixin import BaseExecuteRequestMixin
+from ..foundation.dashboard_client import DashboardAPIError, DashboardClient
+from ..foundation.import_utils import ray
+from ..foundation.logging_utils import error_response, success_response
+from ..foundation.resource_manager import ResourceManager
+from ..llm_parser import get_parser
 
 
-class JobManager(ResourceManager, ManagedComponent):
-    """Manages Ray job lifecycle operations with robust client management."""
+class JobManager(ResourceManager, BaseExecuteRequestMixin):
+    """Pure prompt-driven Ray job management using Dashboard API."""
 
-    def __init__(self, state_manager):
-        # Initialize both parent classes
-        ResourceManager.__init__(
-            self,
-            state_manager,
-            enable_ray=True,
-            enable_kubernetes=False,
-            enable_cloud=False,
-        )
-        ManagedComponent.__init__(self, state_manager)
+    def __init__(self, unified_manager=None):
+        super().__init__(enable_ray=True)
+        self._unified_manager = unified_manager
 
-        # Job client lock for thread-safe operations
-        self._job_client_lock = asyncio.Lock()
+    def get_action_parser(self):
+        """Get the action parser for job operations."""
+        return get_parser().parse_job_action
 
-    @property
-    def _handle_exceptions(self):
-        """Get the exception handler decorator."""
-        return self._ResponseFormatter.handle_exceptions
-
-    async def submit_job(
-        self,
-        entrypoint: str,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        job_id: Optional[str] = None,
-        metadata: Optional[Dict[str, str]] = None,
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """Submit a job to the Ray cluster."""
-        return await self._execute_operation(
-            "submit job",
-            self._submit_job_operation,
-            entrypoint,
-            runtime_env,
-            job_id,
-            metadata,
-            **kwargs,
-        )
-
-    async def list_jobs(self) -> Dict[str, Any]:
-        """List all jobs in the Ray cluster."""
-        return await self._execute_operation("list jobs", self._list_jobs_operation)
-
-    async def cancel_job(self, job_id: str) -> Dict[str, Any]:
-        """Cancel a running job."""
-        return await self._execute_operation(
-            "cancel job", self._cancel_job_operation, job_id
-        )
-
-    async def inspect_job(self, job_id: str, mode: str = "status") -> Dict[str, Any]:
-        """Inspect job details with different modes."""
-        return await self._execute_operation(
-            "inspect job", self._inspect_job_operation, job_id, mode
-        )
-
-    async def _submit_job_operation(
-        self,
-        entrypoint: str,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        job_id: Optional[str] = None,
-        metadata: Optional[Dict[str, str]] = None,
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """Execute job submission operation with thread-safe client access."""
-        # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
-
-        # Validate entrypoint
-        validation_error = self._validate_entrypoint(entrypoint)
-        if validation_error:
-            return validation_error
-
-        # Execute job submission with thread-safe client access
-        async def _execute_submit():
-            job_client = await self._get_or_create_job_client("submit job")
-            if not job_client:
-                raise RuntimeError("Failed to initialize job client")
-
-            # Pass all kwargs to Ray's submit_job method - let Ray handle parameter validation
-            # This avoids the issue where inspect.signature() filters out valid parameters
-            # that are accepted through **kwargs in Ray's JobSubmissionClient.submit_job method
-            return job_client.submit_job(
-                entrypoint=entrypoint,
-                runtime_env=runtime_env,
-                job_id=job_id,
-                metadata=metadata,
-                **kwargs,
-            )
-
-        submitted_job_id = await self._execute_with_client_lock(
-            _execute_submit, "submit job"
-        )
-
+    def get_operation_handlers(self) -> dict[str, Any]:
+        """Get mapping of operation names to handler methods."""
         return {
-            "message": f"Job submitted successfully with ID: {submitted_job_id}",
-            "job_id": submitted_job_id,
-            "entrypoint": entrypoint,
-            "runtime_env": runtime_env,
-            "metadata": metadata,
+            "submit": self._submit_job_from_prompt,
+            "list": self._list_jobs,
+            "get": self._handle_get_job,
+            "inspect": self._handle_get_job,
+            "cancel": self._handle_cancel_job,
+            "logs": self._handle_get_logs,
         }
 
-    async def _list_jobs_operation(self) -> Dict[str, Any]:
-        """Execute list jobs operation with thread-safe client access."""
-        # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
+    async def _handle_get_job(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Handle get/inspect job operation with validation."""
+        job_id = action.get("job_id")
+        if not job_id:
+            return error_response("job_id required")
+        return await self._get_job_status(job_id)
 
-        # Execute job listing with thread-safe client access
-        async def _execute_list():
-            job_client = await self._get_or_create_job_client("list jobs")
-            if not job_client:
-                raise RuntimeError("Failed to initialize job client")
+    async def _handle_cancel_job(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Handle cancel job operation with validation."""
+        job_id = action.get("job_id")
+        if not job_id:
+            return error_response("job_id required")
+        return await self._cancel_job(job_id)
 
-            return job_client.list_jobs()
+    async def _handle_get_logs(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Handle get logs operation with validation."""
+        job_id = action.get("job_id")
+        if not job_id:
+            return error_response("job_id required")
+        return await self._get_job_logs(job_id)
 
-        jobs = await self._execute_with_client_lock(_execute_list, "list jobs")
-
-        formatted_jobs = []
-        for job in jobs:
-            formatted_job = self._format_job_info(job)
-            formatted_jobs.append(formatted_job)
-
-        return {
-            "message": f"Found {len(formatted_jobs)} jobs",
-            "jobs": formatted_jobs,
-            "job_count": len(formatted_jobs),
-        }
-
-    async def _cancel_job_operation(self, job_id: str) -> Dict[str, Any]:
-        """Execute cancel job operation with thread-safe client access."""
-        # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
-
-        # Validate job ID
-        validation_error = self._validate_job_id(job_id, "cancel job")
-        if validation_error:
-            return validation_error
-
-        # Execute job cancellation with thread-safe client access
-        async def _execute_cancel():
-            job_client = await self._get_or_create_job_client("cancel job")
-            if not job_client:
-                raise RuntimeError("Failed to initialize job client")
-
-            return job_client.stop_job(job_id)
-
-        success = await self._execute_with_client_lock(_execute_cancel, "cancel job")
-
-        if success:
-            return {
-                "message": f"Job {job_id} cancelled successfully",
-                "job_id": job_id,
-                "cancelled": True,
-            }
-        else:
-            raise RuntimeError(f"Failed to cancel job {job_id}")
-
-    async def _inspect_job_operation(
-        self, job_id: str, mode: str = "status"
-    ) -> Dict[str, Any]:
-        """Execute inspect job operation with thread-safe client access."""
-        # Use ManagedComponent validation method instead of ResourceManager's
-        self._ensure_ray_initialized()
-
-        # Validate job ID
-        validation_error = self._validate_job_id(job_id, "inspect job")
-        if validation_error:
-            return validation_error
-
-        # Execute job inspection with thread-safe client access
-        async def _execute_inspect():
-            job_client = await self._get_or_create_job_client("inspect job")
-            if not job_client:
-                raise RuntimeError("Failed to initialize job client")
-
-            # Get job details
-            job_details = job_client.get_job_info(job_id)
-
-            # Get logs if needed (within the same lock to ensure consistency)
-            logs = None
-            logs_error = None
-            if mode in ["logs", "debug"]:
-                try:
-                    logs = job_client.get_job_logs(job_id)
-                except Exception as e:
-                    logs_error = str(e)
-
-            return job_details, logs, logs_error
-
-        job_details, logs, logs_error = await self._execute_with_client_lock(
-            _execute_inspect, "inspect job"
-        )
-        formatted_job = self._format_job_info(job_details)
-
-        result = {
-            "message": f"Job {job_id} inspection completed",
-            "job_id": job_id,
-            "job_info": formatted_job,
-            "inspection_mode": mode,
-        }
-
-        # Add mode-specific information
-        if mode in ["logs", "debug"]:
-            if logs is not None:
-                result["logs"] = logs
-            if logs_error is not None:
-                result["logs_error"] = logs_error
-
-        if mode == "debug":
-            # Add debug-specific information
-            result["debug_info"] = {
-                "runtime_env": formatted_job.get("runtime_env"),
-                "entrypoint": formatted_job.get("entrypoint"),
-                "metadata": formatted_job.get("metadata", {}),
+    async def _submit_job_from_prompt(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Submit job from parsed prompt action."""
+        try:
+            job_spec = {
+                "entrypoint": action.get("script") or action.get("entrypoint"),
+                "runtime_env": action.get("runtime_env", {}),
+                "metadata": action.get("metadata", {}),
+                "job_id": action.get("job_id"),
             }
 
-        return result
+            if not job_spec["entrypoint"]:
+                return error_response("script/entrypoint required")
 
-    async def _execute_with_client_lock(self, operation_func, operation_name: str):
-        """Execute operation with comprehensive client lock protection.
+            return await self._submit_job(job_spec)
 
-        This method ensures thread-safe access to the job client by protecting
-        all client interactions within a single lock boundary, preventing race
-        conditions and ensuring consistency across concurrent operations.
+        except Exception as e:
+            return self._handle_error("submit job from prompt", e)
 
-        Args:
-            operation_func: Async function that performs the job client operation
-            operation_name: Name of the operation for logging purposes
+    async def _submit_job(self, job_spec: dict[str, Any]) -> dict[str, Any]:
+        """Submit a job to the Ray cluster using Dashboard API."""
+        try:
+            if not self._is_ray_ready():
+                return error_response(
+                    "Ray cluster is not running. Start a cluster first."
+                )
 
-        Returns:
-            Result from the operation function
-
-        Raises:
-            RuntimeError: If operation fails or client is unavailable
-        """
-        async with self._job_client_lock:
-            try:
-                return await operation_func()
-            except Exception as e:
-                self._log_error(operation_name, e)
-                raise RuntimeError(
-                    f"Failed to execute {operation_name}: {str(e)}"
-                ) from e
-
-    async def _get_or_create_job_client(self, operation_name: str) -> Optional[Any]:
-        """Get or create job submission client within existing lock protection.
-
-        This method assumes it's called within the _job_client_lock context
-        and provides client initialization with proper state management.
-        """
-        self._ensure_ray_available()
-
-        if not self._JobSubmissionClient:
-            self._log_error(
-                operation_name,
-                RuntimeError("Ray job submission client is not available"),
-            )
-            return None
-
-        # Return existing client if available
-        existing_client = self._get_state_value("job_client")
-        if existing_client:
-            return existing_client
-
-        # Create new client (already within lock protection)
-        dashboard_url = self._get_state_value("dashboard_url")
-        if not dashboard_url:
-            self._log_warning(
-                operation_name,
-                "Dashboard URL not available, attempting to initialize",
-            )
-            dashboard_url = await self._initialize_job_client_if_available()
-
+            dashboard_url = self._get_dashboard_url()
             if not dashboard_url:
-                return None
+                return error_response("Could not determine Ray dashboard URL")
 
-        # Initialize client with retry logic
-        job_client = await self._initialize_job_client_with_retry(dashboard_url)
-        if job_client:
-            self._update_state(job_client=job_client)
+            async with DashboardClient(dashboard_url) as client:
+                result = await client.submit_job(
+                    entrypoint=job_spec["entrypoint"],
+                    runtime_env=job_spec.get("runtime_env"),
+                    job_id=job_spec.get("job_id"),
+                    metadata=job_spec.get("metadata"),
+                )
 
-        return job_client
+                # Dashboard API uses submission_id as the primary identifier
+                submitted_job_id = result.get("submission_id", result.get("job_id"))
 
-    async def _initialize_job_client_with_retry(
-        self, dashboard_url: str, max_retries: int = 3, retry_delay: float = 1.0
-    ) -> Optional[Any]:
-        """Initialize job client with retry logic."""
+                return success_response(
+                    job_id=submitted_job_id,
+                    entrypoint=job_spec["entrypoint"],
+                    job_status="submitted",
+                    message=f"Job submitted successfully",
+                )
 
-        async def _init_client():
-            if not self._JobSubmissionClient:
-                raise RuntimeError("JobSubmissionClient is not available")
-            job_client = self._JobSubmissionClient(dashboard_url)
-            # Test the connection by listing jobs
-            _ = job_client.list_jobs()
-            return job_client
-
-        try:
-            return await self._retry_operation(
-                _init_client, max_retries, retry_delay, "job_client_init"
-            )
+        except DashboardAPIError as e:
+            return error_response(f"Dashboard API error: {e.message}")
         except Exception as e:
-            self._log_error(
-                "job_client_init",
-                RuntimeError(
-                    f"Failed to initialize job client after {max_retries} attempts"
-                ),
-            )
-            return None
+            return self._handle_error("submit job", e)
 
-    async def _initialize_job_client_if_available(self) -> Optional[str]:
-        """Try to initialize job client if Ray cluster is available."""
+    async def _list_jobs(self, action: dict[str, Any]) -> dict[str, Any]:
+        """List all jobs in the cluster using Dashboard API."""
         try:
-            if not self._is_ray_initialized():
-                return None
+            if not self._is_ray_ready():
+                return error_response("Ray cluster is not running")
 
-            # Get dashboard URL from Ray cluster information
-            runtime_context = self._ray.get_runtime_context()
-            if not runtime_context:
-                return None
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
+                return error_response("Could not determine Ray dashboard URL")
 
-            # Try to get dashboard URL from existing state first
-            existing_dashboard_url = self._get_state_value("dashboard_url")
-            if existing_dashboard_url:
-                return existing_dashboard_url
+            async with DashboardClient(dashboard_url) as client:
+                result = await client.list_jobs()
 
-            # Extract dashboard URL from cluster context
-            # Check if we can get GCS address to determine the host
-            gcs_address = getattr(runtime_context, "gcs_address", None)
-            if gcs_address:
-                # Parse GCS address to get host (format: host:port)
-                try:
-                    host = (
-                        gcs_address.split(":")[0] if ":" in gcs_address else "127.0.0.1"
-                    )
-                    # Use standard Ray dashboard port (8265)
-                    dashboard_url = f"http://{host}:8265"
-                except Exception:
-                    # Fallback to localhost if parsing fails
-                    dashboard_url = "http://127.0.0.1:8265"
-            else:
-                # Fallback to localhost if no GCS address available
-                dashboard_url = "http://127.0.0.1:8265"
+                # Transform Dashboard API response to match expected format
+                job_list = []
+                jobs_data = (
+                    result if isinstance(result, list) else result.get("jobs", [])
+                )
 
-            # Store the dashboard URL in state for future use
-            self._update_state(dashboard_url=dashboard_url)
-            return dashboard_url
+                for job in jobs_data:
+                    if isinstance(job, dict):
+                        # Dashboard API uses submission_id as the primary identifier
+                        job_id = job.get("submission_id") or job.get("job_id")
 
+                        job_list.append(
+                            {
+                                "job_id": job_id,
+                                "status": job.get("status"),
+                                "entrypoint": job.get("entrypoint", "unknown"),
+                                "start_time": job.get("start_time"),
+                                "end_time": job.get("end_time"),
+                                "metadata": job.get("metadata", {}),
+                            }
+                        )
+
+                return success_response(
+                    jobs=job_list,
+                    total_count=len(job_list),
+                    message=f"Found {len(job_list)} jobs",
+                )
+
+        except DashboardAPIError as e:
+            return error_response(f"Dashboard API error: {e.message}")
         except Exception as e:
-            self._log_error("initialize job client", e)
-            return None
+            return self._handle_error("list jobs", e)
 
-    def _format_job_info(self, job) -> Dict[str, Any]:
-        """Format job information for consistent output."""
-        if hasattr(job, "__dict__"):
-            job_dict = job.__dict__
-        else:
-            job_dict = job
+    async def _get_job_status(self, job_id: str) -> dict[str, Any]:
+        """Get status of a specific job using Dashboard API."""
+        try:
+            if not self._is_ray_ready():
+                return error_response("Ray cluster is not running")
 
-        return {
-            "job_id": job_dict.get("job_id") or job_dict.get("submission_id"),
-            "status": str(job_dict.get("status", "unknown")),
-            "entrypoint": job_dict.get("entrypoint"),
-            "submission_time": job_dict.get("submission_time"),
-            "start_time": job_dict.get("start_time"),
-            "end_time": job_dict.get("end_time"),
-            "metadata": job_dict.get("metadata", {}),
-            "runtime_env": job_dict.get("runtime_env"),
-            "message": job_dict.get("message", ""),
-        }
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
+                return error_response("Could not determine Ray dashboard URL")
+
+            async with DashboardClient(dashboard_url) as client:
+                job_info = await client.get_job_info(job_id)
+
+                return success_response(
+                    job_id=job_id,
+                    job_status=job_info.get("status"),
+                    entrypoint=job_info.get("entrypoint", "unknown"),
+                    start_time=job_info.get("start_time"),
+                    end_time=job_info.get("end_time"),
+                    metadata=job_info.get("metadata", {}),
+                    message=job_info.get("message"),
+                )
+
+        except DashboardAPIError as e:
+            if e.status_code == 404:
+                return error_response(f"Job {job_id} not found")
+            return error_response(f"Dashboard API error: {e.message}")
+        except Exception as e:
+            return self._handle_error("get job status", e)
+
+    async def _cancel_job(self, job_id: str) -> dict[str, Any]:
+        """Cancel a running job using Dashboard API."""
+        try:
+            if not self._is_ray_ready():
+                return error_response("Ray cluster is not running")
+
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
+                return error_response("Could not determine Ray dashboard URL")
+
+            async with DashboardClient(dashboard_url) as client:
+                result = await client.stop_job(job_id)
+
+                return success_response(
+                    job_id=job_id, message=f"Job {job_id} cancellation requested"
+                )
+
+        except DashboardAPIError as e:
+            if e.status_code == 404:
+                return error_response(f"Job {job_id} not found")
+            return error_response(f"Dashboard API error: {e.message}")
+        except Exception as e:
+            return self._handle_error("cancel job", e)
+
+    async def _get_job_logs(self, job_id: str) -> dict[str, Any]:
+        """Get logs for a specific job using Dashboard API."""
+        try:
+            if not self._is_ray_ready():
+                return error_response("Ray cluster is not running")
+
+            dashboard_url = self._get_dashboard_url()
+            if not dashboard_url:
+                return error_response("Could not determine Ray dashboard URL")
+
+            async with DashboardClient(dashboard_url) as client:
+                logs_result = await client.get_job_logs(job_id)
+
+                # Handle different response formats from Dashboard API
+                logs = logs_result.get("logs", str(logs_result))
+
+                return success_response(
+                    job_id=job_id, logs=logs, message=f"Retrieved logs for job {job_id}"
+                )
+
+        except DashboardAPIError as e:
+            if e.status_code == 404:
+                return error_response(f"Job {job_id} not found")
+            return error_response(f"Dashboard API error: {e.message}")
+        except Exception as e:
+            return self._handle_error("get job logs", e)
+
+    def _get_dashboard_url(self) -> str:
+        """Get dashboard URL for job client."""
+        try:
+            if not self._is_ray_ready():
+                return "http://127.0.0.1:8265"
+
+            # First try to get from unified manager if available
+            if self._unified_manager and hasattr(
+                self._unified_manager, "get_dashboard_url"
+            ):
+                dashboard_url = self._unified_manager.get_dashboard_url()
+                if dashboard_url != "http://127.0.0.1:8265":  # Not the default fallback
+                    return dashboard_url
+
+            # Try to get dashboard URL from Ray
+            runtime_context = ray.get_runtime_context()
+            if hasattr(runtime_context, "dashboard_url"):
+                return runtime_context.dashboard_url
+
+            # Fallback to default
+            return "http://127.0.0.1:8265"
+
+        except Exception:
+            return "http://127.0.0.1:8265"

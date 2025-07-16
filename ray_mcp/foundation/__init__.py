@@ -1,25 +1,39 @@
-"""Foundation components for Ray MCP.
+"""Minimal foundation for prompt-driven Ray MCP."""
 
-This package contains the core infrastructure components that other
-modules depend on, including base classes, interfaces, and import utilities.
-"""
-
-from .base_managers import BaseManager, ResourceManager
-from .import_utils import get_kubernetes_imports, get_logging_utils, get_ray_imports
-from .interfaces import CloudProvider, ManagedComponent
-from .test_mocks import get_mock_logging_utils
+from .dashboard_client import DashboardAPIError, DashboardClient
+from .enums import AuthenticationType, CloudProvider
+from .import_utils import (
+    GOOGLE_AUTH_AVAILABLE,
+    GOOGLE_CLOUD_AVAILABLE,
+    GOOGLE_SERVICE_ACCOUNT_AVAILABLE,
+    KUBERNETES_AVAILABLE,
+    RAY_AVAILABLE,
+    ApiException,
+    ConfigException,
+    DefaultCredentialsError,
+    client,
+    config,
+    container_v1,
+    default,
+    google_auth_transport,
+    ray,
+    service_account,
+)
+from .logging_utils import LoggingUtility, error_response, success_response
+from .resource_manager import ResourceManager
 
 __all__ = [
-    # Base managers
-    "BaseManager",
     "ResourceManager",
-    # Interfaces
     "CloudProvider",
-    "ManagedComponent",
-    # Import utilities
-    "get_ray_imports",
-    "get_logging_utils",
-    "get_kubernetes_imports",
-    # Test utilities
-    "get_mock_logging_utils",
+    "AuthenticationType",
+    "DashboardAPIError",
+    "DashboardClient",
+    "LoggingUtility",
+    "success_response",
+    "error_response",
+    "RAY_AVAILABLE",
+    "KUBERNETES_AVAILABLE",
+    "GOOGLE_CLOUD_AVAILABLE",
+    "GOOGLE_AUTH_AVAILABLE",
+    "GOOGLE_SERVICE_ACCOUNT_AVAILABLE",
 ]

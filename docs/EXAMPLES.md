@@ -1,600 +1,284 @@
-# Ray MCP Examples
+# Examples
 
-Comprehensive examples demonstrating Ray MCP capabilities across local and Kubernetes environments.
+Common usage patterns and examples for Ray MCP Server.
 
-## Quick Start Examples
+## Basic Local Ray
 
-### Basic Local Ray Cluster
+### Create and Use Local Cluster
 
-```python
-# Start a local Ray cluster
-init_ray_cluster()
+```bash
+# Create local cluster
+ray_cluster: "create a local cluster with 4 CPUs"
 
-# Submit a simple job
-submit_ray_job(entrypoint="python examples/simple_job.py")
+# Submit a job
+ray_job: "submit job with script train.py"
 
 # Check job status
-list_ray_jobs()
+ray_job: "list all running jobs"
 
-# Get cluster information
-inspect_ray_cluster()
+# Get job logs
+ray_job: "get logs for job raysubmit_123"
 
-# Stop the cluster
-stop_ray_cluster()
+# Stop cluster
+ray_cluster: "stop the current cluster"
 ```
 
-### Head-Only Local Cluster
+### Head-Only Cluster
 
-```python
-# Start head-only cluster (no worker nodes)
-init_ray_cluster(worker_nodes=[])
+```bash
+# Create head-only cluster (no workers)
+ray_cluster: "create head-only cluster"
 
-# Submit a job that runs on the head node
-submit_ray_job(
-    entrypoint="python cpu_task.py",
-    runtime_env={"pip": ["numpy", "pandas"]}
-)
+# Submit job to head node
+ray_job: "submit job with script lightweight_task.py"
 ```
 
-### Custom Local Cluster
+### Connect to Existing Cluster
 
-```python
-# Create cluster with custom resource configuration
-init_ray_cluster(
-    num_cpus=8,
-    num_gpus=2,
-    worker_nodes=[
-        {"num_cpus": 4, "num_gpus": 1},
-        {"num_cpus": 2, "num_gpus": 0},
-        {"num_cpus": 4, "num_gpus": 1}
-    ]
-)
+```bash
+# Connect to existing Ray cluster
+ray_cluster: "connect to cluster at 192.168.1.100:10001"
 
-# Submit job with runtime environment
-submit_ray_job(
-    entrypoint="python distributed_training.py",
-    runtime_env={
-        "pip": ["torch>=1.12", "transformers", "datasets"],
-        "env_vars": {
-            "CUDA_VISIBLE_DEVICES": "0,1",
-            "MODEL_PATH": "/data/models"
-        }
-    },
-    metadata={"project": "ml-training", "user": "data-scientist"}
-)
+# Use the cluster
+ray_job: "list all running jobs"
 ```
 
-## KubeRay Examples
+## Kubernetes and KubeRay
 
-### Basic KubeRay Cluster
+### Create KubeRay Cluster
 
-```python
-# Create a basic KubeRay cluster
-init_ray_cluster(
-    cluster_type="kubernetes",
-    cluster_name="basic-ray-cluster",
-    namespace="ray-system"
-)
+```bash
+# Simple KubeRay cluster
+ray_cluster: "create Ray cluster named ml-cluster with 3 workers on kubernetes"
 
-# Submit a job to the KubeRay cluster
-submit_ray_job(
-    entrypoint="python distributed_job.py",
-    job_type="kubernetes",
-    namespace="ray-system"
-)
+# Submit job
+ray_job: "submit job with script distributed_training.py on kubernetes"
 
-# Scale the cluster
-scale_ray_cluster(
-    cluster_name="basic-ray-cluster",
-    namespace="ray-system",
-    worker_group_name="worker-group",
-    replicas=5
-)
+# Check cluster status
+ray_cluster: "inspect cluster status"
 ```
 
-# Connect to existing production cluster
-init_ray_cluster(
-    address="production-ray-cluster.production.svc.cluster.local:8265",
-    cluster_type="kubernetes",
-    cluster_name="production-ray-cluster"
-)
+### Advanced KubeRay Configuration
+
+```bash
+# Create cluster with specific resources
+ray_cluster: "create Ray cluster named gpu-cluster with 2 CPU workers and 1 GPU worker on kubernetes"
+
+# Submit job with resource requirements
+ray_job: "submit job with script gpu_training.py requiring 1 GPU on kubernetes"
+
+# Scale cluster
+ray_cluster: "scale cluster gpu-cluster to 5 workers"
 ```
 
-## Cloud Provider Examples
+### Manage KubeRay Jobs
 
-### GKE Setup and Usage
+```bash
+# List jobs in specific namespace
+ray_job: "list jobs in namespace production"
 
-```python
-# Detect cloud environment
-detect_cloud_provider()
+# Get job logs from kubernetes
+ray_job: "get logs for job training-job-123 in namespace ml-workloads"
 
-# Authenticate with GKE
-authenticate_cloud_provider(
-    provider="gke",
-    service_account_path="/path/to/service-account.json",
-    project_id="my-gcp-project"
-)
-
-# List available GKE clusters
-list_kubernetes_clusters(
-    provider="gke",
-    project_id="my-gcp-project"
-)
-
-# Create a new GKE cluster
-create_kubernetes_cluster(
-    provider="gke",
-    cluster_spec={
-        "name": "ray-gke-cluster",
-        "zone": "us-central1-a",
-        "node_count": 4,
-        "machine_type": "n1-standard-4"
-    },
-    project_id="my-gcp-project"
-)
-
-# Connect to the GKE cluster
-connect_kubernetes_cluster(
-    provider="gke",
-    cluster_name="ray-gke-cluster",
-    zone="us-central1-a",
-    project_id="my-gcp-project"
-)
-
-# Create KubeRay cluster on GKE
-init_ray_cluster(
-    cluster_type="kubernetes",
-    cluster_name="ray-on-gke",
-    namespace="ray-system",
-    head_node_spec={
-        "service_type": "LoadBalancer",
-        "node_selector": {
-            "cloud.google.com/gke-nodepool": "ray-nodes"
-        }
-    }
-)
+# Cancel kubernetes job
+ray_job: "cancel job training-job-123 in namespace ml-workloads"
 ```
 
-### Local Kubernetes Setup
+## Cloud Provider Integration
 
-```python
-# Check local Kubernetes environment
-check_environment(provider="local")
+### Google Cloud (GKE)
 
-# Authenticate with local cluster
-authenticate_cloud_provider(
-    provider="local",
-    config_file="~/.kube/config",
-    context="minikube"
-)
+```bash
+# Authenticate with GCP
+cloud: "authenticate with GCP project my-ml-project"
 
-# List local clusters
-list_kubernetes_clusters(provider="local")
+# List GKE clusters
+cloud: "list all GKE clusters"
 
-# Connect to local cluster
-connect_kubernetes_cluster(
-    provider="local",
-    cluster_name="minikube",
-    context="minikube"
-)
+# Connect to GKE cluster
+cloud: "connect to GKE cluster production-cluster in zone us-central1-a"
+
+# Create new GKE cluster
+cloud: "create GKE cluster ml-cluster with 4 nodes in zone us-central1-a"
 ```
 
-### Multi-Cloud Workflow
+### Environment Check
 
-```python
-# Check all available providers
-check_environment(provider="all")
+```bash
+# Check environment setup
+cloud: "check cloud environment setup"
 
-# Get cloud provider status
-get_cloud_provider_status(provider="all")
-
-# Switch between providers
-disconnect_cloud_provider(provider="gke")
-authenticate_cloud_provider(provider="local")
-
-# Get configuration templates
-get_cloud_config_template(
-    provider="gke",
-    config_type="authentication"
-)
+# Verify authentication
+cloud: "check GCP authentication status"
 ```
 
-## Advanced Job Management
+## Job Management Patterns
 
-### Job with Complex Runtime Environment
+### Simple Job Submission
 
-```python
-submit_ray_job(
-    entrypoint="python complex_pipeline.py",
-    runtime_env={
-        "pip": [
-            "torch>=1.12",
-            "transformers>=4.20",
-            "datasets>=2.0",
-            "wandb>=0.12"
-        ],
-        "conda": {
-            "name": "ml-env",
-            "channels": ["conda-forge", "pytorch"],
-            "dependencies": [
-                "python=3.9",
-                "cudatoolkit=11.7",
-                "pytorch::pytorch",
-                "pytorch::torchvision"
-            ]
-        },
-        "env_vars": {
-            "WANDB_PROJECT": "ray-experiments",
-            "CUDA_VISIBLE_DEVICES": "0,1,2,3",
-            "OMP_NUM_THREADS": "4",
-            "MKL_NUM_THREADS": "4"
-        },
-        "working_dir": "/workspace/ml-project"
-    },
-    metadata={
-        "experiment_name": "large_model_training",
-        "model_type": "transformer",
-        "dataset": "custom_dataset_v2"
-    }
-)
+```bash
+# Basic job
+ray_job: "submit job with script process_data.py"
+
+# Job with arguments
+ray_job: "submit job with script train.py --epochs 10 --batch-size 32"
+
+# Job with resource requirements
+ray_job: "submit job with script distributed_job.py requiring 4 CPUs"
 ```
 
-### Job Monitoring and Debugging
+### Job Monitoring
 
-```python
-# Submit job with debugging enabled
-job_result = submit_ray_job(
-    entrypoint="python debug_job.py",
-    job_id="debug-job-001"
-)
+```bash
+# List all jobs
+ray_job: "list all jobs"
 
-# Monitor job progress
-inspect_ray_job(job_id="debug-job-001", mode="status")
+# List only running jobs
+ray_job: "list running jobs"
 
-# Get job logs with error analysis
-retrieve_logs(
-    identifier="debug-job-001",
-    include_errors=True,
-    max_size_mb=100
-)
+# Check specific job status
+ray_job: "get status for job raysubmit_456"
 
-# Get paginated logs
-retrieve_logs(
-    identifier="debug-job-001",
-    page=1,
-    page_size=500,
-    filter="ERROR"
-)
-
-# Get detailed debugging information
-inspect_ray_job(job_id="debug-job-001", mode="debug")
+# Get job logs
+ray_job: "get logs for job raysubmit_456"
 ```
 
-### Batch Job Processing
+### Job Lifecycle
 
-```python
-# Submit multiple jobs for batch processing
-job_ids = []
+```bash
+# Submit job
+ray_job: "submit job with script long_running_task.py"
 
-for i in range(10):
-    result = submit_ray_job(
-        entrypoint=f"python process_batch.py --batch-id {i}",
-        job_id=f"batch-job-{i:03d}",
-        runtime_env={
-            "pip": ["pandas", "numpy"],
-            "env_vars": {
-                "BATCH_ID": str(i),
-                "INPUT_PATH": f"/data/batch_{i}",
-                "OUTPUT_PATH": f"/output/batch_{i}"
-            }
-        }
-    )
-    job_ids.append(result.get("job_id"))
+# Monitor progress
+ray_job: "get status for job raysubmit_789"
 
-# Monitor all jobs
-for job_id in job_ids:
-    inspect_ray_job(job_id=job_id, mode="status")
+# Cancel if needed
+ray_job: "cancel job raysubmit_789"
 ```
 
-## Log Management Examples
+## Advanced Scenarios
 
-### Basic Log Retrieval
+### Multi-Environment Workflow
 
-```python
-# Get recent job logs
-retrieve_logs(
-    identifier="job_abc123",
-    num_lines=1000
-)
+```bash
+# 1. Start with local development
+ray_cluster: "create local cluster with 2 CPUs"
+ray_job: "submit job with script test_model.py"
 
-# Get logs with error analysis
-retrieve_logs(
-    identifier="job_abc123",
-    include_errors=True,
-    max_size_mb=50
-)
+# 2. Move to kubernetes for larger scale
+ray_cluster: "create Ray cluster named dev-cluster with 5 workers on kubernetes"
+ray_job: "submit job with script full_training.py on kubernetes"
+
+# 3. Deploy to production GKE
+cloud: "connect to GKE cluster production-cluster"
+ray_job: "submit job with script production_inference.py on kubernetes"
 ```
-
-### Advanced Log Analysis
-
-```python
-# Get system logs
-retrieve_logs(
-    identifier="ray-head-node",
-    log_type="system",
-    filter="ERROR|WARN",
-    num_lines=5000
-)
-
-# Get worker logs
-retrieve_logs(
-    identifier="worker-group-1",
-    log_type="worker",
-    page=1,
-    page_size=1000,
-    include_errors=True
-)
-
-# Get task-specific logs
-retrieve_logs(
-    identifier="task_456789",
-    log_type="task",
-    filter="completed|failed",
-    num_lines=500
-)
-```
-
-## Cluster Management Examples
-
-### Cluster Scaling
-
-```python
-# Scale up cluster
-scale_ray_cluster(
-    cluster_name="production-cluster",
-    namespace="production",
-    worker_group_name="cpu-workers",
-    replicas=10,
-    min_replicas=5,
-    max_replicas=15
-)
-
-# Scale down cluster
-scale_ray_cluster(
-    cluster_name="production-cluster",
-    namespace="production",
-    worker_group_name="cpu-workers",
-    replicas=3
-)
-```
-
-### Cluster Monitoring
-
-```python
-# List all clusters
-list_ray_clusters(all_namespaces=True)
-
-# Get detailed cluster info
-inspect_ray_cluster(
-    cluster_name="production-cluster",
-    namespace="production"
-)
-
-# Check cluster health across namespaces
-for namespace in ["production", "staging", "development"]:
-    cluster_info = inspect_ray_cluster(namespace=namespace)
-    print(f"Cluster health in {namespace}: {cluster_info}")
-```
-
-## Complete Workflows
-
-### ML Training Pipeline
-
-```python
-# 1. Set up GKE environment
-authenticate_cloud_provider(
-    provider="gke",
-    service_account_path="/path/to/service-account.json",
-    project_id="ml-project"
-)
-
-# 2. Create training cluster
-init_ray_cluster(
-    cluster_type="kubernetes",
-    cluster_name="ml-training-cluster",
-    namespace="ml-workloads",
-    head_node_spec={
-        "num_cpus": 8,
-        "memory_request": "16Gi",
-        "service_type": "LoadBalancer"
-    },
-    worker_node_specs=[
-        {
-            "group_name": "gpu-workers",
-            "replicas": 4,
-            "num_cpus": 8,
-            "num_gpus": 2,
-            "memory_request": "32Gi"
-        }
-    ]
-)
-
-# 3. Submit training job
-training_job = submit_ray_job(
-    entrypoint="python train_model.py --config config.yaml",
-    job_type="kubernetes",
-    job_name="model-training",
-    namespace="ml-workloads",
-    cluster_selector="ml-training-cluster",
-    runtime_env={
-        "pip": ["torch", "transformers", "datasets", "wandb"],
-        "working_dir": "/workspace/ml-project"
-    }
-)
-
-# 4. Monitor training progress
-inspect_ray_job(job_id=training_job["job_id"], mode="debug")
-
-# 5. Clean up after training
-stop_ray_cluster(
-    cluster_name="ml-training-cluster",
-    namespace="ml-workloads"
-)
-```
-
-### Batch Processing Pipeline
-
-```python
-# 1. Create ephemeral cluster for batch processing
-batch_job = submit_ray_job(
-    entrypoint="python batch_processor.py --input-path /data/input",
-    job_type="kubernetes",
-    job_name="batch-processing",
-    namespace="batch-jobs",
-    shutdown_after_job_finishes=True,
-    ttl_seconds_after_finished=7200,  # 2 hours
-    runtime_env={
-        "pip": ["pandas", "numpy", "dask"],
-        "env_vars": {
-            "BATCH_SIZE": "1000",
-            "PARALLEL_WORKERS": "8"
-        }
-    }
-)
-
-# 2. Monitor batch processing
-while True:
-    status = inspect_ray_job(job_id=batch_job["job_id"])
-    if status["data"]["status"] in ["SUCCEEDED", "FAILED"]:
-        break
-    time.sleep(30)
-
-# 3. Get processing results
-retrieve_logs(
-    identifier=batch_job["job_id"],
-    include_errors=True,
-    filter="processed|completed"
-)
-```
-
-### Development and Testing
-
-```python
-# 1. Start local development cluster
-init_ray_cluster(
-    num_cpus=4,
-    worker_nodes=[{"num_cpus": 2}]
-)
-
-# 2. Test job locally
-test_job = submit_ray_job(
-    entrypoint="python test_job.py",
-    runtime_env={
-        "pip": ["pytest", "mock"],
-        "working_dir": "./tests"
-    }
-)
-
-# 3. Debug if needed
-if test_job["status"] != "SUCCEEDED":
-    retrieve_logs(
-        identifier=test_job["job_id"],
-        include_errors=True,
-        mode="debug"
-    )
-
-# 4. Deploy to staging
-authenticate_cloud_provider(provider="gke")
-init_ray_cluster(
-    cluster_type="kubernetes",
-    cluster_name="staging-cluster",
-    namespace="staging"
-)
-
-# 5. Run staging tests
-staging_job = submit_ray_job(
-    entrypoint="python integration_tests.py",
-    job_type="kubernetes",
-    namespace="staging"
-)
-```
-
-## Best Practices
 
 ### Resource Management
 
-```python
-# Use appropriate resource requests and limits
-init_ray_cluster(
-    cluster_type="kubernetes",
-    head_node_spec={
-        "cpu_request": 2,
-        "cpu_limit": 4,
-        "memory_request": "4Gi",
-        "memory_limit": "8Gi"
-    },
-    worker_node_specs=[
-        {
-            "replicas": 3,
-            "cpu_request": 1,
-            "cpu_limit": 2,
-            "memory_request": "2Gi",
-            "memory_limit": "4Gi",
-            "min_replicas": 1,
-            "max_replicas": 10
-        }
-    ]
-)
+```bash
+# Create cluster with specific resources
+ray_cluster: "create Ray cluster named compute-cluster with 8 CPU workers and 2 GPU workers"
+
+# Submit jobs with different requirements
+ray_job: "submit job with script cpu_task.py requiring 2 CPUs"
+ray_job: "submit job with script gpu_task.py requiring 1 GPU"
+
+# Scale based on workload
+ray_cluster: "scale cluster compute-cluster to 12 workers"
 ```
 
-### Job Lifecycle Management
+### Debugging and Monitoring
 
-```python
-# Use meaningful job names and metadata
-submit_ray_job(
-    entrypoint="python job.py",
-    job_id="ml-training-experiment-001",
-    metadata={
-        "experiment_id": "exp_001",
-        "model_version": "v1.2",
-        "dataset": "training_set_v3",
-        "owner": "ml-team"
-    }
-)
+```bash
+# Check cluster health
+ray_cluster: "inspect cluster status"
 
-# Set appropriate TTL for cleanup
-submit_ray_job(
-    entrypoint="python batch_job.py",
-    job_type="kubernetes",
-    shutdown_after_job_finishes=True,
-    ttl_seconds_after_finished=3600,  # 1 hour cleanup
-    active_deadline_seconds=7200      # 2 hour timeout
-)
+# Monitor job progress
+ray_job: "get logs for job raysubmit_123"
+
+# Check resource usage
+ray_cluster: "show cluster resource usage"
+
+# Debug failed jobs
+ray_job: "get error logs for job raysubmit_456"
 ```
 
-### Error Handling and Monitoring
+## Common Patterns
 
-```python
-# Always check job status
-job_result = submit_ray_job(entrypoint="python job.py")
+### Development to Production
 
-if job_result["status"] == "success":
-    job_id = job_result["job_id"]
-    
-    # Monitor job completion
-    while True:
-        status = inspect_ray_job(job_id=job_id)
-        if status["data"]["status"] in ["SUCCEEDED", "FAILED"]:
-            break
-        time.sleep(10)
-    
-    # Get logs if job failed
-    if status["data"]["status"] == "FAILED":
-        retrieve_logs(
-            identifier=job_id,
-            include_errors=True,
-            max_size_mb=100
-        )
+```bash
+# 1. Local development
+ray_cluster: "create local cluster"
+ray_job: "submit job with script prototype.py"
+
+# 2. Kubernetes testing
+ray_cluster: "create Ray cluster named test-cluster on kubernetes"
+ray_job: "submit job with script prototype.py on kubernetes"
+
+# 3. Production deployment
+cloud: "connect to GKE cluster production"
+ray_job: "submit job with script production_model.py on kubernetes"
 ```
 
-These examples demonstrate the full capabilities of Ray MCP across local and Kubernetes environments, showcasing unified tools, cloud provider integration, and comprehensive job management features.
+### Batch Processing
+
+```bash
+# Create ephemeral cluster for batch job
+ray_cluster: "create Ray cluster named batch-cluster with 10 workers on kubernetes"
+
+# Submit batch job
+ray_job: "submit job with script batch_processing.py on kubernetes"
+
+# Monitor completion
+ray_job: "get status for job batch-processing-job"
+
+# Cleanup
+ray_cluster: "delete cluster batch-cluster"
+```
+
+### Interactive Development
+
+```bash
+# Create persistent cluster
+ray_cluster: "create Ray cluster named interactive-cluster with 4 workers on kubernetes"
+
+# Submit multiple experiments
+ray_job: "submit job with script experiment_1.py"
+ray_job: "submit job with script experiment_2.py"
+ray_job: "submit job with script experiment_3.py"
+
+# Monitor all experiments
+ray_job: "list all jobs"
+```
+
+## Error Handling
+
+### Common Issues
+
+```bash
+# Check if cluster is running
+ray_cluster: "inspect cluster status"
+
+# If authentication fails
+cloud: "check cloud environment setup"
+
+# If job fails
+ray_job: "get logs for job raysubmit_123"
+
+# If resources insufficient
+ray_cluster: "scale cluster to 8 workers"
+```
+
+### Recovery Patterns
+
+```bash
+# Restart failed job
+ray_job: "cancel job raysubmit_123"
+ray_job: "submit job with script fixed_model.py"
+
+# Scale up for resource issues
+ray_cluster: "scale cluster to 10 workers"
+ray_job: "submit job with script resource_intensive.py"
+```
