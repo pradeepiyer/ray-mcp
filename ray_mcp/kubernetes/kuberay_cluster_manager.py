@@ -526,7 +526,7 @@ class KubeRayClusterManager(ResourceManager):
             if not service_status:
                 return None
 
-            load_balancer = getattr(service_status, "load_balancer", None)
+            load_balancer = getattr(service_status, "loadBalancer", None)
             if not load_balancer:
                 return None
 
