@@ -308,7 +308,7 @@ spec:
                     )
                     action = "updated"
                 except ApiException as e:
-                    if e.status == 404:
+                    if hasattr(e, "status") and e.status == 404:
                         # Resource doesn't exist, create it
                         result = await asyncio.to_thread(
                             self._custom_objects_api.create_namespaced_custom_object,
@@ -339,7 +339,7 @@ spec:
                     )
                     action = "updated"
                 except ApiException as e:
-                    if e.status == 404:
+                    if hasattr(e, "status") and e.status == 404:
                         # Service doesn't exist, create it
                         result = await asyncio.to_thread(
                             self._core_v1_api.create_namespaced_service,
@@ -411,7 +411,7 @@ spec:
             }
 
         except ApiException as e:
-            if e.status == 404:
+            if hasattr(e, "status") and e.status == 404:
                 return {
                     "status": "success",
                     "message": f"{resource_type} {name} not found (already deleted)",
@@ -507,7 +507,7 @@ spec:
             }
 
         except ApiException as e:
-            if e.status == 404:
+            if hasattr(e, "status") and e.status == 404:
                 return {
                     "status": "error",
                     "message": f"{resource_type} {name} not found",
