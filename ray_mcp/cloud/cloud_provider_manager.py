@@ -8,7 +8,7 @@ from ..config import config
 from ..foundation.enums import CloudProvider
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..parsers import ActionParser
+from ..llm_parser import get_parser
 from .gke_manager import GKEManager
 
 
@@ -34,7 +34,7 @@ class CloudProviderManager(ResourceManager):
             - "check environment status"
         """
         try:
-            action = ActionParser.parse_cloud_action(prompt)
+            action = await get_parser().parse_cloud_action(prompt)
             operation = action["operation"]
 
             if operation == "authenticate":

@@ -12,7 +12,7 @@ from ..foundation.base_execute_mixin import BaseExecuteRequestMixin
 from ..foundation.import_utils import ray
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..parsers import ActionParser
+from ..llm_parser import get_parser
 
 
 class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
@@ -29,7 +29,7 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
 
     def get_action_parser(self):
         """Get the action parser for cluster operations."""
-        return ActionParser.parse_cluster_action
+        return get_parser().parse_cluster_action
 
     def get_operation_handlers(self) -> dict[str, Any]:
         """Get mapping of operation names to handler methods."""

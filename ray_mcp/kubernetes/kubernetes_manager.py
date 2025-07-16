@@ -7,7 +7,7 @@ from typing import Any, Optional
 from ..config import config
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..parsers import ActionParser
+from ..llm_parser import get_parser
 
 
 class KubernetesManager(ResourceManager):
@@ -30,7 +30,7 @@ class KubernetesManager(ResourceManager):
             - "inspect current kubernetes cluster"
         """
         try:
-            action = ActionParser.parse_kubernetes_action(prompt)
+            action = await get_parser().parse_kubernetes_action(prompt)
             operation = action["operation"]
 
             if operation == "connect":

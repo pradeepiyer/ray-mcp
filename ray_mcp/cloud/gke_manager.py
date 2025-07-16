@@ -24,7 +24,7 @@ from ..foundation.import_utils import (
 )
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..parsers import ActionParser
+from ..llm_parser import get_parser
 
 
 class GKEManager(ResourceManager):
@@ -63,7 +63,7 @@ class GKEManager(ResourceManager):
             - "get info for cluster production-cluster"
         """
         try:
-            action = ActionParser.parse_cloud_action(prompt)
+            action = await get_parser().parse_cloud_action(prompt)
             operation = action["operation"]
 
             if operation == "authenticate":

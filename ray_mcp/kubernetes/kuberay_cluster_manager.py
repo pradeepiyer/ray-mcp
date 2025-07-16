@@ -7,7 +7,7 @@ from ..config import config
 from ..foundation.import_utils import KUBERNETES_AVAILABLE, ApiException, client
 from ..foundation.logging_utils import LoggingUtility, error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..parsers import ActionParser
+from ..llm_parser import get_parser
 from .manifest_generator import ManifestGenerator
 
 
@@ -35,7 +35,7 @@ class KubeRayClusterManager(ResourceManager):
             - "delete cluster experiment-cluster"
         """
         try:
-            action = ActionParser.parse_kuberay_cluster_action(prompt)
+            action = await get_parser().parse_kuberay_cluster_action(prompt)
             operation = action["operation"]
 
             if operation == "create":

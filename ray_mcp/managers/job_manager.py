@@ -8,7 +8,7 @@ from ..foundation.dashboard_client import DashboardAPIError, DashboardClient
 from ..foundation.import_utils import ray
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..parsers import ActionParser
+from ..llm_parser import get_parser
 
 
 class JobManager(ResourceManager, BaseExecuteRequestMixin):
@@ -20,7 +20,7 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
 
     def get_action_parser(self):
         """Get the action parser for job operations."""
-        return ActionParser.parse_job_action
+        return get_parser().parse_job_action
 
     def get_operation_handlers(self) -> dict[str, Any]:
         """Get mapping of operation names to handler methods."""

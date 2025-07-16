@@ -1,5 +1,6 @@
 """Base execute request mixin to eliminate duplicated patterns."""
 
+import asyncio
 from typing import Any, Callable
 
 from .logging_utils import error_response
@@ -19,7 +20,16 @@ class BaseExecuteRequestMixin:
     async def execute_request(self, prompt: str) -> dict[str, Any]:
         """Execute operations using natural language prompts."""
         try:
-            action = self.get_action_parser()(prompt)
+            parser_method = self.get_action_parser()
+            # Support both sync and async parsers
+            if hasattr(parser_method, "__call__"):
+                if asyncio.iscoroutinefunction(parser_method):
+                    action = await parser_method(prompt)
+                else:
+                    action = parser_method(prompt)
+            else:
+                action = parser_method(prompt)
+
             operation = action["operation"]
 
             handlers = self.get_operation_handlers()
