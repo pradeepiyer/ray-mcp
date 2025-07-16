@@ -116,7 +116,17 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
                 self._cluster_address = ray_info.get("redis_address") or ray_info.get(
                     "gcs_address"
                 )
-                self._dashboard_url = f"http://127.0.0.1:{dashboard_port}"
+                # Get dashboard URL from Ray context, add http:// prefix if needed
+                dashboard_url = (
+                    ray_info.dashboard_url
+                    if hasattr(ray_info, "dashboard_url")
+                    else f"127.0.0.1:{dashboard_port}"
+                )
+                self._dashboard_url = (
+                    f"http://{dashboard_url}"
+                    if not dashboard_url.startswith("http")
+                    else dashboard_url
+                )
 
                 return success_response(
                     cluster_address=self._cluster_address,
@@ -163,11 +173,15 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
                 # Update simple state tracking
                 self._cluster_address = address
 
-                # Try to determine dashboard URL
-                try:
-                    dashboard_url = self._get_dashboard_url()
-                    self._dashboard_url = dashboard_url
-                except Exception:
+                # Get dashboard URL from Ray context
+                if hasattr(ray_info, "dashboard_url") and ray_info.dashboard_url:
+                    dashboard_url = ray_info.dashboard_url
+                    self._dashboard_url = (
+                        f"http://{dashboard_url}"
+                        if not dashboard_url.startswith("http")
+                        else dashboard_url
+                    )
+                else:
                     self._dashboard_url = None
 
                 return success_response(
@@ -231,10 +245,9 @@ class ClusterManager(ResourceManager, BaseExecuteRequestMixin):
             if not self._is_ray_ready():
                 return None
 
-            # Try to get dashboard URL from Ray
-            runtime_context = ray.get_runtime_context()
-            if hasattr(runtime_context, "dashboard_url"):
-                return runtime_context.dashboard_url
+            # Return stored dashboard URL if available
+            if self._dashboard_url:
+                return self._dashboard_url
 
             # Fallback to default port
             return "http://127.0.0.1:8265"
