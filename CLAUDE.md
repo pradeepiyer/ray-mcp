@@ -36,9 +36,9 @@ uv run ray-mcp     # Run MCP server
 
 ### Testing
 ```bash
-python test_runner.py unit    # Fast feedback
-python test_runner.py e2e     # Integration validation
-python test_runner.py all     # Complete test suite
+python tests/integration/test_runner.py unit    # Fast feedback
+python tests/integration/test_runner.py e2e     # Integration validation
+python tests/integration/test_runner.py all     # Complete test suite
 ```
 
 ## Dependencies
@@ -51,7 +51,7 @@ python test_runner.py all     # Complete test suite
 
 ## Entry Points
 - `uv run ray-mcp` - Start MCP server
-- `python test_runner.py [unit|e2e|all]` - Run tests
+- `python tests/integration/test_runner.py [unit|e2e|all]` - Run tests
 - `python -m ray_mcp.main` - Direct module execution
 
 ## Key Files
