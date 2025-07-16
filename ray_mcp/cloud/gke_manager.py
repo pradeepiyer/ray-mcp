@@ -354,6 +354,15 @@ class GKEManager(ResourceManager):
                 credentials=self._credentials
             )
 
+    async def _verify_gke_credentials(self) -> None:
+        """Verify that GKE credentials are valid by making a simple API call."""
+        if not self._gke_client or not self._project_id:
+            raise RuntimeError("GKE client not initialized")
+
+        # Make a simple API call to verify credentials
+        parent = f"projects/{self._project_id}/locations/-"
+        await asyncio.to_thread(self._gke_client.list_clusters, parent=parent)
+
     def _format_timestamp(self, timestamp) -> str:
         """Format timestamp safely handling both string and datetime objects."""
         if timestamp is None:
@@ -744,32 +753,55 @@ class GKEManager(ResourceManager):
         return datetime.now().isoformat()
 
     async def _ensure_gke_authenticated(self) -> dict[str, Any]:
-        """Ensure GKE authentication is configured."""
+        """Ensure GKE authentication is configured and credentials are valid."""
         try:
-            if self._is_authenticated:
-                return success_response(
-                    message="Already authenticated with GKE",
-                    project_id=self._project_id,
-                )
+            if self._is_authenticated and self._credentials and self._gke_client:
+                # Verify existing credentials are still valid
+                try:
+                    # Test credentials with a simple API call
+                    await self._verify_gke_credentials()
+                    return success_response(
+                        message="Already authenticated with GKE",
+                        project_id=self._project_id,
+                    )
+                except Exception:
+                    # Credentials are invalid, need to re-authenticate
+                    self._is_authenticated = False
+                    self._credentials = None
+                    self._gke_client = None
 
             # Try to authenticate
             self._ensure_gcp_available()
 
-            # Get project ID from simplified config
+            # Get service account path and project ID
+            service_account_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
             project_id = config.gcp_project_id
+
+            if not service_account_path:
+                return error_response(
+                    "GOOGLE_APPLICATION_CREDENTIALS not set. Please set this environment variable."
+                )
 
             if not project_id:
                 return error_response(
                     "GCP project_id not configured. Set GOOGLE_APPLICATION_CREDENTIALS or configure authentication."
                 )
 
-            # Set authentication state
-            self._is_authenticated = True
-            self._project_id = project_id
-
-            return success_response(
-                message="GKE authentication configured", project_id=project_id
+            # Perform actual authentication with credential verification
+            auth_result = await self._authenticate_gke_operation(
+                service_account_path, project_id
             )
+
+            # Check if authentication was successful
+            if auth_result.get("authenticated"):
+                return success_response(
+                    message="GKE authentication configured and verified",
+                    project_id=project_id,
+                )
+            else:
+                return error_response(
+                    f"GKE authentication failed: {auth_result.get('error', 'Unknown error')}"
+                )
 
         except Exception as e:
             return self._handle_error("ensure gke authenticated", e)

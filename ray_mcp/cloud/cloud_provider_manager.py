@@ -501,20 +501,10 @@ class CloudProviderManager(ResourceManager):
             return self._handle_error("check environment", e)
 
     async def _ensure_gke_authenticated(self) -> dict[str, Any]:
-        """Ensure GKE authentication is configured."""
+        """Ensure GKE authentication is configured and credentials are valid."""
         try:
-            self._ensure_gcp_available()
-
-            # Check if credentials are available
-            if not config.gcp_project_id:
-                return error_response(
-                    "GCP project_id not configured. Set GOOGLE_APPLICATION_CREDENTIALS or configure authentication."
-                )
-
-            return success_response(
-                message="GKE authentication configured",
-                project_id=config.gcp_project_id,
-            )
+            # Delegate to the actual GKE manager for proper credential verification
+            return await self._gke_manager._ensure_gke_authenticated()
 
         except Exception as e:
             return self._handle_error("ensure gke authenticated", e)
