@@ -1,4 +1,4 @@
-"""Unit tests for LLM-based parsing functionality."""
+"""Unit tests for Claude-based parsing functionality."""
 
 import json
 from unittest.mock import AsyncMock, patch
@@ -14,7 +14,7 @@ class TestLLMActionParser:
     def setup_method(self):
         """Set up test fixtures."""
         self.parser = LLMActionParser(
-            base_url="http://test-url", api_key="test-key", model="gpt-4"
+            api_key="test-key", model="claude-3-haiku-20240307"
         )
 
     @pytest.mark.asyncio
@@ -29,13 +29,10 @@ class TestLLMActionParser:
         }
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             result = await self.parser.parse_cluster_action(
                 "Create a Ray cluster named test-cluster with 3 workers"
@@ -58,13 +55,10 @@ class TestLLMActionParser:
         }
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             result = await self.parser.parse_job_action(
                 "Submit job with script train.py"
@@ -85,13 +79,10 @@ class TestLLMActionParser:
         }
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             result = await self.parser.parse_cloud_action(
                 "authenticate with GCP project my-project"
@@ -112,13 +103,10 @@ class TestLLMActionParser:
         }
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             result = await self.parser.parse_kubernetes_action(
                 "inspect kubernetes cluster"
@@ -132,13 +120,10 @@ class TestLLMActionParser:
         mock_response = {"type": "cluster", "operation": "list"}
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             # First call should hit the API
             result1 = await self.parser.parse_action("list clusters")
@@ -153,7 +138,9 @@ class TestLLMActionParser:
     @pytest.mark.asyncio
     async def test_error_handling(self):
         """Test error handling when LLM call fails."""
-        with patch.object(self.parser.client.chat.completions, "create") as mock_create:
+        with patch.object(
+            self.parser.client.messages, "create", new_callable=AsyncMock
+        ) as mock_create:
             mock_create.side_effect = Exception("API Error")
 
             with pytest.raises(ValueError, match="Failed to parse action"):
@@ -180,13 +167,10 @@ class TestLLMActionParser:
         }
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             result = await self.parser.parse_action("create cluster test-cluster")
 
@@ -205,13 +189,10 @@ class TestLLMActionParser:
         }
 
         with patch.object(
-            self.parser.client.chat.completions, "create", new_callable=AsyncMock
+            self.parser.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
-            mock_create.return_value.choices = [AsyncMock()]
-            mock_create.return_value.choices[0].message = AsyncMock()
-            mock_create.return_value.choices[0].message.content = json.dumps(
-                mock_response
-            )
+            mock_create.return_value.content = [AsyncMock()]
+            mock_create.return_value.content[0].text = json.dumps(mock_response)
 
             with pytest.raises(
                 ValueError, match="Expected cluster action but got: job"
