@@ -108,7 +108,8 @@ Manage cloud providers and authentication.
 ```
 
 **Key Components:**
-- **ActionParser**: Converts natural language to structured actions
+- **LLM Parser**: Uses Anthropic Claude to convert natural language prompts to structured actions
+- **ActionParser**: Processes parsed prompts into Ray operations  
 - **RayUnifiedManager**: Routes requests between specialized managers
 - **RayHandlers**: Processes MCP tool calls with validation
 
@@ -134,14 +135,18 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0
 ### Environment Variables
 
 ```bash
-# Enhanced LLM-friendly output
-export RAY_MCP_ENHANCED_OUTPUT=true
+# LLM Processing Configuration (Required)
+export ANTHROPIC_API_KEY="your_api_key_here"    # Required for natural language parsing
 
-# Disable Ray usage statistics
-export RAY_DISABLE_USAGE_STATS=1
+# LLM Processing Configuration (Optional)
+export LLM_MODEL="claude-3-haiku-20240307"      # Claude model for prompt processing
 
-# Set logging level
-export RAY_MCP_LOG_LEVEL=INFO
+# Output and Logging
+export RAY_MCP_ENHANCED_OUTPUT=true             # Enhanced LLM-friendly responses
+export RAY_MCP_LOG_LEVEL=INFO                   # Logging level (DEBUG, INFO, WARNING, ERROR)
+
+# Ray Configuration
+export RAY_DISABLE_USAGE_STATS=1                # Disable Ray usage statistics
 ```
 
 ## 📖 Documentation

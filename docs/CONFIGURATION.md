@@ -97,10 +97,24 @@ cloud: "authenticate with local kubernetes"
 
 ## Environment Variables
 
+### LLM Processing Configuration
+
+**Required for natural language parsing:**
+```bash
+# Anthropic Claude API key for prompt processing
+export ANTHROPIC_API_KEY="your_api_key_here"
+```
+
+**Optional LLM settings:**
+```bash
+# Claude model selection (default: claude-3-haiku-20240307)
+export LLM_MODEL="claude-3-haiku-20240307"
+```
+
 ### Core Settings
 
 ```bash
-# Enhanced LLM-friendly output
+# Enhanced LLM-friendly output with suggestions
 export RAY_MCP_ENHANCED_OUTPUT=true
 
 # Disable Ray usage statistics
@@ -124,6 +138,17 @@ export KUBECONFIG="/path/to/kubeconfig"
 ## Troubleshooting
 
 ### Common Issues
+
+#### LLM Processing Errors
+```bash
+# Verify Anthropic API key is set
+echo $ANTHROPIC_API_KEY
+
+# Test API connectivity
+curl -H "Authorization: Bearer $ANTHROPIC_API_KEY" \
+     -H "Content-Type: application/json" \
+     https://api.anthropic.com/v1/messages
+```
 
 #### Authentication Errors
 ```bash
