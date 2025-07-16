@@ -33,27 +33,38 @@ class Config:
     def from_env(cls) -> "Config":
         """Load configuration from environment variables."""
 
-        def safe_int(value: str, default: str = None, optional: bool = False) -> Optional[int]:
-            """Safely convert string to int with optional default fallback."""
+        def safe_int_optional(value: str) -> Optional[int]:
+            """Safely convert string to int, returning None if invalid."""
             if not value or value.strip() == "":
-                return None if optional else int(default)
+                return None
             try:
                 return int(value)
             except ValueError:
-                return None if optional else int(default)
-                
+                return None
+
+        def safe_int_required(value: str, default: int) -> int:
+            """Safely convert string to int with required default fallback."""
+            if not value or value.strip() == "":
+                return default
+            try:
+                return int(value)
+            except ValueError:
+                return default
+
         return cls(
-            ray_address=os.getenv("RAY_ADDRESS") or None,
-            ray_dashboard_port=safe_int(os.getenv("RAY_DASHBOARD_PORT", ""), "8265"),
-            ray_num_cpus=safe_int(os.getenv("RAY_NUM_CPUS", ""), optional=True),
-            ray_num_gpus=safe_int(os.getenv("RAY_NUM_GPUS", ""), optional=True),
+            ray_address=os.getenv("RAY_ADDRESS"),
+            ray_dashboard_port=safe_int_required(
+                os.getenv("RAY_DASHBOARD_PORT", ""), 8265
+            ),
+            ray_num_cpus=safe_int_optional(os.getenv("RAY_NUM_CPUS", "")),
+            ray_num_gpus=safe_int_optional(os.getenv("RAY_NUM_GPUS", "")),
             kubernetes_namespace=os.getenv("KUBERNETES_NAMESPACE", "default"),
-            kubernetes_context=os.getenv("KUBERNETES_CONTEXT") or None,
-            gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT") or None,
+            kubernetes_context=os.getenv("KUBERNETES_CONTEXT"),
+            gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT"),
             gke_region=os.getenv("GKE_REGION", "us-central1"),
             gke_zone=os.getenv("GKE_ZONE", "us-central1-a"),
             log_level=os.getenv("RAY_MCP_LOG_LEVEL", "INFO"),
-            timeout_seconds=safe_int(os.getenv("RAY_MCP_TIMEOUT", ""), "300"),
+            timeout_seconds=safe_int_required(os.getenv("RAY_MCP_TIMEOUT", ""), 300),
             enhanced_output=os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower()
             == "true",
         )

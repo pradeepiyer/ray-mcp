@@ -37,31 +37,37 @@ class TestClusterManager:
         """Test cluster creation through natural language prompt."""
         prompt = "create a local cluster with 4 CPUs"
 
-        # Mock the entire Ray import and ensure RAY_AVAILABLE is True
-        with patch("ray_mcp.foundation.import_utils.RAY_AVAILABLE", True):
-            with patch("ray_mcp.foundation.import_utils.ray") as ray_mock:
-                ray_mock.is_initialized.return_value = False
-                ray_mock.init.return_value = None
+        # Mock the ray module directly in cluster manager
+        with patch("ray_mcp.managers.cluster_manager.ray") as ray_mock:
+            ray_mock.is_initialized.return_value = False
 
-                # Mock get_parser
-                with patch(
-                    "ray_mcp.managers.cluster_manager.get_parser"
-                ) as parser_mock:
-                    mock_llm_parser = Mock()
-                    mock_llm_parser.parse_cluster_action.return_value = {
-                        "operation": "create",
-                        "cpus": 4,
-                        "gpus": 0,
-                        "dashboard_port": 8265,
-                    }
-                    parser_mock.return_value = mock_llm_parser
+            # Create a proper mock for ray.init return value
+            mock_ray_info = Mock()
+            mock_ray_info.get.side_effect = lambda key: {
+                "redis_address": "redis://localhost:6379",
+                "gcs_address": "gcs://localhost:8076",
+            }.get(key)
+            mock_ray_info.dashboard_url = "127.0.0.1:8265"
 
-                    result = await self.manager.execute_request(prompt)
+            ray_mock.init.return_value = mock_ray_info
 
-                    # Verify successful response
-                    assert result["status"] == "success"
-                    assert "cluster_address" in result
-                    assert "Ray cluster created successfully" in result["message"]
+            # Mock get_parser
+            with patch("ray_mcp.managers.cluster_manager.get_parser") as parser_mock:
+                mock_llm_parser = Mock()
+                mock_llm_parser.parse_cluster_action.return_value = {
+                    "operation": "create",
+                    "cpus": 4,
+                    "gpus": 0,
+                    "dashboard_port": 8265,
+                }
+                parser_mock.return_value = mock_llm_parser
+
+                result = await self.manager.execute_request(prompt)
+
+                # Verify successful response
+                assert result["status"] == "success"
+                assert "cluster_address" in result
+                assert "Ray cluster created successfully" in result["message"]
 
     @pytest.mark.asyncio
     async def test_invalid_prompt_handling(self):

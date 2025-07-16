@@ -221,7 +221,14 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
                 logs_result = await client.get_job_logs(job_id)
 
                 # Handle different response formats from Dashboard API
-                logs = logs_result.get("logs", str(logs_result))
+                if isinstance(logs_result, dict):
+                    # Try to get logs from "logs" key first, then "message" key (for plain text responses)
+                    logs = logs_result.get("logs") or logs_result.get(
+                        "message", str(logs_result)
+                    )
+                else:
+                    # If it's not a dict (shouldn't happen with current implementation), convert to string
+                    logs = str(logs_result)
 
                 return success_response(
                     job_id=job_id, logs=logs, message=f"Retrieved logs for job {job_id}"
