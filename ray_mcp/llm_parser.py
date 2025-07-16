@@ -68,6 +68,8 @@ Important parsing rules:
 - For cluster status/info/inspect operations, set operation to "inspect"
 - For listing operations, set operation to "list" 
 - Detect "kubernetes", "k8s", "gke" keywords to set environment to "kubernetes"
+- CRITICAL: If request mentions "GCP", "GKE", "authenticate", "cloud", prioritize as cloud operation
+- GKE cluster operations are CLOUD operations, not local cluster operations
 - Extract numeric values for workers, cpus, gpus, dashboard_port
 - Extract cluster/job names but ignore common words like "ray", "cluster", "the", "all"
 - For job operations, extract job IDs and script paths
@@ -82,6 +84,10 @@ Examples:
 - "List jobs" → {{"type": "job", "operation": "list"}}
 - "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001"}}
 - "Create kubernetes cluster with head only" → {{"type": "cluster", "operation": "create", "environment": "kubernetes", "head_only": true, "workers": 0}}
+- "Authenticate with GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "List GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
+- "Authenticate with GCP and list all GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
+- "Connect to GKE cluster my-cluster in zone us-central1-a" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-central1-a", "provider": "gcp"}}
 
 Parse the user request above and return only the JSON object, no additional text.
 """
