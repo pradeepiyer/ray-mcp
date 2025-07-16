@@ -111,7 +111,11 @@ Parse the user request above and return only the JSON object, no additional text
             # Extract text content from Claude's response
             content = None
             for block in response.content:
-                if hasattr(block, "text") and block.text:
+                if (
+                    hasattr(block, "text")
+                    and hasattr(block, "type")
+                    and block.type == "text"
+                ):
                     content = block.text
                     break
 
