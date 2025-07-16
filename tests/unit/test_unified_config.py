@@ -131,22 +131,22 @@ class TestConfig:
             assert config.timeout_seconds == 900
 
     def test_config_invalid_integer_handling(self):
-        """Test handling of invalid integer values."""
+        """Test handling of invalid integer values - they should fall back to defaults."""
         # Test that empty string uses default
         with patch.dict(os.environ, {"RAY_DASHBOARD_PORT": ""}, clear=False):
             config = Config.from_env()
             assert config.ray_dashboard_port == 8265
 
-        # Test that invalid values raise ValueError
+        # Test that invalid values fall back to default
         invalid_values = ["not_a_number", "abc", "12.5"]
 
         for invalid_value in invalid_values:
             with patch.dict(
                 os.environ, {"RAY_DASHBOARD_PORT": invalid_value}, clear=False
             ):
-                # Invalid values should raise ValueError
-                with pytest.raises(ValueError):
-                    Config.from_env()
+                # Invalid values should fall back to default
+                config = Config.from_env()
+                assert config.ray_dashboard_port == 8265
 
     def test_config_optional_cpu_gpu_parsing(self):
         """Test optional CPU and GPU parsing."""

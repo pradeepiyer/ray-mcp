@@ -33,29 +33,20 @@ class Config:
     def from_env(cls) -> "Config":
         """Load configuration from environment variables."""
 
-        def safe_int(value: str, default: str) -> int:
-            """Safely convert string to int with default fallback."""
+        def safe_int(value: str, default: str = None, optional: bool = False) -> Optional[int]:
+            """Safely convert string to int with optional default fallback."""
             if not value or value.strip() == "":
-                return int(default)
+                return None if optional else int(default)
             try:
                 return int(value)
             except ValueError:
-                return int(default)
-
-        def safe_optional_int(value: str) -> Optional[int]:
-            """Safely convert string to optional int."""
-            if not value or value.strip() == "":
-                return None
-            try:
-                return int(value)
-            except ValueError:
-                return None
-
+                return None if optional else int(default)
+                
         return cls(
             ray_address=os.getenv("RAY_ADDRESS") or None,
             ray_dashboard_port=safe_int(os.getenv("RAY_DASHBOARD_PORT", ""), "8265"),
-            ray_num_cpus=safe_optional_int(os.getenv("RAY_NUM_CPUS", "")),
-            ray_num_gpus=safe_optional_int(os.getenv("RAY_NUM_GPUS", "")),
+            ray_num_cpus=safe_int(os.getenv("RAY_NUM_CPUS", ""), optional=True),
+            ray_num_gpus=safe_int(os.getenv("RAY_NUM_GPUS", ""), optional=True),
             kubernetes_namespace=os.getenv("KUBERNETES_NAMESPACE", "default"),
             kubernetes_context=os.getenv("KUBERNETES_CONTEXT") or None,
             gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT") or None,

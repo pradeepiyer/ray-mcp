@@ -248,12 +248,9 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
                 if dashboard_url != "http://127.0.0.1:8265":  # Not the default fallback
                     return dashboard_url
 
-            # Try to get dashboard URL from Ray
-            runtime_context = ray.get_runtime_context()
-            if hasattr(runtime_context, "dashboard_url"):
-                return runtime_context.dashboard_url
-
-            # Fallback to default
+            # Fallback to default port - JobManager doesn't manage Ray clusters directly,
+            # so it can't access the dashboard URL from ray.init() return value.
+            # The proper way is to get it from the unified manager (above).
             return "http://127.0.0.1:8265"
 
         except Exception:
