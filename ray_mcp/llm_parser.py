@@ -35,6 +35,7 @@ Based on the request, determine:
 1. The type of operation (cluster, job, or cloud)
 2. The specific operation being requested
 3. Any parameters mentioned
+4. Runtime environment requirements (pip packages, conda, working directory, etc.)
 
 Return JSON in this exact format:
 {{
@@ -59,7 +60,7 @@ Return JSON in this exact format:
     "cluster_name": "cluster-name or null",
     "context": "context or null",
     "config_file": "config-file or null",
-    "runtime_env": "runtime-env-object or null",
+    "runtime_env": {{"pip": ["package1", "package2"], "conda": "env-name", "working_dir": "/path", "git": {{"url": "repo-url", "branch": "main"}}, "env_vars": {{"KEY": "value"}}}} or null,
     "head_resources": "resource-object or null",
     "worker_resources": "resource-object or null"
 }}
@@ -78,6 +79,21 @@ Important parsing rules:
 - For cloud operations, detect provider and extract zones/regions
 - Set head_only to true if "head only" or "no worker" is mentioned
 - Extract addresses in host:port format
+
+**RUNTIME ENVIRONMENT PARSING:**
+- Extract pip packages from phrases like "with pip packages pandas numpy", "install pandas", "requires numpy"
+- Extract conda environments from phrases like "with conda env ml-env", "conda environment base"
+- Extract working directory from phrases like "in directory /app", "working dir /workspace"
+- Extract git repositories from phrases like "from git repo https://github.com/user/repo.git"
+- Extract environment variables from phrases like "with env var MODEL_PATH=/models"
+- Combine multiple runtime environment requirements into a single runtime_env object
+
+Runtime Environment Examples:
+- "submit job with script train.py and pip packages pandas numpy scikit-learn" → {{"runtime_env": {{"pip": ["pandas", "numpy", "scikit-learn"]}}}}
+- "create job with conda environment ml-env and working directory /workspace" → {{"runtime_env": {{"conda": "ml-env", "working_dir": "/workspace"}}}}
+- "run job from git repo https://github.com/user/ml-project.git with pip packages torch" → {{"runtime_env": {{"git": {{"url": "https://github.com/user/ml-project.git"}}, "pip": ["torch"]}}}}
+- "submit job with environment variable MODEL_PATH=/models and pip package tensorflow" → {{"runtime_env": {{"env_vars": {{"MODEL_PATH": "/models"}}, "pip": ["tensorflow"]}}}}
+
 - Only include non-null values in the response
 
 Examples:
@@ -87,6 +103,7 @@ Examples:
 - "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001"}}
 - "Create kubernetes cluster with head only" → {{"type": "cluster", "operation": "create", "environment": "kubernetes", "head_only": true, "workers": 0}}
 - "Submit job script train.py to kubernetes" → {{"type": "job", "operation": "create", "script": "train.py", "environment": "kubernetes"}}
+- "Submit job with script train.py and pip packages pandas numpy" → {{"type": "job", "operation": "create", "script": "train.py", "runtime_env": {{"pip": ["pandas", "numpy"]}}}}
 - "Stop local cluster" → {{"type": "cluster", "operation": "delete", "environment": "local"}}
 - "Delete kubernetes cluster" → {{"type": "cluster", "operation": "delete", "environment": "kubernetes"}}
 - "Get status of job on kubernetes" → {{"type": "job", "operation": "get", "environment": "kubernetes"}}

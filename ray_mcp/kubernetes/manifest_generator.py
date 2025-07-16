@@ -143,15 +143,59 @@ spec:
         # Handle runtime environment
         runtime_env_yaml = ""
         if runtime_env:
+            runtime_parts = []
+
+            # Handle pip dependencies
             if runtime_env.get("pip"):
+                pip_packages = runtime_env["pip"]
+                if isinstance(pip_packages, str):
+                    # Single package as string
+                    runtime_parts.append(f"pip:\n            - {pip_packages}")
+                elif isinstance(pip_packages, list):
+                    # Multiple packages as list
+                    pip_yaml = "pip:"
+                    for package in pip_packages:
+                        pip_yaml += f"\n            - {package}"
+                    runtime_parts.append(pip_yaml)
+
+            # Handle working directory
+            if runtime_env.get("working_dir"):
+                runtime_parts.append(f'working_dir: "{runtime_env["working_dir"]}"')
+
+            # Handle conda environment
+            if runtime_env.get("conda"):
+                conda_config = runtime_env["conda"]
+                if isinstance(conda_config, str):
+                    runtime_parts.append(f"conda: {conda_config}")
+                elif isinstance(conda_config, dict):
+                    conda_yaml = "conda:"
+                    for key, value in conda_config.items():
+                        conda_yaml += f"\n            {key}: {value}"
+                    runtime_parts.append(conda_yaml)
+
+            # Handle git repository
+            if runtime_env.get("git"):
+                git_config = runtime_env["git"]
+                if isinstance(git_config, dict):
+                    git_yaml = "git:"
+                    for key, value in git_config.items():
+                        git_yaml += f"\n            {key}: {value}"
+                    runtime_parts.append(git_yaml)
+
+            # Handle environment variables
+            if runtime_env.get("env_vars"):
+                env_vars = runtime_env["env_vars"]
+                env_yaml = "env_vars:"
+                for key, value in env_vars.items():
+                    env_yaml += f"\n            {key}: {value}"
+                runtime_parts.append(env_yaml)
+
+            # Combine all parts
+            if runtime_parts:
+                runtime_content = "\n          ".join(runtime_parts)
                 runtime_env_yaml = f"""
         runtimeEnvYAML: |
-          pip:
-            - {runtime_env["pip"][0]}"""
-            elif runtime_env.get("working_dir"):
-                runtime_env_yaml = f"""
-        runtimeEnvYAML: |
-          working_dir: "{runtime_env["working_dir"]}" """
+          {runtime_content}"""
 
         # Generate manifest YAML
         manifest = f"""apiVersion: ray.io/v1
