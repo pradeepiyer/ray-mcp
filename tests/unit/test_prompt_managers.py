@@ -43,16 +43,18 @@ class TestClusterManager:
                 ray_mock.is_initialized.return_value = False
                 ray_mock.init.return_value = None
 
-                # Mock ActionParser
+                # Mock get_parser
                 with patch(
-                    "ray_mcp.managers.cluster_manager.ActionParser"
+                    "ray_mcp.managers.cluster_manager.get_parser"
                 ) as parser_mock:
-                    parser_mock.parse_cluster_action.return_value = {
+                    mock_llm_parser = Mock()
+                    mock_llm_parser.parse_cluster_action.return_value = {
                         "operation": "create",
                         "cpus": 4,
                         "gpus": 0,
                         "dashboard_port": 8265,
                     }
+                    parser_mock.return_value = mock_llm_parser
 
                     result = await self.manager.execute_request(prompt)
 
@@ -66,10 +68,12 @@ class TestClusterManager:
         """Test handling of invalid/unparseable prompts."""
         prompt = "this is not a valid cluster command"
 
-        with patch("ray_mcp.managers.cluster_manager.ActionParser") as parser_mock:
-            parser_mock.parse_cluster_action.side_effect = ValueError(
+        with patch("ray_mcp.managers.cluster_manager.get_parser") as parser_mock:
+            mock_llm_parser = Mock()
+            mock_llm_parser.parse_cluster_action.side_effect = ValueError(
                 "Could not parse prompt"
             )
+            parser_mock.return_value = mock_llm_parser
 
             result = await self.manager.execute_request(prompt)
 
@@ -94,10 +98,12 @@ class TestJobManager:
         """Test handling of invalid/unparseable prompts."""
         prompt = "this is not a valid job command"
 
-        with patch("ray_mcp.managers.job_manager.ActionParser") as parser_mock:
-            parser_mock.parse_job_action.side_effect = ValueError(
+        with patch("ray_mcp.managers.job_manager.get_parser") as parser_mock:
+            mock_llm_parser = Mock()
+            mock_llm_parser.parse_job_action.side_effect = ValueError(
                 "Could not parse prompt"
             )
+            parser_mock.return_value = mock_llm_parser
 
             result = await self.manager.execute_request(prompt)
 
@@ -118,10 +124,12 @@ class TestCloudProviderManager:
         """Test handling of invalid/unparseable prompts."""
         prompt = "this is not a valid cloud command"
 
-        with patch("ray_mcp.cloud.cloud_provider_manager.ActionParser") as parser_mock:
-            parser_mock.parse_cloud_action.side_effect = ValueError(
+        with patch("ray_mcp.cloud.cloud_provider_manager.get_parser") as parser_mock:
+            mock_llm_parser = Mock()
+            mock_llm_parser.parse_cloud_action.side_effect = ValueError(
                 "Could not parse prompt"
             )
+            parser_mock.return_value = mock_llm_parser
 
             result = await self.manager.execute_request(prompt)
 

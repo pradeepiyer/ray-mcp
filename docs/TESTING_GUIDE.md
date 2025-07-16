@@ -97,10 +97,11 @@ response = parse_tool_result(result)
 ### **3. Testing Architecture**
 
 #### **Unit Tests** (`tests/unit/`)
-- **100% mocked** for fast execution
-- Tests individual components in isolation
+- **Meaningful functionality testing** (not mocked behavior)
+- Tests individual components like prompt construction, response parsing, cache behavior
 - Perfect for development and rapid iteration
 - Run with: `make test-fast`
+- **Note**: Tests were refactored to focus on real functionality rather than testing mocked LLM responses
 
 #### **Integration Tests** (`tests/e2e/`)
 - **No mocking** - real system integration
@@ -350,6 +351,65 @@ async def test():
 
 asyncio.run(test())
 "
+```
+
+## 🧪 **LLM-Based Testing Strategy**
+
+The Ray MCP system uses Claude for natural language parsing. The test strategy reflects this architecture:
+
+### **What We Test (Meaningful)**
+- **Prompt Construction**: Verify parsing prompts contain required structure and examples
+- **Response Parsing**: Test JSON extraction from Claude responses and null value cleaning  
+- **Cache Behavior**: Validate cache initialization, clearing, and API call avoidance
+- **Error Handling**: Test real error scenarios (API failures, empty responses, invalid JSON)
+- **Configuration**: Test initialization, environment variables, and singleton behavior
+- **Integration**: Optional real LLM calls for end-to-end validation (requires API key)
+
+### **What We Don't Test (Meaningless)**
+- ❌ Mocked LLM responses that just return predefined values
+- ❌ Specific parsing outcomes without real LLM calls
+- ❌ Edge cases that only exist in mocks, not reality
+
+### **Test Types**
+
+#### **Unit Tests** (`test_llm_parser_functionality.py`)
+Tests real functionality without API calls:
+```python
+# ✅ Good - Tests real prompt construction
+def test_prompt_contains_required_structure():
+    parser = LLMActionParser()
+    prompt = parser._build_parsing_prompt("create cluster")
+    assert "Parse the following Ray operation" in prompt
+    assert "User Request: \"create cluster\"" in prompt
+
+# ❌ Bad - Tests mocked behavior (removed)
+@patch('parser.parse_action')
+def test_cluster_parsing(mock_parse):
+    mock_parse.return_value = {"operation": "create"}
+    result = parser.parse_cluster_action("create cluster") 
+    assert result["operation"] == "create"  # Just testing mock!
+```
+
+#### **Integration Tests** (marked with `@pytest.mark.integration`)
+Optional tests with real Claude API calls:
+```python
+@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="No API key")
+async def test_real_cluster_parsing():
+    parser = LLMActionParser()
+    result = await parser.parse_cluster_action("create a local cluster with 4 CPUs")
+    assert result["type"] == "cluster"
+    assert result["operation"] == "create"
+    assert result["cpus"] == 4
+```
+
+### **Running LLM Tests**
+
+```bash
+# Unit tests (no API key needed)
+make test-fast
+
+# Integration tests (requires ANTHROPIC_API_KEY) 
+uv run pytest tests/unit/ -m integration
 ```
 
 ## 🛠️ **Advanced Testing Patterns**
