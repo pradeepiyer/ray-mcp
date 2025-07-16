@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+from contextlib import contextmanager
 import json
 import os
 import tempfile
@@ -105,6 +106,31 @@ class GKEManager(ResourceManager):
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
     # =================================================================
+
+    @contextmanager
+    def _temporary_ca_cert_file(self, ca_cert_data: bytes):
+        """Context manager for temporary CA certificate file with guaranteed cleanup."""
+        ca_cert_file = None
+        try:
+            # Create a temporary file for the CA certificate
+            ca_cert_file = tempfile.NamedTemporaryFile(
+                mode="w+b", delete=False, suffix=".crt"
+            )
+            ca_cert_file.write(ca_cert_data)
+            ca_cert_file.close()
+
+            # Store the file path for cleanup
+            self._ca_cert_file = ca_cert_file.name
+            yield ca_cert_file.name
+        finally:
+            # Always clean up the temporary file
+            if ca_cert_file and ca_cert_file.name and os.path.exists(ca_cert_file.name):
+                try:
+                    os.unlink(ca_cert_file.name)
+                except OSError:
+                    pass  # File might already be cleaned up
+            # Reset the instance variable
+            self._ca_cert_file = None
 
     def _cleanup_ca_cert_file(self):
         """Clean up the CA certificate file."""
@@ -404,9 +430,6 @@ class GKEManager(ResourceManager):
             return self._handle_error("gke cluster connection", e)
 
         try:
-            # Clean up any existing certificate file
-            self._cleanup_ca_cert_file()
-
             project_id = self._resolve_project_id(project_id)
             if not project_id:
                 return error_response(
@@ -481,57 +504,61 @@ class GKEManager(ResourceManager):
                     cluster.master_auth.cluster_ca_certificate
                 )
 
-                # Create a temporary file for the CA certificate
-                ca_cert_file = tempfile.NamedTemporaryFile(
-                    mode="w+b", delete=False, suffix=".crt"
-                )
-                ca_cert_file.write(ca_cert_data)
-                ca_cert_file.close()
+                # Use context manager to ensure cleanup of temporary CA certificate file
+                with self._temporary_ca_cert_file(ca_cert_data) as ca_cert_file_path:
+                    # Set SSL CA certificate path to use the CA certificate file
+                    if hasattr(configuration, "ssl_ca_cert"):
+                        setattr(configuration, "ssl_ca_cert", ca_cert_file_path)
+                    configuration.verify_ssl = True
 
-                # Store the file path for later cleanup
-                self._ca_cert_file = ca_cert_file.name
+                    # Test the connection by creating a client and making an API call
+                    with client.ApiClient(configuration) as api_client:
+                        v1 = client.CoreV1Api(api_client)
+                        version_api = client.VersionApi(api_client)
 
-                # Set SSL CA certificate path to use the CA certificate file
-                if hasattr(configuration, "ssl_ca_cert") and self._ca_cert_file:
-                    setattr(configuration, "ssl_ca_cert", self._ca_cert_file)
-                configuration.verify_ssl = True
+                        # Test connection by getting server version
+                        version_info = await asyncio.to_thread(version_api.get_code)
+
+                        # Also test basic functionality by listing namespaces
+                        namespaces = await asyncio.to_thread(v1.list_namespace)
+
+                    # Store the configuration for future use
+                    self._k8s_client = configuration
+
+                    # Safe access to git_version attribute
+                    git_version = getattr(version_info, "git_version", "unknown")
+                    return success_response(
+                        connected=True,
+                        server_version=git_version,
+                        namespaces_count=len(namespaces.items) if namespaces else 0,
+                    )
             else:
                 # For Autopilot clusters or clusters without explicit CA certs
                 configuration.verify_ssl = True
 
-            # Test the connection by creating a client and making an API call
-            with client.ApiClient(configuration) as api_client:
-                v1 = client.CoreV1Api(api_client)
-                version_api = client.VersionApi(api_client)
+                # Test the connection by creating a client and making an API call
+                with client.ApiClient(configuration) as api_client:
+                    v1 = client.CoreV1Api(api_client)
+                    version_api = client.VersionApi(api_client)
 
-                # Test connection by getting server version
-                version_info = await asyncio.to_thread(version_api.get_code)
+                    # Test connection by getting server version
+                    version_info = await asyncio.to_thread(version_api.get_code)
 
-                # Also test basic functionality by listing namespaces
-                namespaces = await asyncio.to_thread(v1.list_namespace)
+                    # Also test basic functionality by listing namespaces
+                    namespaces = await asyncio.to_thread(v1.list_namespace)
 
-            # Store the configuration for future use
-            self._k8s_client = configuration
+                # Store the configuration for future use
+                self._k8s_client = configuration
 
-            # Don't delete the certificate file yet - it's needed for future operations
-
-            # Safe access to git_version attribute
-            git_version = getattr(version_info, "git_version", "unknown")
-            return success_response(
-                connected=True,
-                server_version=git_version,
-                namespaces_count=len(namespaces.items) if namespaces else 0,
-            )
+                # Safe access to git_version attribute
+                git_version = getattr(version_info, "git_version", "unknown")
+                return success_response(
+                    connected=True,
+                    server_version=git_version,
+                    namespaces_count=len(namespaces.items) if namespaces else 0,
+                )
 
         except Exception as e:
-            # Clean up temporary file on error
-            if hasattr(self, "_ca_cert_file") and self._ca_cert_file:
-                try:
-                    os.unlink(self._ca_cert_file)
-                    self._ca_cert_file = None
-                except OSError:
-                    pass
-
             return self._handle_error("establish kubernetes connection", e)
 
     def _get_kubernetes_client(self) -> Optional[Any]:
