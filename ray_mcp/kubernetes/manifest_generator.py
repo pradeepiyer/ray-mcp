@@ -150,12 +150,12 @@ spec:
                 pip_packages = runtime_env["pip"]
                 if isinstance(pip_packages, str):
                     # Single package as string
-                    runtime_parts.append(f"pip:\n            - {pip_packages}")
+                    runtime_parts.append(f"pip:\n      - {pip_packages}")
                 elif isinstance(pip_packages, list):
                     # Multiple packages as list
                     pip_yaml = "pip:"
                     for package in pip_packages:
-                        pip_yaml += f"\n            - {package}"
+                        pip_yaml += f"\n      - {package}"
                     runtime_parts.append(pip_yaml)
 
             # Handle working directory
@@ -170,7 +170,7 @@ spec:
                 elif isinstance(conda_config, dict):
                     conda_yaml = "conda:"
                     for key, value in conda_config.items():
-                        conda_yaml += f"\n            {key}: {value}"
+                        conda_yaml += f"\n  {key}: {value}"
                     runtime_parts.append(conda_yaml)
 
             # Handle git repository
@@ -179,7 +179,7 @@ spec:
                 if isinstance(git_config, dict):
                     git_yaml = "git:"
                     for key, value in git_config.items():
-                        git_yaml += f"\n            {key}: {value}"
+                        git_yaml += f"\n  {key}: {value}"
                     runtime_parts.append(git_yaml)
 
             # Handle environment variables
@@ -187,17 +187,17 @@ spec:
                 env_vars = runtime_env["env_vars"]
                 env_yaml = "env_vars:"
                 for key, value in env_vars.items():
-                    env_yaml += f"\n            {key}: {value}"
+                    env_yaml += f"\n  {key}: {value}"
                 runtime_parts.append(env_yaml)
 
             # Combine all parts
             if runtime_parts:
-                runtime_content = "\n          ".join(runtime_parts)
+                runtime_content = "\n    ".join(runtime_parts)
                 runtime_env_yaml = f"""
-        runtimeEnvYAML: |
-          {runtime_content}"""
+  runtimeEnvYAML: |
+    {runtime_content}"""
 
-        # Generate manifest YAML
+        # Generate manifest YAML with proper separation
         manifest = f"""apiVersion: ray.io/v1
 kind: RayJob
 metadata:

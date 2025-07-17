@@ -36,13 +36,13 @@ def get_ray_tools() -> list[Tool]:
         ),
         Tool(
             name="cloud",
-            description="Manage cloud authentication and cluster discovery: authenticate with GCP, list/discover available K8s clusters",
+            description="Manage cloud authentication and cluster discovery: authenticate with cloud providers (GCP, AWS, Azure), list/discover available clusters",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "What you want to do with cloud authentication and cluster discovery in plain English. Examples: 'Authenticate with GCP project ml-experiments', 'List all GKE clusters', 'Connect to cluster ml-training in GKE', 'Create GCP cluster named ai-cluster', 'Check cloud environment setup'",
+                        "description": "What you want to do with cloud authentication and cluster discovery in plain English. Examples: 'Authenticate with GCP project ml-experiments', 'Authenticate with AWS', 'List cloud clusters', 'Connect to cluster ml-training in us-west1-c', 'Create cloud cluster named ai-cluster', 'Check cloud environment setup'",
                     }
                 },
                 "required": ["prompt"],

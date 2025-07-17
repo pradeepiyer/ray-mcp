@@ -62,7 +62,16 @@ class RayUnifiedManager:
                     return await self._kubernetes_manager.execute_request(prompt)
             else:
                 # Fallback to prompt-based detection for "auto" or unspecified environment
-                if self._is_kubernetes_environment(prompt):
+                # Prioritize Kubernetes cluster over local cluster if connected
+                if self._is_kubernetes_connected():
+                    # Check if it's KubeRay or general Kubernetes
+                    if "ray" in prompt.lower():
+                        return await self._kuberay_cluster_manager.execute_request(
+                            prompt
+                        )
+                    else:
+                        return await self._kubernetes_manager.execute_request(prompt)
+                elif self._is_kubernetes_environment(prompt):
                     # Check if it's KubeRay or general Kubernetes
                     if "ray" in prompt.lower():
                         return await self._kuberay_cluster_manager.execute_request(
@@ -100,13 +109,14 @@ class RayUnifiedManager:
                 return await self._kuberay_job_manager.execute_request(prompt)
             else:
                 # Fallback to prompt-based detection for "auto" or unspecified environment
-                # If we have a local Ray cluster running, prefer that over Kubernetes
-                if self._job_manager._is_ray_ready():
-                    return await self._job_manager.execute_request(prompt)
-                elif self._is_kubernetes_environment(prompt):
+                # Prioritize Kubernetes cluster over local cluster if connected
+                if self._is_kubernetes_connected():
                     return await self._kuberay_job_manager.execute_request(prompt)
-                else:
+                elif self._job_manager._is_ray_ready():
                     return await self._job_manager.execute_request(prompt)
+                else:
+                    # No local cluster, try Kubernetes as fallback
+                    return await self._kuberay_job_manager.execute_request(prompt)
         except Exception as e:
             return error_response(str(e))
 

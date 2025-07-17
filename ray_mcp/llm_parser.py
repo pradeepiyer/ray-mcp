@@ -62,16 +62,20 @@ Return JSON in this exact format:
 }}
 
 Important parsing rules:
-- For listing operations, set operation to "list" 
+- For listing operations, set operation to "list" (except for cloud clusters which use "list_clusters")
+- CRITICAL: List operations with cloud keywords (GKE, AWS, Azure, cloud) should be type "cloud" 
 - For job submit operations, set operation to "create"
 - For status/info/inspect operations, set operation to "get"
 - For stop/delete/terminate operations, set operation to "delete"
-- Detect "kubernetes", "k8s", "gke" keywords to set environment to "kubernetes"
-- CRITICAL: If request mentions "GCP", "GKE", "authenticate", "cloud", prioritize as cloud operation
-- GKE cluster operations are CLOUD operations, not local cluster operations
-- IMPORTANT: For connect operations with IP addresses, set environment to "local" unless explicitly mentioning kubernetes/k8s/gke/gcp keywords
+- Detect "kubernetes", "k8s" keywords to set environment to "kubernetes"
+- CRITICAL: If request mentions "authenticate", "cloud", or cloud providers (aws, azure, gcp), prioritize as cloud operation
+- CRITICAL: If request mentions cloud zones/regions (like "us-west1-c", "us-east-1", "eastus2"), treat as cloud operation
+- CRITICAL: "List GKE clusters", "List cloud clusters", "List AWS clusters" are CLOUD operations, not cluster operations
+- Cloud cluster operations are CLOUD operations, not local cluster operations
+- IMPORTANT: For connect operations with IP addresses, set environment to "local" unless explicitly mentioning kubernetes/k8s or cloud keywords
 - Extract numeric values for workers, cpus, gpus, dashboard_port
 - Extract cluster/job names but ignore common words like "ray", "cluster", "the", "all"
+- CRITICAL: For "Connect to [cloud] cluster X" patterns, extract X as cluster_name (not name)
 - For job operations, extract job IDs and script paths
 - For cloud operations, detect provider and extract zones/regions
 - Set head_only to true if "head only" or "no worker" is mentioned
@@ -105,8 +109,15 @@ Examples:
 - "Delete kubernetes cluster" → {{"type": "cluster", "operation": "delete", "environment": "kubernetes"}}
 - "Get status of job on kubernetes" → {{"type": "job", "operation": "get", "environment": "kubernetes"}}
 - "Authenticate with GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "Authenticate with AWS" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
+- "List cloud clusters" → {{"type": "cloud", "operation": "list_clusters"}}
 - "List GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
-- "Connect to GKE cluster my-cluster in zone us-central1-a" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-central1-a", "provider": "gcp"}}
+- "List AWS clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "aws"}}
+- "List all GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
+- "Connect to cluster my-cluster in zone us-central1-a" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-central1-a", "provider": "gcp"}}
+- "Connect to cluster ray-cluster in us-west1-c" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "ray-cluster", "zone": "us-west1-c", "provider": "gcp"}}
+- "Connect to cluster my-cluster in us-east-1" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-east-1", "provider": "aws"}}
+- "Connect to cluster my-cluster in eastus2" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "eastus2", "provider": "azure"}}
 
 Parse the user request above and return only the JSON object, no additional text.
 """

@@ -1,8 +1,23 @@
 """Simplified Ray MCP configuration - replaces 476-line system."""
 
 from dataclasses import dataclass
+import json
 import os
 from typing import Optional
+
+
+def _extract_project_id_from_service_account() -> Optional[str]:
+    """Extract project ID from service account JSON file."""
+    service_account_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if not service_account_path:
+        return None
+
+    try:
+        with open(service_account_path, "r") as f:
+            credentials_data = json.load(f)
+            return credentials_data.get("project_id")
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return None
 
 
 @dataclass
@@ -60,7 +75,8 @@ class Config:
             ray_num_gpus=safe_int_optional(os.getenv("RAY_NUM_GPUS", "")),
             kubernetes_namespace=os.getenv("KUBERNETES_NAMESPACE", "default"),
             kubernetes_context=os.getenv("KUBERNETES_CONTEXT"),
-            gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT")
+            or _extract_project_id_from_service_account(),
             gke_region=os.getenv("GKE_REGION", "us-central1"),
             gke_zone=os.getenv("GKE_ZONE", "us-central1-a"),
             log_level=os.getenv("RAY_MCP_LOG_LEVEL", "INFO"),
