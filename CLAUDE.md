@@ -4,19 +4,19 @@
 
 ## Architecture
 - **3 Tools**: `ray_cluster`, `ray_job`, `cloud` (single `prompt` parameter each)
-- **Natural Language**: Anthropic Claude parses prompts into Ray operations
+- **Natural Language**: OpenAI parses prompts into Ray operations
 - **Dual Environment**: Local Ray + Kubernetes/KubeRay support
 
 ## Configuration
 
 ### Required Environment Variables
 ```bash
-ANTHROPIC_API_KEY=your_api_key_here    # Required for LLM parsing
+OPENAI_API_KEY=your_api_key_here       # Required for LLM parsing
 ```
 
 ### Optional Environment Variables
 ```bash
-LLM_MODEL=claude-3-haiku-20240307      # Claude model (default: claude-3-haiku-20240307)
+LLM_MODEL=gpt-3.5-turbo                # OpenAI model (default: gpt-3.5-turbo)
 RAY_MCP_ENHANCED_OUTPUT=true           # LLM-friendly responses with suggestions
 RAY_MCP_LOG_LEVEL=DEBUG                # Logging level
 GOOGLE_APPLICATION_CREDENTIALS=path    # GKE authentication
@@ -44,7 +44,7 @@ python tests/integration/test_runner.py all     # Complete test suite
 ## Dependencies
 - `ray[default]>=2.47.0`
 - `mcp>=1.0.0` 
-- `anthropic>=0.25.0,<1.0.0`
+- `openai>=1.0.0,<2.0.0`
 - `kubernetes>=26.1.0`
 - `pydantic>=2.0.0`
 - Python 3.10+
@@ -59,10 +59,10 @@ python tests/integration/test_runner.py all     # Complete test suite
 - `ray_mcp/parsers.py` - Natural language parsing
 - `ray_mcp/handlers.py` - MCP protocol handlers
 - `ray_mcp/managers/` - Business logic
-- `ray_mcp/llm_parser.py` - Claude API integration
+- `ray_mcp/llm_parser.py` - OpenAI API integration
 
 ## Debugging
-- **LLM Issues**: Verify `ANTHROPIC_API_KEY` is set
+- **LLM Issues**: Verify `OPENAI_API_KEY` is set
 - **GKE Issues**: Check `GOOGLE_APPLICATION_CREDENTIALS`
 - **KubeRay Issues**: `kubectl get pods -n kuberay-system`
 - **Architecture Validation**: `make lint-tool-functions`

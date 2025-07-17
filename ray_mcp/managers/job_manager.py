@@ -34,21 +34,21 @@ class JobManager(ResourceManager, BaseExecuteRequestMixin):
 
     async def _get_job(self, action: dict[str, Any]) -> dict[str, Any]:
         """Handle get/inspect job operation with validation."""
-        job_id = action.get("job_id")
+        job_id = action.get("job_id") or action.get("name")
         if not job_id:
             return error_response("job_id required")
         return await self._get_job_internal(job_id)
 
     async def _cancel_job(self, action: dict[str, Any]) -> dict[str, Any]:
         """Handle cancel job operation with validation."""
-        job_id = action.get("job_id")
+        job_id = action.get("job_id") or action.get("name")
         if not job_id:
             return error_response("job_id required")
         return await self._cancel_job_internal(job_id)
 
     async def _get_job_logs(self, action: dict[str, Any]) -> dict[str, Any]:
         """Handle get logs operation with validation."""
-        job_id = action.get("job_id")
+        job_id = action.get("job_id") or action.get("name")
         if not job_id:
             return error_response("job_id required")
         return await self._get_job_logs_internal(job_id)

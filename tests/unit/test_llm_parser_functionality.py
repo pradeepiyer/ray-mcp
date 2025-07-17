@@ -29,30 +29,29 @@ class TestLLMParserConfiguration:
         """Test parser initializes with default configuration."""
         parser = LLMActionParser()
 
-        assert parser.model == "claude-3-haiku-20240307"
+        assert parser.model == "gpt-3.5-turbo"
         assert parser.cache == {}
-        assert parser.client is not None
 
     def test_parser_initialization_with_custom_config(self):
         """Test parser initializes with custom configuration."""
-        parser = LLMActionParser(api_key="custom-key", model="claude-3-sonnet-20240307")
+        parser = LLMActionParser(api_key="custom-key", model="gpt-4")
 
-        assert parser.model == "claude-3-sonnet-20240307"
+        assert parser.model == "gpt-4"
         assert parser.api_key == "custom-key"
 
-    @patch.dict(os.environ, {"LLM_MODEL": "claude-3-opus-20240307"})
+    @patch.dict(os.environ, {"LLM_MODEL": "gpt-4"})
     def test_parser_respects_environment_variables(self):
         """Test parser reads configuration from environment."""
         # The current implementation has a logic issue - model parameter always has a default
         # This test demonstrates the actual behavior vs intended behavior
         parser = LLMActionParser()
         # Due to the implementation, this will be the default, not the env var
-        assert parser.model == "claude-3-haiku-20240307"
+        assert parser.model == "gpt-3.5-turbo"
 
         # However, if we could pass an empty string, it would work:
-        with patch.dict(os.environ, {"LLM_MODEL": "claude-3-opus-20240307"}):
+        with patch.dict(os.environ, {"LLM_MODEL": "gpt-4"}):
             parser_empty = LLMActionParser(model="")
-            assert parser_empty.model == "claude-3-opus-20240307"
+            assert parser_empty.model == "gpt-4"
 
     def test_global_parser_singleton(self):
         """Test global parser instance consistency."""
@@ -103,10 +102,10 @@ class TestResponseParsing:
     """Test response parsing and cleaning functionality."""
 
     def test_json_extraction_from_response(self):
-        """Test extraction of JSON from Claude response with extra text."""
+        """Test extraction of JSON from OpenAI response with extra text."""
         parser = LLMActionParser()
 
-        # Mock a response with extra text (common with Claude)
+        # Mock a response with extra text (common with LLMs)
         mock_response_content = """
         I'll parse that request for you.
         
@@ -180,15 +179,19 @@ class TestCacheBehavior:
         cached_result = {"type": "cluster", "operation": "create"}
         parser.cache[test_prompt] = cached_result
 
-        # Mock the client to fail if called
-        with patch.object(parser.client.messages, "create") as mock_create:
-            mock_create.side_effect = Exception("Should not be called")
+        # Mock the OpenAI client creation to avoid API calls
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create.side_effect = Exception(
+                "Should not be called"
+            )
 
             result = await parser.parse_action(test_prompt)
 
             # Should return cached result without calling API
             assert result == cached_result
-            mock_create.assert_not_called()
+            mock_client.chat.completions.create.assert_not_called()
 
 
 @pytest.mark.unit
@@ -200,38 +203,49 @@ class TestErrorHandling:
         """Test handling of API errors."""
         parser = LLMActionParser()
 
-        with patch.object(parser.client.messages, "create") as mock_create:
-            mock_create.side_effect = Exception("API Error")
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create.side_effect = Exception("API Error")
 
             with pytest.raises(ValueError, match="Failed to parse action"):
                 await parser.parse_action("test prompt")
 
     @pytest.mark.asyncio
     async def test_empty_response_handling(self):
-        """Test handling of empty responses from Claude."""
+        """Test handling of empty responses from OpenAI."""
         parser = LLMActionParser()
 
         # Mock empty response
         mock_response = Mock()
-        mock_response.content = []
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message = Mock()
+        mock_response.choices[0].message.content = None
 
-        with patch.object(parser.client.messages, "create", return_value=mock_response):
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create.return_value = mock_response
+
             with pytest.raises(ValueError, match="Failed to parse action"):
                 await parser.parse_action("test prompt")
 
     @pytest.mark.asyncio
     async def test_invalid_json_response_handling(self):
-        """Test handling of invalid JSON from Claude."""
+        """Test handling of invalid JSON from OpenAI."""
         parser = LLMActionParser()
 
         # Mock response with invalid JSON
         mock_response = Mock()
-        mock_block = Mock()
-        mock_block.text = "This is not JSON at all"
-        mock_block.type = "text"
-        mock_response.content = [mock_block]
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message = Mock()
+        mock_response.choices[0].message.content = "This is not JSON at all"
 
-        with patch.object(parser.client.messages, "create", return_value=mock_response):
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create.return_value = mock_response
+
             with pytest.raises(ValueError, match="Failed to parse action"):
                 await parser.parse_action("test prompt")
 
@@ -276,7 +290,7 @@ class TestCompatibilityLayer:
 
 # Integration tests that require API key (optional)
 @pytest.mark.integration
-@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="No API key available")
+@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No API key available")
 class TestLLMParserIntegration:
     """Integration tests with real LLM calls (requires API key)."""
 

@@ -69,6 +69,7 @@ Important parsing rules:
 - Detect "kubernetes", "k8s", "gke" keywords to set environment to "kubernetes"
 - CRITICAL: If request mentions "GCP", "GKE", "authenticate", "cloud", prioritize as cloud operation
 - GKE cluster operations are CLOUD operations, not local cluster operations
+- IMPORTANT: For connect operations with IP addresses, set environment to "local" unless explicitly mentioning kubernetes/k8s/gke/gcp keywords
 - Extract numeric values for workers, cpus, gpus, dashboard_port
 - Extract cluster/job names but ignore common words like "ray", "cluster", "the", "all"
 - For job operations, extract job IDs and script paths
@@ -96,7 +97,7 @@ Examples:
 - "Create a Ray cluster named test-cluster with 3 workers" → {{"type": "cluster", "operation": "create", "name": "test-cluster", "workers": 3, "environment": "local"}}
 - "Check status of Ray cluster" → {{"type": "cluster", "operation": "get", "environment": "local"}}
 - "List jobs" → {{"type": "job", "operation": "list"}}
-- "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001"}}
+- "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001", "environment": "local"}}
 - "Create kubernetes cluster with head only" → {{"type": "cluster", "operation": "create", "environment": "kubernetes", "head_only": true, "workers": 0}}
 - "Submit job script train.py to kubernetes" → {{"type": "job", "operation": "create", "script": "train.py", "environment": "kubernetes"}}
 - "Submit job with script train.py and pip packages pandas numpy" → {{"type": "job", "operation": "create", "script": "train.py", "runtime_env": {{"pip": ["pandas", "numpy"]}}}}
@@ -216,7 +217,7 @@ Parse the user request above and return only the JSON object, no additional text
     def clear_cache(self):
         """Clear the parsing cache."""
         self.cache.clear()
-    
+
     async def close(self):
         """Close the OpenAI client."""
         if self._client is not None:

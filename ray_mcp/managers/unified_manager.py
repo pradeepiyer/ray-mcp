@@ -100,7 +100,10 @@ class RayUnifiedManager:
                 return await self._kuberay_job_manager.execute_request(prompt)
             else:
                 # Fallback to prompt-based detection for "auto" or unspecified environment
-                if self._is_kubernetes_environment(prompt):
+                # If we have a local Ray cluster running, prefer that over Kubernetes
+                if self._job_manager._is_ray_ready():
+                    return await self._job_manager.execute_request(prompt)
+                elif self._is_kubernetes_environment(prompt):
                     return await self._kuberay_job_manager.execute_request(prompt)
                 else:
                     return await self._job_manager.execute_request(prompt)

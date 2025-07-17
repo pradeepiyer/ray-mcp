@@ -136,10 +136,10 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0
 
 ```bash
 # LLM Processing Configuration (Required)
-export ANTHROPIC_API_KEY="your_api_key_here"    # Required for natural language parsing
+export OPENAI_API_KEY="your_api_key_here"       # Required for natural language parsing
 
 # LLM Processing Configuration (Optional)
-export LLM_MODEL="claude-3-haiku-20240307"      # Claude model for prompt processing
+export LLM_MODEL="gpt-3.5-turbo"                # OpenAI model for prompt processing
 
 # Output and Logging
 export RAY_MCP_ENHANCED_OUTPUT=true             # Enhanced LLM-friendly responses

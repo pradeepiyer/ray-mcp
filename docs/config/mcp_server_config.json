@@ -4,8 +4,8 @@
       "command": "python",
       "args": ["-m", "ray_mcp.main"],
       "env": {
-        "ANTHROPIC_API_KEY": "your_api_key_here",
-        "LLM_MODEL": "claude-3-haiku-20240307",
+        "OPENAI_API_KEY": "your_api_key_here",
+        "LLM_MODEL": "gpt-3.5-turbo",
         "RAY_ADDRESS": "127.0.0.1:10001",
         "RAY_MCP_ENHANCED_OUTPUT": "false",
         "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/your/service-account-key.json"
@@ -44,16 +44,16 @@
       }
     },
     "environment_variables": {
-      "ANTHROPIC_API_KEY": {
-        "description": "Anthropic Claude API key for natural language prompt processing",
+      "OPENAI_API_KEY": {
+        "description": "OpenAI API key for natural language prompt processing",
         "example": "your_api_key_here",
         "note": "Required for all natural language parsing functionality"
       },
       "LLM_MODEL": {
-        "description": "Claude model for prompt parsing",
-        "example": "claude-3-haiku-20240307",
-        "default": "claude-3-haiku-20240307",
-        "note": "Optional - defaults to claude-3-haiku-20240307 if not specified"
+        "description": "OpenAI model for prompt parsing",
+        "example": "gpt-3.5-turbo",
+        "default": "gpt-3.5-turbo",
+        "note": "Optional - defaults to gpt-3.5-turbo if not specified"
       },
       "GOOGLE_APPLICATION_CREDENTIALS": {
         "description": "Path to Google Cloud service account JSON key file for GKE authentication",

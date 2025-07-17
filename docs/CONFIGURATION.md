@@ -101,14 +101,14 @@ cloud: "authenticate with local kubernetes"
 
 **Required for natural language parsing:**
 ```bash
-# Anthropic Claude API key for prompt processing
-export ANTHROPIC_API_KEY="your_api_key_here"
+# OpenAI API key for prompt processing
+export OPENAI_API_KEY="your_api_key_here"
 ```
 
 **Optional LLM settings:**
 ```bash
-# Claude model selection (default: claude-3-haiku-20240307)
-export LLM_MODEL="claude-3-haiku-20240307"
+# OpenAI model selection (default: gpt-3.5-turbo)
+export LLM_MODEL="gpt-3.5-turbo"
 ```
 
 ### Core Settings

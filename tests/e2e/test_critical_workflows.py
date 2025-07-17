@@ -30,104 +30,13 @@ from ray_mcp.tools import get_ray_tools
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_after_all_tests():
-    """Enhanced final cleanup after all tests complete."""
+    """Minimal final cleanup after all tests complete."""
     yield  # This runs after all tests
 
-    # Enhanced final cleanup with Ray-specific thread targeting
+    # Minimal cleanup - just print a message and let OS handle cleanup
     try:
-        # Set environment to force Ray cleanup
-
-        os.environ["RAY_DISABLE_USAGE_STATS"] = "1"
-        os.environ["RAY_memory_monitor_refresh_ms"] = "0"
-
-        cleanup_all_ray_processes()
-
-        # Enhanced thread cleanup with specific Ray thread targeting
-        import threading
-        import time
-
-        print("🧹 Final cleanup: checking background threads...")
-        main_thread = threading.current_thread()
-        ray_threads = []
-
-        for thread in threading.enumerate():
-            if thread is not main_thread and thread.is_alive():
-                thread_name_lower = thread.name.lower()
-                is_ray_thread = any(
-                    keyword in thread_name_lower
-                    for keyword in [
-                        "ray",
-                        "raylet",
-                        "gcs",
-                        "plasma",
-                        "dashboard",
-                        "monitor",
-                        "listener",
-                        "logger",
-                    ]
-                )
-
-                print(
-                    f"  Found thread: {thread.name} (daemon: {thread.daemon}, ray: {is_ray_thread})"
-                )
-
-                if is_ray_thread:
-                    ray_threads.append(thread)
-
-        # Force terminate Ray-specific threads
-        for thread in ray_threads:
-            try:
-                if hasattr(thread, "_stop"):
-                    thread._stop()
-                thread.daemon = True  # Convert to daemon
-                thread.join(timeout=0.5)
-            except Exception as e:
-                print(f"  Failed to stop thread {thread.name}: {e}")
-                pass
-
-        # Force garbage collection
-        import gc
-
-        gc.collect()
-        
-        # Reset the global LLM parser to clean up OpenAI client
-        try:
-            import asyncio
-            from ray_mcp.llm_parser import reset_global_parser
-            # Only reset if not in an async context - session cleanup is sync
-            try:
-                asyncio.run(reset_global_parser())
-            except RuntimeError:
-                # If there's already an event loop running, skip the reset
-                # This will be handled in individual test teardowns
-                print("Skipping parser reset in session cleanup - will be handled in test teardown")
-        except Exception as e:
-            print(f"Failed to reset global parser in cleanup: {e}")
-
-        # Final process cleanup with more comprehensive patterns
-
-        try:
-            # Kill Ray processes more comprehensively
-            ray_process_patterns = [
-                "ray",
-                "raylet",
-                "gcs_server",
-                "dashboard",
-                "ray-mcp",
-            ]
-            for pattern in ray_process_patterns:
-                subprocess.run(
-                    ["pkill", "-9", "-f", pattern],
-                    capture_output=True,
-                    check=False,
-                    timeout=3,
-                )
-        except Exception as e:
-            print(f"  Process cleanup error: {e}")
-            pass
-
+        print("🧹 Final cleanup: letting OS handle process cleanup...")
         print("🧹 Final cleanup completed")
-
     except Exception as e:
         print(f"🚨 Final cleanup failed: {e}")
         pass
@@ -154,7 +63,9 @@ class E2ETestConfig:
         """Validate OpenAI configuration for e2e tests."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            pytest.skip("OPENAI_API_KEY not set - skipping e2e tests that require OpenAI")
+            pytest.skip(
+                "OPENAI_API_KEY not set - skipping e2e tests that require OpenAI"
+            )
         return api_key
 
 
@@ -204,15 +115,8 @@ async def cleanup_ray():
                     except:
                         pass
 
-        # Step 3: Close asyncio event loop executors - ONLY if no tasks are pending
-        try:
-            loop = asyncio.get_running_loop()
-            # Check if there are any pending tasks before shutting down executor
-            pending_tasks = [task for task in asyncio.all_tasks() if not task.done()]
-            if not pending_tasks and hasattr(loop, "shutdown_default_executor"):
-                await asyncio.wait_for(loop.shutdown_default_executor(), timeout=2.0)
-        except (RuntimeError, asyncio.TimeoutError):
-            pass
+        # Step 3: Skip aggressive executor shutdown to prevent hanging
+        # The executor will be cleaned up naturally when Python exits
 
         # Brief wait for cleanup
         await asyncio.sleep(0.2)
@@ -329,7 +233,7 @@ class TestCriticalWorkflows:
 
     def setup_method(self):
         """Set up for each test."""
-        # Validate OpenAI configuration 
+        # Validate OpenAI configuration
         E2ETestConfig.validate_openai_config()
 
         # Store original Ray environment variables for restoration
@@ -361,7 +265,7 @@ class TestCriticalWorkflows:
         # Configure LLM model for faster testing (use cheaper/faster model if available)
         if not os.getenv("LLM_MODEL"):
             os.environ["LLM_MODEL"] = "gpt-3.5-turbo"
-        
+
         # Enable enhanced output for better debugging
         os.environ["RAY_MCP_ENHANCED_OUTPUT"] = "true"
 
@@ -394,10 +298,11 @@ class TestCriticalWorkflows:
 
         # Enhanced cleanup
         await cleanup_ray()
-        
+
         # Reset the global LLM parser to clean up OpenAI client
         try:
             from ray_mcp.llm_parser import reset_global_parser
+
             await reset_global_parser()
         except Exception as e:
             print(f"Failed to reset global parser: {e}")
@@ -494,7 +399,8 @@ print("Job finished successfully")
 
             try:
                 result = await call_tool(
-                    "ray_job", {"prompt": f"Submit a Ray job using script {script_path}"}
+                    "ray_job",
+                    {"prompt": f"Submit a Ray job with entrypoint {script_path}"},
                 )
 
                 response = parse_tool_response(result)
@@ -517,7 +423,7 @@ print("Job finished successfully")
                 job_status = None
                 while elapsed_time < max_wait_time:
                     result = await call_tool(
-                        "ray_job", {"prompt": f"Get the status of Ray job {job_id}"}
+                        "ray_job", {"prompt": f"Get the status of job {job_id}"}
                     )
 
                     response = parse_tool_response(result)
@@ -536,7 +442,7 @@ print("Job finished successfully")
                 if job_status == "FAILED":
                     print("🔍 Job failed - getting logs for debugging...")
                     result = await call_tool(
-                        "ray_job", {"prompt": f"Get the logs for Ray job {job_id}"}
+                        "ray_job", {"prompt": f"Show logs for {job_id}"}
                     )
                     response = parse_tool_response(result)
                     if response["status"] == "success" and "logs" in response:
@@ -552,7 +458,7 @@ print("Job finished successfully")
                 # Step 5: Get job logs
                 print("📋 Retrieving job logs...")
                 result = await call_tool(
-                    "ray_job", {"prompt": f"Get the logs for Ray job {job_id}"}
+                    "ray_job", {"prompt": f"Show logs for {job_id}"}
                 )
 
                 response = parse_tool_response(result)
@@ -628,7 +534,8 @@ print("Job finished successfully")
         # Test 2: Try to connect to invalid cluster
         print("Test 2: Connect to invalid cluster...")
         result = await call_tool(
-            "ray_cluster", {"prompt": "Connect to Ray cluster at address 192.0.2.1:9999"}
+            "ray_cluster",
+            {"prompt": "Connect to Ray cluster at address 192.0.2.1:9999"},
         )
 
         response = parse_tool_response(result)
@@ -649,7 +556,9 @@ print("Job finished successfully")
 
         # Test 3: Try to inspect non-existent cluster
         print("Test 3: Inspect non-existent cluster...")
-        result = await call_tool("ray_cluster", {"prompt": "Check the status of the Ray cluster"})
+        result = await call_tool(
+            "ray_cluster", {"prompt": "Check the status of the Ray cluster"}
+        )
 
         response = parse_tool_response(result)
         # Should return success but indicate no cluster is running
