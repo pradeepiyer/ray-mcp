@@ -1,29 +1,25 @@
-"""Claude-based natural language parsing for Ray operations."""
+"""OpenAI-based natural language parsing for Ray operations."""
 
 import json
 import os
 from typing import Any, Dict, Optional
 
-import anthropic
+import openai
 
 
 class LLMActionParser:
-    """Claude-based LLM parser for Ray MCP operations."""
+    """OpenAI-based LLM parser for Ray MCP operations."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "claude-3-haiku-20240307",
+        model: str = "gpt-3.5-turbo",
     ):
-        """Initialize Claude parser with configuration from environment variables."""
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.model = model or os.getenv("LLM_MODEL", "claude-3-haiku-20240307")
+        """Initialize OpenAI parser with configuration from environment variables."""
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.model = model or os.getenv("LLM_MODEL", "gpt-3.5-turbo")
         self.cache = {}
-
-        # For testing, use a dummy API key if none provided
-        api_key = self.api_key or "test-key"
-
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._client = None
 
     def _build_parsing_prompt(self, prompt: str) -> str:
         """Build a structured parsing prompt for consistent JSON output."""
@@ -115,7 +111,7 @@ Parse the user request above and return only the JSON object, no additional text
 """
 
     async def parse_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse any Ray operation using Claude."""
+        """Parse any Ray operation using OpenAI."""
         # Check cache first
         if prompt in self.cache:
             return self.cache[prompt]
@@ -123,32 +119,28 @@ Parse the user request above and return only the JSON object, no additional text
         parsing_prompt = self._build_parsing_prompt(prompt)
 
         try:
-            response = await self.client.messages.create(
+            # Initialize client if not already done
+            if self._client is None:
+                self._client = openai.AsyncOpenAI(api_key=self.api_key or "test-key")
+
+            response = await self._client.chat.completions.create(
                 model=self.model,
                 max_tokens=500,
                 temperature=0.1,
                 messages=[{"role": "user", "content": parsing_prompt}],
             )
 
-            # Extract text content from Claude's response
-            content = None
-            for block in response.content:
-                if (
-                    hasattr(block, "text")
-                    and hasattr(block, "type")
-                    and block.type == "text"
-                ):
-                    content = block.text
-                    break
+            # Extract text content from OpenAI's response
+            content = response.choices[0].message.content
 
             if content is None:
-                raise ValueError("Claude returned empty response")
+                raise ValueError("OpenAI returned empty response")
 
-            # Extract JSON from response (Claude might include extra text)
+            # Extract JSON from response (OpenAI might include extra text)
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
             if json_start == -1 or json_end == 0:
-                raise ValueError("No JSON found in Claude response")
+                raise ValueError("No JSON found in OpenAI response")
 
             json_content = content[json_start:json_end]
             result = json.loads(json_content)
@@ -168,28 +160,28 @@ Parse the user request above and return only the JSON object, no additional text
             raise ValueError(f"Failed to parse action '{prompt}': {str(e)}")
 
     async def parse_cluster_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse cluster action from prompt using Claude."""
+        """Parse cluster action from prompt using OpenAI."""
         result = await self.parse_action(prompt)
         if result.get("type") != "cluster":
             raise ValueError(f"Expected cluster action but got: {result.get('type')}")
         return result
 
     async def parse_job_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse job action from prompt using Claude."""
+        """Parse job action from prompt using OpenAI."""
         result = await self.parse_action(prompt)
         if result.get("type") != "job":
             raise ValueError(f"Expected job action but got: {result.get('type')}")
         return result
 
     async def parse_cloud_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse cloud action from prompt using Claude."""
+        """Parse cloud action from prompt using OpenAI."""
         result = await self.parse_action(prompt)
         if result.get("type") != "cloud":
             raise ValueError(f"Expected cloud action but got: {result.get('type')}")
         return result
 
     async def parse_kubernetes_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse kubernetes action from prompt using Claude."""
+        """Parse kubernetes action from prompt using OpenAI."""
         # For kubernetes operations, we use a specialized prompt
         result = await self.parse_action(prompt)
         # Kubernetes actions might be parsed as cluster type with kubernetes environment
@@ -206,7 +198,7 @@ Parse the user request above and return only the JSON object, no additional text
         return result
 
     async def parse_kuberay_job_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse KubeRay job action from prompt using Claude."""
+        """Parse KubeRay job action from prompt using OpenAI."""
         result = await self.parse_action(prompt)
         # KubeRay job actions are job operations in kubernetes environment
         if result.get("type") == "job":
@@ -214,7 +206,7 @@ Parse the user request above and return only the JSON object, no additional text
         return result
 
     async def parse_kuberay_cluster_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse KubeRay cluster action from prompt using Claude."""
+        """Parse KubeRay cluster action from prompt using OpenAI."""
         result = await self.parse_action(prompt)
         # KubeRay cluster actions are cluster operations in kubernetes environment
         if result.get("type") == "cluster":
@@ -224,6 +216,12 @@ Parse the user request above and return only the JSON object, no additional text
     def clear_cache(self):
         """Clear the parsing cache."""
         self.cache.clear()
+    
+    async def close(self):
+        """Close the OpenAI client."""
+        if self._client is not None:
+            await self._client.close()
+            self._client = None
 
 
 # Global instance for backwards compatibility
@@ -231,8 +229,16 @@ _global_parser = None
 
 
 def get_parser() -> LLMActionParser:
-    """Get global Claude parser instance."""
+    """Get global OpenAI parser instance."""
     global _global_parser
     if _global_parser is None:
         _global_parser = LLMActionParser()
     return _global_parser
+
+
+async def reset_global_parser():
+    """Reset the global parser instance - useful for testing."""
+    global _global_parser
+    if _global_parser is not None:
+        await _global_parser.close()
+    _global_parser = None
