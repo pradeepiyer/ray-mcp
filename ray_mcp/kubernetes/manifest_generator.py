@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import logging
+import os
 import re
 from typing import Any, Optional
 
@@ -17,15 +19,32 @@ try:
 except ImportError:
     KUBERNETES_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
+
 
 class ManifestGenerator:
     """Generates and applies Kubernetes manifests using native Kubernetes API."""
 
-    def __init__(self):
+    def __init__(self, use_llm_generation: Optional[bool] = None):
         self._custom_objects_api = None
         self._core_v1_api = None
         self._apps_v1_api = None
         self._client_initialized = False
+
+        # Determine if LLM generation should be used
+        if use_llm_generation is None:
+            # Check environment variable or default to True if OpenAI key is available
+            use_llm_generation = (
+                os.getenv("RAY_MCP_USE_LLM_GENERATION", "true").lower() == "true"
+            )
+            if use_llm_generation and not os.getenv("OPENAI_API_KEY"):
+                logger.warning(
+                    "LLM generation enabled but OPENAI_API_KEY not set, falling back to template generation"
+                )
+                use_llm_generation = False
+
+        self.use_llm_generation = use_llm_generation
+        self._llm_generator = None
 
     def _ensure_kubernetes_client(self) -> None:
         """Initialize Kubernetes clients if not already done."""
@@ -48,6 +67,98 @@ class ManifestGenerator:
                 self._client_initialized = True
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize Kubernetes client: {str(e)}")
+
+    def _get_llm_generator(self):
+        """Get or create LLM generator instance."""
+        if self._llm_generator is None and self.use_llm_generation:
+            try:
+                from ..llm_parser import LLMYAMLGenerator
+
+                self._llm_generator = LLMYAMLGenerator()
+            except ImportError as e:
+                logger.error(f"Failed to import LLMYAMLGenerator: {e}")
+                self.use_llm_generation = False
+        return self._llm_generator
+
+    async def generate_ray_cluster_manifest_llm(self, prompt: str) -> str:
+        """Generate RayCluster manifest using LLM with validation."""
+        logger.debug(f"Generating RayCluster manifest with LLM for prompt: {prompt}")
+
+        llm_generator = self._get_llm_generator()
+        if not llm_generator:
+            raise RuntimeError("LLM generator not available")
+
+        try:
+            manifest = await llm_generator.generate_cluster_yaml(prompt)
+            logger.debug("Successfully generated RayCluster manifest with LLM")
+            return manifest
+        except Exception as e:
+            logger.error(f"LLM generation failed: {e}")
+            raise ValueError(f"Failed to generate RayCluster manifest: {str(e)}")
+
+    async def generate_ray_job_manifest_llm(self, prompt: str) -> str:
+        """Generate RayJob manifest using LLM with validation."""
+        logger.debug(f"Generating RayJob manifest with LLM for prompt: {prompt}")
+
+        llm_generator = self._get_llm_generator()
+        if not llm_generator:
+            raise RuntimeError("LLM generator not available")
+
+        try:
+            manifest = await llm_generator.generate_job_yaml(prompt)
+            logger.debug("Successfully generated RayJob manifest with LLM")
+            return manifest
+        except Exception as e:
+            logger.error(f"LLM generation failed: {e}")
+            raise ValueError(f"Failed to generate RayJob manifest: {str(e)}")
+
+    async def generate_manifest(self, prompt: str, resource_type: str = "auto") -> str:
+        """Generate manifest using LLM or template based on configuration."""
+        if self.use_llm_generation:
+            logger.debug(f"Using LLM generation for {resource_type}")
+            llm_generator = self._get_llm_generator()
+            if llm_generator:
+                try:
+                    return await llm_generator.generate_validated_yaml(
+                        prompt, resource_type
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"LLM generation failed, falling back to template: {e}"
+                    )
+                    # Fall through to template generation
+
+        # Fall back to template generation
+        logger.debug(f"Using template generation for {resource_type}")
+        return await self._generate_manifest_template(prompt, resource_type)
+
+    async def _generate_manifest_template(self, prompt: str, resource_type: str) -> str:
+        """Generate manifest using template approach (fallback)."""
+        # Parse the prompt to extract action
+        from ..llm_parser import get_parser
+
+        parser = get_parser()
+
+        try:
+            action = await parser.parse_action(prompt)
+        except Exception as e:
+            logger.error(f"Failed to parse prompt: {e}")
+            raise ValueError(
+                f"Failed to parse prompt for template generation: {str(e)}"
+            )
+
+        # Determine resource type from action if auto
+        if resource_type == "auto":
+            if action.get("type") == "job":
+                resource_type = "rayjob"
+            else:
+                resource_type = "raycluster"
+
+        # Generate using appropriate template method
+        if resource_type.lower() == "rayjob":
+            return self.generate_ray_job_manifest(prompt, action)
+        else:
+            return self.generate_ray_cluster_manifest(prompt, action)
 
     @staticmethod
     def generate_ray_cluster_manifest(prompt: str, action: dict[str, Any]) -> str:
