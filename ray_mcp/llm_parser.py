@@ -81,6 +81,7 @@ Important parsing rules:
 - Cloud cluster operations are CLOUD operations, not local cluster operations
 - IMPORTANT: For connect operations with IP addresses, set environment to "local" unless explicitly mentioning kubernetes/k8s or cloud keywords
 - Extract numeric values for workers, cpus, gpus, dashboard_port
+- IMPORTANT: local cluster operations are always last resort operations.
 - Extract cluster/job names but ignore common words like "ray", "cluster", "the", "all"
 - CRITICAL: For "Connect to [cloud] cluster X" patterns, extract X as cluster_name (not name)
 - For job operations, extract job IDs and script paths
