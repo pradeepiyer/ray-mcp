@@ -7,6 +7,8 @@ class CloudProvider(Enum):
     """Supported cloud providers."""
 
     GKE = "gke"
+    AWS = "aws"
+    AZURE = "azure"
     LOCAL = "local"
 
 

@@ -42,7 +42,16 @@ class CloudProviderManager(ResourceManager):
             elif operation == "connect_cluster":
                 return await self._connect_cluster_from_prompt(action)
             elif operation == "list_clusters":
-                return await self._list_cloud_clusters(CloudProvider.GKE)
+                provider = action.get("provider", "gcp")
+                if self._is_gcp_provider(provider):
+                    return await self._list_cloud_clusters(CloudProvider.GKE)
+                elif self._is_aws_provider(provider):
+                    return error_response("AWS cluster listing not yet implemented")
+                elif self._is_azure_provider(provider):
+                    return error_response("Azure cluster listing not yet implemented")
+                else:
+                    # Default to GCP for backward compatibility
+                    return await self._list_cloud_clusters(CloudProvider.GKE)
             elif operation == "create_cluster":
                 return await self._create_cluster_from_prompt(action)
             elif operation == "check_environment":
@@ -61,12 +70,45 @@ class CloudProviderManager(ResourceManager):
 
     def _is_gcp_provider(self, provider: str) -> bool:
         """Check if provider string refers to GCP/GKE (both are synonymous)."""
-        return provider.lower() in ["gcp", "gke"]
+        return provider.lower() in [
+            "gcp",
+            "gke",
+            "google cloud",
+            "google",
+            "google cloud platform",
+        ]
+
+    def _is_aws_provider(self, provider: str) -> bool:
+        """Check if provider string refers to AWS."""
+        return provider.lower() in [
+            "aws",
+            "amazon",
+            "amazon cloud",
+            "amazon web services",
+        ]
+
+    def _is_azure_provider(self, provider: str) -> bool:
+        """Check if provider string refers to Azure."""
+        return provider.lower() in ["azure", "microsoft azure", "azure cloud"]
+
+    def _normalize_provider(self, provider: str) -> str:
+        """Normalize provider string to standard values."""
+        if self._is_gcp_provider(provider):
+            return "gcp"
+        elif self._is_aws_provider(provider):
+            return "aws"
+        elif self._is_azure_provider(provider):
+            return "azure"
+        else:
+            return provider.lower()
 
     async def _authenticate_from_prompt(self, action: dict[str, Any]) -> dict[str, Any]:
         """Convert parsed prompt action to cloud authentication."""
         provider = action.get("provider", "gcp")
         project = action.get("project_id")
+
+        # Normalize provider string
+        normalized_provider = self._normalize_provider(provider)
 
         if self._is_gcp_provider(provider):
             auth_config = {}
@@ -75,6 +117,10 @@ class CloudProviderManager(ResourceManager):
             return await self._authenticate_cloud_provider(
                 CloudProvider.GKE, auth_config=auth_config
             )
+        elif self._is_aws_provider(provider):
+            return error_response("AWS authentication not yet implemented")
+        elif self._is_azure_provider(provider):
+            return error_response("Azure authentication not yet implemented")
         else:
             return error_response(f"Unsupported provider: {provider}")
 
@@ -88,12 +134,16 @@ class CloudProviderManager(ResourceManager):
         if not cluster_name:
             return error_response("cluster_name required for connection")
 
-        if not self._is_gcp_provider(provider):
+        if self._is_gcp_provider(provider):
+            return await self._connect_cloud_cluster(
+                CloudProvider.GKE, cluster_name=cluster_name
+            )
+        elif self._is_aws_provider(provider):
+            return error_response("AWS cluster connection not yet implemented")
+        elif self._is_azure_provider(provider):
+            return error_response("Azure cluster connection not yet implemented")
+        else:
             return error_response(f"Unsupported provider: {provider}")
-
-        return await self._connect_cloud_cluster(
-            CloudProvider.GKE, cluster_name=cluster_name
-        )
 
     async def _create_cluster_from_prompt(
         self, action: dict[str, Any]
@@ -106,14 +156,17 @@ class CloudProviderManager(ResourceManager):
         if not cluster_name:
             return error_response("cluster_name required for creation")
 
-        if not self._is_gcp_provider(provider):
+        if self._is_gcp_provider(provider):
+            cluster_spec = {"name": cluster_name, "zone": zone}
+            return await self._create_cloud_cluster(
+                CloudProvider.GKE, cluster_spec=cluster_spec
+            )
+        elif self._is_aws_provider(provider):
+            return error_response("AWS cluster creation not yet implemented")
+        elif self._is_azure_provider(provider):
+            return error_response("Azure cluster creation not yet implemented")
+        else:
             return error_response(f"Unsupported provider: {provider}")
-
-        cluster_spec = {"name": cluster_name, "zone": zone}
-
-        return await self._create_cloud_cluster(
-            CloudProvider.GKE, cluster_spec=cluster_spec
-        )
 
     async def _detect_cloud_provider(self) -> dict[str, Any]:
         """Detect available cloud providers and authentication methods."""

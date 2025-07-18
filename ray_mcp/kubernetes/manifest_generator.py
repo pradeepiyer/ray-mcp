@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 import yaml
 
+from ..foundation.logging_utils import LoggingUtility
+
 try:
     from kubernetes import client, config
     from kubernetes.client.rest import ApiException
@@ -129,6 +131,12 @@ spec:
     targetPort: 10001
   type: ClusterIP
 """
+        # Log the generated manifest
+        LoggingUtility.log_info(
+            "kuberay_cluster_manifest_gen",
+            f"Generated RayCluster manifest:\n{manifest}",
+        )
+
         return manifest
 
     @staticmethod
@@ -137,8 +145,34 @@ spec:
         # Extract parameters from action
         name = action.get("name", "ray-job")
         namespace = action.get("namespace", "default")
-        script = action.get("script", "python main.py")
+        script = action.get("script") or action.get("source", "python main.py")
         runtime_env = action.get("runtime_env", {})
+
+        # Handle GitHub URL in script - convert to proper git runtime_env + entrypoint
+        if script and script.startswith("https://github.com/"):
+            # Extract repo and script path from GitHub URL
+            # Example: https://github.com/anyscale/rayturbo-benchmarks/blob/main/aggregations-filters/tpch-q1.py
+            # -> repo: https://github.com/anyscale/rayturbo-benchmarks.git, script: aggregations-filters/tpch-q1.py
+            if "/blob/" in script:
+                parts = script.split("/blob/")
+                if len(parts) == 2:
+                    repo_url = parts[0] + ".git"
+                    branch_and_path = parts[1].split("/", 1)
+                    if len(branch_and_path) == 2:
+                        branch = branch_and_path[0]
+                        script_path = branch_and_path[1]
+
+                        # Set up git runtime environment
+                        if not runtime_env.get("git"):
+                            runtime_env["git"] = {}
+                        runtime_env["git"]["url"] = repo_url
+                        runtime_env["git"]["branch"] = branch
+
+                        # Set working directory to repository root for git cloned repos
+                        runtime_env["working_dir"] = "."
+
+                        # Set entrypoint to run the script from the downloaded repo
+                        script = f"python {script_path}"
 
         # Handle runtime environment
         runtime_env_yaml = ""
@@ -179,7 +213,10 @@ spec:
                 if isinstance(git_config, dict):
                     git_yaml = "git:"
                     for key, value in git_config.items():
-                        git_yaml += f"\n  {key}: {value}"
+                        if key == "url":
+                            git_yaml += f'\n  {key}: "{value}"'
+                        else:
+                            git_yaml += f'\n  {key}: "{value}"'
                     runtime_parts.append(git_yaml)
 
             # Handle environment variables
@@ -192,7 +229,13 @@ spec:
 
             # Combine all parts
             if runtime_parts:
-                runtime_content = "\n    ".join(runtime_parts)
+                # Properly indent each part's content
+                indented_parts = []
+                for part in runtime_parts:
+                    # Replace internal newlines with properly indented newlines
+                    indented_part = part.replace("\n", "\n    ")
+                    indented_parts.append(indented_part)
+                runtime_content = "\n    ".join(indented_parts)
                 runtime_env_yaml = f"""
   runtimeEnvYAML: |
     {runtime_content}"""
@@ -255,6 +298,11 @@ spec:
   shutdownAfterJobFinishes: true
   ttlSecondsAfterFinished: 300
 """
+        # Log the generated manifest
+        LoggingUtility.log_info(
+            "kuberay_job_manifest_gen", f"Generated RayJob manifest:\n{manifest}"
+        )
+
         return manifest
 
     async def apply_manifest(
@@ -330,6 +378,16 @@ spec:
                 else:
                     raise ValueError(f"Unsupported Ray CRD kind: {kind}")
 
+                # Log the final CRD before applying
+                LoggingUtility.log_info(
+                    f"kuberay_crd_apply_{kind.lower()}",
+                    f"Applying {kind} CRD '{name}' in namespace '{namespace}'",
+                )
+                LoggingUtility.log_info(
+                    f"kuberay_crd_apply_{kind.lower()}",
+                    f"Complete {kind} CRD manifest:\n{yaml.dump(resource, default_flow_style=False)}",
+                )
+
                 # Try to get existing resource first
                 try:
                     await asyncio.to_thread(
@@ -341,6 +399,10 @@ spec:
                         name=name,
                     )
                     # Resource exists, update it
+                    LoggingUtility.log_info(
+                        f"kuberay_crd_apply_{kind.lower()}",
+                        f"Updating existing {kind} '{name}' in namespace '{namespace}'",
+                    )
                     result = await asyncio.to_thread(
                         self._custom_objects_api.patch_namespaced_custom_object,
                         group=group,
@@ -354,6 +416,10 @@ spec:
                 except ApiException as e:
                     if hasattr(e, "status") and e.status == 404:
                         # Resource doesn't exist, create it
+                        LoggingUtility.log_info(
+                            f"kuberay_crd_apply_{kind.lower()}",
+                            f"Creating new {kind} '{name}' in namespace '{namespace}'",
+                        )
                         result = await asyncio.to_thread(
                             self._custom_objects_api.create_namespaced_custom_object,
                             group=group,
@@ -365,6 +431,16 @@ spec:
                         action = "created"
                     else:
                         raise
+
+                # Log the result of the CRD application
+                LoggingUtility.log_info(
+                    f"kuberay_crd_result_{kind.lower()}",
+                    f"Successfully {action} {kind} '{name}' in namespace '{namespace}'",
+                )
+                LoggingUtility.log_info(
+                    f"kuberay_crd_result_{kind.lower()}",
+                    f"Applied {kind} result: {json.dumps(result, default=str, indent=2)}",
+                )
 
             elif api_version == "v1" and kind == "Service":
                 # Handle core v1 Service

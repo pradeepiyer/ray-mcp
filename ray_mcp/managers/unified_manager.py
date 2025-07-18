@@ -103,10 +103,20 @@ class RayUnifiedManager:
             environment = action.get("environment", "auto")
 
             # Route based on parsed environment, with fallback to prompt detection
-            if environment == "local":
-                return await self._job_manager.execute_request(prompt)
-            elif environment == "kubernetes":
+            if environment == "kubernetes":
                 return await self._kuberay_job_manager.execute_request(prompt)
+            elif environment == "local":
+                # Even if LLM parser says "local", check if we're connected to Kubernetes
+                # and the prompt mentions a cluster name (indicating intent to use existing cluster)
+                if (
+                    self._is_kubernetes_connected()
+                    and action.get("cluster_name")
+                    and not self._job_manager._is_ray_ready()
+                ):
+                    # User is connected to K8s, mentions cluster name, and no local Ray cluster
+                    return await self._kuberay_job_manager.execute_request(prompt)
+                else:
+                    return await self._job_manager.execute_request(prompt)
             else:
                 # Fallback to prompt-based detection for "auto" or unspecified environment
                 # Prioritize Kubernetes cluster over local cluster if connected
