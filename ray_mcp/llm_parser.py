@@ -113,14 +113,31 @@ Examples:
 - "Get status of job on kubernetes" → {{"type": "job", "operation": "get", "environment": "kubernetes"}}
 - "Authenticate with GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
 - "Authenticate with Google Cloud" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "Login to GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "Login to Google Cloud" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "Login to GKE" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "Connect to GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
 - "Authenticate with AWS" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
 - "Authenticate with Amazon Cloud" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
+- "Login to AWS" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
+- "Login to EKS" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
+- "Connect to AWS" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
 - "Authenticate with Azure" → {{"type": "cloud", "operation": "authenticate", "provider": "azure"}}
+- "Login to Azure" → {{"type": "cloud", "operation": "authenticate", "provider": "azure"}}
+- "Login to AKS" → {{"type": "cloud", "operation": "authenticate", "provider": "azure"}}
+- "Connect to Azure" → {{"type": "cloud", "operation": "authenticate", "provider": "azure"}}
 - "List cloud clusters" → {{"type": "cloud", "operation": "list_clusters"}}
 - "List GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
+- "List EKS clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "aws"}}
+- "List AKS clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "azure"}}
 - "List AWS clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "aws"}}
 - "List all GKE clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "gcp"}}
+- "List all EKS clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "aws"}}
+- "List all AKS clusters" → {{"type": "cloud", "operation": "list_clusters", "provider": "azure"}}
 - "List all available clusters in the current project" → {{"type": "cloud", "operation": "list_clusters"}}
+- "Login to GKE and list clusters" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
+- "Login to EKS and list clusters" → {{"type": "cloud", "operation": "authenticate", "provider": "aws"}}
+- "Login to AKS and list clusters" → {{"type": "cloud", "operation": "authenticate", "provider": "azure"}}
 - "Authenticate with Google Cloud and list Kubernetes clusters" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
 - "Connect to cluster my-cluster in zone us-central1-a" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-central1-a", "provider": "gcp"}}
 - "Connect to cluster ray-cluster in us-west1-c" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "ray-cluster", "zone": "us-west1-c", "provider": "gcp"}}
