@@ -56,8 +56,8 @@ class ManifestGenerator:
         name = action.get("name", "ray-cluster")
         namespace = action.get("namespace", "default")
         workers = action.get("workers") or 1  # Handle None workers
-        head_resources = action.get("head_resources", {"cpu": "1", "memory": "2Gi"})
-        worker_resources = action.get("worker_resources", {"cpu": "1", "memory": "2Gi"})
+        head_resources = action.get("head_resources", {"cpu": "4", "memory": "16Gi"})
+        worker_resources = action.get("worker_resources", {"cpu": "8", "memory": "16Gi"})
 
         # Generate manifest YAML
         manifest = f"""apiVersion: ray.io/v1
@@ -148,30 +148,27 @@ spec:
         script = action.get("script") or action.get("source", "python main.py")
         runtime_env = action.get("runtime_env", {})
 
-        # Handle GitHub URL in script - convert to proper git runtime_env + entrypoint
+        # Handle GitHub URL in script - convert to proper working_dir + entrypoint  
         if script and script.startswith("https://github.com/"):
             # Extract repo and script path from GitHub URL
             # Example: https://github.com/anyscale/rayturbo-benchmarks/blob/main/aggregations-filters/tpch-q1.py
-            # -> repo: https://github.com/anyscale/rayturbo-benchmarks.git, script: aggregations-filters/tpch-q1.py
+            # -> working_dir: https://github.com/anyscale/rayturbo-benchmarks/archive/main.zip, script: aggregations-filters/tpch-q1.py
             if "/blob/" in script:
                 parts = script.split("/blob/")
                 if len(parts) == 2:
-                    repo_url = parts[0] + ".git"
+                    repo_base_url = parts[0]
                     branch_and_path = parts[1].split("/", 1)
                     if len(branch_and_path) == 2:
                         branch = branch_and_path[0]
                         script_path = branch_and_path[1]
 
-                        # Set up git runtime environment
-                        if not runtime_env.get("git"):
-                            runtime_env["git"] = {}
-                        runtime_env["git"]["url"] = repo_url
-                        runtime_env["git"]["branch"] = branch
+                        # Set up working_dir runtime environment with GitHub archive URL
+                        # Ray supports working_dir with direct zip URLs from GitHub
+                        runtime_env["working_dir"] = f"{repo_base_url}/archive/{branch}.zip"
 
-                        # Set working directory to repository root for git cloned repos
-                        runtime_env["working_dir"] = "."
-
-                        # Set entrypoint to run the script from the downloaded repo
+                        # Set entrypoint to run the script from the downloaded repo  
+                        # Ray unpacks the zip and makes it available in the working directory
+                        # The script path should be relative to the repo root
                         script = f"python {script_path}"
 
         # Handle runtime environment
@@ -192,9 +189,6 @@ spec:
                         pip_yaml += f"\n      - {package}"
                     runtime_parts.append(pip_yaml)
 
-            # Handle working directory
-            if runtime_env.get("working_dir"):
-                runtime_parts.append(f'working_dir: "{runtime_env["working_dir"]}"')
 
             # Handle conda environment
             if runtime_env.get("conda"):
@@ -207,17 +201,10 @@ spec:
                         conda_yaml += f"\n  {key}: {value}"
                     runtime_parts.append(conda_yaml)
 
-            # Handle git repository
-            if runtime_env.get("git"):
-                git_config = runtime_env["git"]
-                if isinstance(git_config, dict):
-                    git_yaml = "git:"
-                    for key, value in git_config.items():
-                        if key == "url":
-                            git_yaml += f'\n  {key}: "{value}"'
-                        else:
-                            git_yaml += f'\n  {key}: "{value}"'
-                    runtime_parts.append(git_yaml)
+            # Handle working directory
+            if runtime_env.get("working_dir"):
+                working_dir = runtime_env["working_dir"]
+                runtime_parts.append(f'working_dir: "{working_dir}"')
 
             # Handle environment variables
             if runtime_env.get("env_vars"):
@@ -261,11 +248,11 @@ spec:
             image: rayproject/ray:2.47.0
             resources:
               limits:
-                cpu: "1"
-                memory: "2Gi"
+                cpu: "4"
+                memory: "16Gi"
               requests:
-                cpu: "1"
-                memory: "2Gi"
+                cpu: "4"
+                memory: "16Gi"
             ports:
             - containerPort: 6379
               name: gcs-server
@@ -290,11 +277,11 @@ spec:
                   command: ["/bin/sh","-c","ray stop"]
             resources:
               limits:
-                cpu: "1"
-                memory: "2Gi"
+                cpu: "8"
+                memory: "16Gi"
               requests:
-                cpu: "1"
-                memory: "2Gi"
+                cpu: "8"
+                memory: "16Gi"
   shutdownAfterJobFinishes: true
   ttlSecondsAfterFinished: 300
 """

@@ -74,16 +74,22 @@ async def main():
             "Ray is not available. The MCP server will start but Ray operations will fail.",
         )
 
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="ray-mcp",
-                server_version=__version__,
-                capabilities=ServerCapabilities(),
-            ),
-        )
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="ray-mcp",
+                    server_version=__version__,
+                    capabilities=ServerCapabilities(),
+                ),
+            )
+    finally:
+        # Clean up global OpenAI client to prevent TaskGroup errors
+        from .llm_parser import reset_global_parser
+
+        await reset_global_parser()
 
 
 def run_server():
