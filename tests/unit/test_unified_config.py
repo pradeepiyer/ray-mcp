@@ -31,6 +31,10 @@ class TestConfig:
         assert config.gke_region == "us-central1"
         assert config.gke_zone == "us-central1-a"
 
+        # AWS settings
+        assert config.aws_region == "us-west-2"
+        assert config.aws_profile is None
+
         # General settings
         assert config.log_level == "INFO"
         assert config.timeout_seconds == 300
@@ -48,6 +52,8 @@ class TestConfig:
             "GOOGLE_CLOUD_PROJECT": "my-project",
             "GKE_REGION": "us-west1",
             "GKE_ZONE": "us-west1-b",
+            "AWS_DEFAULT_REGION": "us-east-1",
+            "AWS_PROFILE": "test-profile",
             "RAY_MCP_LOG_LEVEL": "DEBUG",
             "RAY_MCP_TIMEOUT": "600",
             "RAY_MCP_ENHANCED_OUTPUT": "true",
@@ -66,6 +72,8 @@ class TestConfig:
             assert config.gcp_project_id == "my-project"
             assert config.gke_region == "us-west1"
             assert config.gke_zone == "us-west1-b"
+            assert config.aws_region == "us-east-1"
+            assert config.aws_profile == "test-profile"
             assert config.log_level == "DEBUG"
             assert config.timeout_seconds == 600
             assert config.enhanced_output is True
@@ -89,6 +97,8 @@ class TestConfig:
             assert config.gcp_project_id is None
             assert config.gke_region == "us-central1"
             assert config.gke_zone == "us-central1-a"
+            assert config.aws_region == "us-west-2"
+            assert config.aws_profile is None
             assert config.log_level == "INFO"
             assert config.timeout_seconds == 300
             assert config.enhanced_output is False

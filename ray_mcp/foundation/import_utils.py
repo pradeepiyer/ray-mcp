@@ -57,3 +57,20 @@ try:
 except ImportError:
     service_account = None
     GOOGLE_SERVICE_ACCOUNT_AVAILABLE = False
+
+# AWS imports
+if TYPE_CHECKING:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+
+    AWS_AVAILABLE = True
+except ImportError:
+    boto3 = None
+    BotoCoreError = Exception
+    ClientError = Exception
+    NoCredentialsError = Exception
+    AWS_AVAILABLE = False
