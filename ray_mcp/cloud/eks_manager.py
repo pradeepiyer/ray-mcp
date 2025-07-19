@@ -328,11 +328,12 @@ class EKSManager(ResourceManager):
             return self._handle_error("eks cluster connection", e)
 
         try:
-            region = self._resolve_region(region)
-            if not region:
+            resolved_region = self._resolve_region(region)
+            if not resolved_region:
                 return error_response(
                     "Region is required for cluster connection. Please authenticate with AWS first or specify a region."
                 )
+            region = resolved_region
 
             # Get cluster details from EKS API
             cluster_response = await asyncio.to_thread(
@@ -384,7 +385,11 @@ class EKSManager(ResourceManager):
 
             # Create Kubernetes client configuration
             configuration = client.Configuration()
-            configuration.host = cluster.get("endpoint")
+            endpoint = cluster.get("endpoint")
+            if endpoint:
+                configuration.host = endpoint
+            else:
+                return error_response("Cluster endpoint not found")
 
             # Get EKS token for authentication
             token = await self._get_eks_token(cluster["name"], region)
@@ -582,11 +587,12 @@ class EKSManager(ResourceManager):
             )
 
         try:
-            region = self._resolve_region(region)
-            if not region:
+            resolved_region = self._resolve_region(region)
+            if not resolved_region:
                 return error_response(
                     "Region is required for cluster info. Please authenticate with AWS first or specify a region."
                 )
+            region = resolved_region
 
             # Get cluster details
             cluster_response = await asyncio.to_thread(
