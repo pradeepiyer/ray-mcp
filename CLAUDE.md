@@ -1,9 +1,9 @@
 # Ray MCP Server
 
-**3-tool prompt-driven Ray cluster management via natural language.**
+**4-tool prompt-driven Ray cluster management via natural language.**
 
 ## Architecture
-- **3 Tools**: `ray_cluster`, `ray_job`, `cloud` (single `prompt` parameter each)
+- **4 Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud` (single `prompt` parameter each)
 - **Natural Language**: OpenAI parses prompts into Ray operations
 - **Dual Environment**: Local Ray + Kubernetes/KubeRay support
 
@@ -55,7 +55,7 @@ python tests/integration/test_runner.py all     # Complete test suite
 - `python -m ray_mcp.main` - Direct module execution
 
 ## Key Files
-- `ray_mcp/tools.py` - 3-tool definitions
+- `ray_mcp/tools.py` - 4-tool definitions
 - `ray_mcp/parsers.py` - Natural language parsing
 - `ray_mcp/handlers.py` - MCP protocol handlers
 - `ray_mcp/managers/` - Business logic

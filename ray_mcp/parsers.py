@@ -38,3 +38,8 @@ class ActionParser:
     def parse_kuberay_cluster_action(cls, prompt: str) -> dict[str, Any]:
         """Parse KubeRay cluster action from prompt - compatibility wrapper."""
         return asyncio.run(get_parser().parse_kuberay_cluster_action(prompt))
+
+    @classmethod
+    def parse_kuberay_service_action(cls, prompt: str) -> dict[str, Any]:
+        """Parse KubeRay service action from prompt - compatibility wrapper."""
+        return asyncio.run(get_parser().parse_kuberay_service_action(prompt))

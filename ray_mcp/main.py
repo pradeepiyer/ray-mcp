@@ -1,4 +1,4 @@
-"""Ray MCP Server - Clean 3-tool natural language interface."""
+"""Ray MCP Server - Clean 4-tool natural language interface."""
 
 import asyncio
 import json
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Return the 3 Ray tools with natural language interfaces."""
+    """Return the 4 Ray tools with natural language interfaces."""
     return get_ray_tools()
 
 
@@ -54,6 +54,8 @@ async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextCon
             result = await handlers.handle_cluster(prompt)
         elif name == "ray_job":
             result = await handlers.handle_job(prompt)
+        elif name == "ray_service":
+            result = await handlers.handle_service(prompt)
         elif name == "cloud":
             result = await handlers.handle_cloud(prompt)
         else:

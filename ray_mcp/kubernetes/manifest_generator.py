@@ -57,7 +57,9 @@ class ManifestGenerator:
         namespace = action.get("namespace", "default")
         workers = action.get("workers") or 1  # Handle None workers
         head_resources = action.get("head_resources", {"cpu": "4", "memory": "16Gi"})
-        worker_resources = action.get("worker_resources", {"cpu": "8", "memory": "16Gi"})
+        worker_resources = action.get(
+            "worker_resources", {"cpu": "8", "memory": "16Gi"}
+        )
 
         # Generate manifest YAML
         manifest = f"""apiVersion: ray.io/v1
@@ -140,15 +142,16 @@ spec:
         return manifest
 
     @staticmethod
-    def generate_ray_job_manifest(prompt: str, action: dict[str, Any]) -> str:
-        """Generate RayJob manifest from prompt and parsed action."""
+    def generate_ray_service_manifest(prompt: str, action: dict[str, Any]) -> str:
+        """Generate RayService manifest from prompt and parsed action."""
         # Extract parameters from action
-        name = action.get("name", "ray-job")
+        name = action.get("name", "ray-service")
         namespace = action.get("namespace", "default")
-        script = action.get("script") or action.get("source", "python main.py")
+        gateway = action.get("gateway", "ray-gateway")
+        script = action.get("script") or action.get("source", "python serve.py")
         runtime_env = action.get("runtime_env", {})
 
-        # Handle GitHub URL in script - convert to proper working_dir + entrypoint  
+        # Handle GitHub URL in script - convert to proper working_dir + entrypoint
         if script and script.startswith("https://github.com/"):
             # Extract repo and script path from GitHub URL
             # Example: https://github.com/anyscale/rayturbo-benchmarks/blob/main/aggregations-filters/tpch-q1.py
@@ -164,9 +167,11 @@ spec:
 
                         # Set up working_dir runtime environment with GitHub archive URL
                         # Ray supports working_dir with direct zip URLs from GitHub
-                        runtime_env["working_dir"] = f"{repo_base_url}/archive/{branch}.zip"
+                        runtime_env["working_dir"] = (
+                            f"{repo_base_url}/archive/{branch}.zip"
+                        )
 
-                        # Set entrypoint to run the script from the downloaded repo  
+                        # Set entrypoint to run the script from the downloaded repo
                         # Ray unpacks the zip and makes it available in the working directory
                         # The script path should be relative to the repo root
                         script = f"python {script_path}"
@@ -189,6 +194,200 @@ spec:
                         pip_yaml += f"\n      - {package}"
                     runtime_parts.append(pip_yaml)
 
+            # Handle conda environment
+            if runtime_env.get("conda"):
+                conda_config = runtime_env["conda"]
+                if isinstance(conda_config, str):
+                    runtime_parts.append(f"conda: {conda_config}")
+                elif isinstance(conda_config, dict):
+                    conda_yaml = "conda:"
+                    for key, value in conda_config.items():
+                        conda_yaml += f"\n  {key}: {value}"
+                    runtime_parts.append(conda_yaml)
+
+            # Handle working directory
+            if runtime_env.get("working_dir"):
+                working_dir = runtime_env["working_dir"]
+                runtime_parts.append(f'working_dir: "{working_dir}"')
+
+            # Handle environment variables
+            if runtime_env.get("env_vars"):
+                env_vars = runtime_env["env_vars"]
+                env_yaml = "env_vars:"
+                for key, value in env_vars.items():
+                    env_yaml += f"\n  {key}: {value}"
+                runtime_parts.append(env_yaml)
+
+            # Combine all parts
+            if runtime_parts:
+                # Properly indent each part's content
+                indented_parts = []
+                for part in runtime_parts:
+                    # Replace internal newlines with properly indented newlines
+                    indented_part = part.replace("\n", "\n    ")
+                    indented_parts.append(indented_part)
+                runtime_content = "\n    ".join(indented_parts)
+                runtime_env_yaml = f"""
+  runtimeEnvYAML: |
+    {runtime_content}"""
+
+        # Generate manifest YAML with proper separation
+        manifest = f"""apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: {name}
+  namespace: {namespace}
+spec:
+  serveConfigV2: |
+    applications:
+    - name: {name}
+      import_path: {script}
+  serviceUnhealthySecondThreshold: 300
+  deploymentUnhealthySecondThreshold: 300{runtime_env_yaml}
+  rayClusterConfig:
+    rayVersion: '2.47.0'
+    enableInTreeAutoscaling: true
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.47.0
+            resources:
+              limits:
+                cpu: "4"
+                memory: "16Gi"
+              requests:
+                cpu: "4"
+                memory: "16Gi"
+            ports:
+            - containerPort: 6379
+              name: gcs-server
+            - containerPort: 8265
+              name: dashboard
+            - containerPort: 10001
+              name: client
+            - containerPort: 8000
+              name: serve
+    workerGroupSpecs:
+    - replicas: 2
+      minReplicas: 1
+      maxReplicas: 5
+      groupName: small-group
+      rayStartParams: {{}}
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.47.0
+            lifecycle:
+              preStop:
+                exec:
+                  command: ["/bin/sh","-c","ray stop"]
+            resources:
+              limits:
+                cpu: "8"
+                memory: "16Gi"
+              requests:
+                cpu: "8"
+                memory: "16Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {name}-service
+  namespace: {namespace}
+spec:
+  selector:
+    ray.io/cluster: {name}
+    ray.io/serve: "yes"
+  ports:
+  - name: serve
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {name}-route
+  namespace: {namespace}
+spec:
+  parentRefs:
+  - name: {gateway}
+  hostnames:
+  - {name}.ray.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {name}-service
+      port: 8000
+      weight: 100
+"""
+        # Log the generated manifest
+        LoggingUtility.log_info(
+            "kuberay_service_manifest_gen",
+            f"Generated RayService manifest:\n{manifest}",
+        )
+
+        return manifest
+
+    @staticmethod
+    def generate_ray_job_manifest(prompt: str, action: dict[str, Any]) -> str:
+        """Generate RayJob manifest from prompt and parsed action."""
+        # Extract parameters from action
+        name = action.get("name", "ray-job")
+        namespace = action.get("namespace", "default")
+        script = action.get("script") or action.get("source", "python main.py")
+        runtime_env = action.get("runtime_env", {})
+
+        # Handle GitHub URL in script - convert to proper working_dir + entrypoint
+        if script and script.startswith("https://github.com/"):
+            # Extract repo and script path from GitHub URL
+            # Example: https://github.com/anyscale/rayturbo-benchmarks/blob/main/aggregations-filters/tpch-q1.py
+            # -> working_dir: https://github.com/anyscale/rayturbo-benchmarks/archive/main.zip, script: aggregations-filters/tpch-q1.py
+            if "/blob/" in script:
+                parts = script.split("/blob/")
+                if len(parts) == 2:
+                    repo_base_url = parts[0]
+                    branch_and_path = parts[1].split("/", 1)
+                    if len(branch_and_path) == 2:
+                        branch = branch_and_path[0]
+                        script_path = branch_and_path[1]
+
+                        # Set up working_dir runtime environment with GitHub archive URL
+                        # Ray supports working_dir with direct zip URLs from GitHub
+                        runtime_env["working_dir"] = (
+                            f"{repo_base_url}/archive/{branch}.zip"
+                        )
+
+                        # Set entrypoint to run the script from the downloaded repo
+                        # Ray unpacks the zip and makes it available in the working directory
+                        # The script path should be relative to the repo root
+                        script = f"python {script_path}"
+
+        # Handle runtime environment
+        runtime_env_yaml = ""
+        if runtime_env:
+            runtime_parts = []
+
+            # Handle pip dependencies
+            if runtime_env.get("pip"):
+                pip_packages = runtime_env["pip"]
+                if isinstance(pip_packages, str):
+                    # Single package as string
+                    runtime_parts.append(f"pip:\n      - {pip_packages}")
+                elif isinstance(pip_packages, list):
+                    # Multiple packages as list
+                    pip_yaml = "pip:"
+                    for package in pip_packages:
+                        pip_yaml += f"\n      - {package}"
+                    runtime_parts.append(pip_yaml)
 
             # Handle conda environment
             if runtime_env.get("conda"):
@@ -362,6 +561,8 @@ spec:
                     plural = "rayclusters"
                 elif kind == "RayJob":
                     plural = "rayjobs"
+                elif kind == "RayService":
+                    plural = "rayservices"
                 else:
                     raise ValueError(f"Unsupported Ray CRD kind: {kind}")
 
@@ -456,6 +657,59 @@ spec:
                         action = "created"
                     else:
                         raise
+            elif api_version == "gateway.networking.k8s.io/v1" and kind == "HTTPRoute":
+                # Handle Gateway API HTTPRoute
+                group = "gateway.networking.k8s.io"
+                version = "v1"
+                plural = "httproutes"
+
+                LoggingUtility.log_info(
+                    "gateway_api_httproute_apply",
+                    f"Applying HTTPRoute '{name}' in namespace '{namespace}'",
+                )
+
+                try:
+                    await asyncio.to_thread(
+                        self._custom_objects_api.get_namespaced_custom_object,
+                        group=group,
+                        version=version,
+                        namespace=namespace,
+                        plural=plural,
+                        name=name,
+                    )
+                    # HTTPRoute exists, update it
+                    LoggingUtility.log_info(
+                        "gateway_api_httproute_apply",
+                        f"Updating existing HTTPRoute '{name}' in namespace '{namespace}'",
+                    )
+                    result = await asyncio.to_thread(
+                        self._custom_objects_api.patch_namespaced_custom_object,
+                        group=group,
+                        version=version,
+                        namespace=namespace,
+                        plural=plural,
+                        name=name,
+                        body=resource,
+                    )
+                    action = "updated"
+                except ApiException as e:
+                    if hasattr(e, "status") and e.status == 404:
+                        # HTTPRoute doesn't exist, create it
+                        LoggingUtility.log_info(
+                            "gateway_api_httproute_apply",
+                            f"Creating new HTTPRoute '{name}' in namespace '{namespace}'",
+                        )
+                        result = await asyncio.to_thread(
+                            self._custom_objects_api.create_namespaced_custom_object,
+                            group=group,
+                            version=version,
+                            namespace=namespace,
+                            plural=plural,
+                            body=resource,
+                        )
+                        action = "created"
+                    else:
+                        raise
             else:
                 raise ValueError(f"Unsupported resource type: {api_version}/{kind}")
 
@@ -502,11 +756,29 @@ spec:
                     plural="rayjobs",
                     name=name,
                 )
+            elif resource_type.lower() == "rayservice":
+                await asyncio.to_thread(
+                    self._custom_objects_api.delete_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayservices",
+                    name=name,
+                )
             elif resource_type.lower() == "service":
                 await asyncio.to_thread(
                     self._core_v1_api.delete_namespaced_service,
                     name=name,
                     namespace=namespace,
+                )
+            elif resource_type.lower() == "httproute":
+                await asyncio.to_thread(
+                    self._custom_objects_api.delete_namespaced_custom_object,
+                    group="gateway.networking.k8s.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="httproutes",
+                    name=name,
                 )
             else:
                 raise ValueError(f"Unsupported resource type: {resource_type}")
@@ -562,6 +834,15 @@ spec:
                     plural="rayjobs",
                     name=name,
                 )
+            elif resource_type.lower() == "rayservice":
+                resource_data = await asyncio.to_thread(
+                    self._custom_objects_api.get_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayservices",
+                    name=name,
+                )
             elif resource_type.lower() == "service":
                 service = await asyncio.to_thread(
                     self._core_v1_api.read_namespaced_service,
@@ -570,6 +851,15 @@ spec:
                 )
                 # Convert K8s object to dict for consistency
                 resource_data = client.ApiClient().sanitize_for_serialization(service)
+            elif resource_type.lower() == "httproute":
+                resource_data = await asyncio.to_thread(
+                    self._custom_objects_api.get_namespaced_custom_object,
+                    group="gateway.networking.k8s.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="httproutes",
+                    name=name,
+                )
             else:
                 raise ValueError(f"Unsupported resource type: {resource_type}")
 
@@ -656,6 +946,14 @@ spec:
                     namespace=namespace,
                     plural="rayjobs",
                 )
+            elif resource_type.lower() == "rayservice":
+                resources_data = await asyncio.to_thread(
+                    self._custom_objects_api.list_namespaced_custom_object,
+                    group="ray.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="rayservices",
+                )
             elif resource_type.lower() == "service":
                 service_list = await asyncio.to_thread(
                     self._core_v1_api.list_namespaced_service, namespace=namespace
@@ -663,6 +961,14 @@ spec:
                 # Convert K8s object to dict for consistency
                 resources_data = client.ApiClient().sanitize_for_serialization(
                     service_list
+                )
+            elif resource_type.lower() == "httproute":
+                resources_data = await asyncio.to_thread(
+                    self._custom_objects_api.list_namespaced_custom_object,
+                    group="gateway.networking.k8s.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="httproutes",
                 )
             else:
                 raise ValueError(f"Unsupported resource type: {resource_type}")

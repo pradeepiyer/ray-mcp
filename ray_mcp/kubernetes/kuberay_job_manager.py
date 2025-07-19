@@ -78,7 +78,6 @@ class KubeRayJobManager(ResourceManager):
         so explicit configuration setting is not needed.
         """
         try:
-
             LoggingUtility.log_info(
                 "kuberay_job_set_k8s_config",
                 f"Kubernetes config provided: {kubernetes_config is not None} - using kubectl with current context",
@@ -88,7 +87,6 @@ class KubeRayJobManager(ResourceManager):
                 "Using kubectl with current kubeconfig context",
             )
         except Exception as e:
-
             LoggingUtility.log_error(
                 "kuberay_job_set_k8s_config",
                 Exception(f"Failed to configure kubectl context: {str(e)}"),

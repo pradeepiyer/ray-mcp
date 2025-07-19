@@ -8,7 +8,7 @@
 
 ## ✨ Features
 
-- **3 Simple Tools**: `ray_cluster`, `ray_job`, `cloud`
+- **4 Simple Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud`
 - **Natural Language Interface**: Single prompt parameter per tool
 - **Unified Management**: Works with local Ray, KubeRay, and cloud providers
 - **Automatic Detection**: Intelligent routing between environments
@@ -50,6 +50,11 @@ ray_job: "submit job with script train.py"
 ray_job: "list all running jobs"
 ray_job: "get logs for job raysubmit_123"
 
+# Service operations
+ray_service: "deploy service with inference model serve.py"
+ray_service: "list all services"
+ray_service: "scale service model-api to 3 replicas"
+
 # Cloud providers
 cloud: "authenticate with GCP project ml-experiments"
 cloud: "list all GKE clusters"
@@ -79,6 +84,17 @@ Submit and manage Ray jobs.
 - `"get logs for job raysubmit_123"`
 - `"cancel job raysubmit_456"`
 - `"create Ray job with training script on kubernetes"`
+
+### `ray_service`
+Deploy and manage Ray services for long-running inference and serving.
+
+**Examples:**
+- `"deploy service with inference model serve.py"`
+- `"create service named image-classifier with model classifier.py"`
+- `"list all services"`
+- `"scale service model-api to 5 replicas"`
+- `"get status of service inference-engine"`
+- `"delete service recommendation-api"`
 
 ### `cloud`
 Manage cloud providers and authentication.

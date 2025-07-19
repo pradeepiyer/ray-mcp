@@ -6,6 +6,7 @@ from ..cloud.cloud_provider_manager import CloudProviderManager
 from ..foundation.logging_utils import error_response
 from ..kubernetes.kuberay_cluster_manager import KubeRayClusterManager
 from ..kubernetes.kuberay_job_manager import KubeRayJobManager
+from ..kubernetes.kuberay_service_manager import KubeRayServiceManager
 from ..kubernetes.kubernetes_manager import KubernetesManager
 from .cluster_manager import ClusterManager
 from .job_manager import JobManager
@@ -27,6 +28,7 @@ class RayUnifiedManager:
         self._kubernetes_manager = KubernetesManager()
         self._kuberay_cluster_manager = KubeRayClusterManager()
         self._kuberay_job_manager = KubeRayJobManager()
+        self._kuberay_service_manager = KubeRayServiceManager()
         self._cloud_provider_manager = CloudProviderManager()
 
     # =================================================================
@@ -62,8 +64,8 @@ class RayUnifiedManager:
                     return await self._kubernetes_manager.execute_request(prompt)
             else:
                 # Fallback to prompt-based detection for "auto" or unspecified environment
-                # Prioritize Kubernetes cluster over local cluster if connected
-                if self._is_kubernetes_connected():
+                # Prioritize prompt content over connection status
+                if self._is_kubernetes_environment(prompt):
                     # Check if it's KubeRay or general Kubernetes
                     if "ray" in prompt.lower():
                         return await self._kuberay_cluster_manager.execute_request(
@@ -71,7 +73,8 @@ class RayUnifiedManager:
                         )
                     else:
                         return await self._kubernetes_manager.execute_request(prompt)
-                elif self._is_kubernetes_environment(prompt):
+                elif self._is_kubernetes_connected():
+                    # Only default to Kubernetes if prompt doesn't specify local
                     # Check if it's KubeRay or general Kubernetes
                     if "ray" in prompt.lower():
                         return await self._kuberay_cluster_manager.execute_request(
@@ -119,14 +122,16 @@ class RayUnifiedManager:
                     return await self._job_manager.execute_request(prompt)
             else:
                 # Fallback to prompt-based detection for "auto" or unspecified environment
-                # Prioritize Kubernetes cluster over local cluster if connected
-                if self._is_kubernetes_connected():
-                    return await self._kuberay_job_manager.execute_request(prompt)
-                elif self._job_manager._is_ray_ready():
+                # Prioritize local Ray cluster over Kubernetes if available
+                if self._job_manager._is_ray_ready():
                     return await self._job_manager.execute_request(prompt)
-                else:
-                    # No local cluster, try Kubernetes as fallback
+                elif self._is_kubernetes_connected():
                     return await self._kuberay_job_manager.execute_request(prompt)
+                else:
+                    # No clusters available
+                    return error_response(
+                        "No Ray cluster is running. Please start a cluster first."
+                    )
         except Exception as e:
             return error_response(str(e))
 
@@ -142,6 +147,22 @@ class RayUnifiedManager:
         """
         try:
             return await self._cloud_provider_manager.execute_request(prompt)
+        except Exception as e:
+            return error_response(str(e))
+
+    async def handle_service_request(self, prompt: str) -> dict[str, Any]:
+        """Handle service operations using natural language prompts.
+
+        Examples:
+            - "create Ray service with inference model serve.py"
+            - "list all Ray services in production namespace"
+            - "get status of service model-serving"
+            - "delete service inference-api"
+            - "get logs for service image-classifier"
+        """
+        try:
+            # Service operations are primarily for KubeRay services
+            return await self._kuberay_service_manager.execute_request(prompt)
         except Exception as e:
             return error_response(str(e))
 
