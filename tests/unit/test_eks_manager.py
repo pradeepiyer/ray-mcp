@@ -126,7 +126,7 @@ class TestEKSManager:
         result = await eks_manager.execute_request("connect to cluster")
 
         assert result["status"] == "error"
-        assert "cluster name and region required" in result["error"]
+        assert "cluster name and region required" in result["message"]
 
     @pytest.mark.asyncio
     @patch("ray_mcp.cloud.eks_manager.boto3")
@@ -167,10 +167,10 @@ class TestEKSManager:
         self, mock_boto3, eks_manager
     ):
         """Test EKS authentication with no credentials."""
-        from ray_mcp.foundation.import_utils import NoCredentialsError
+        from botocore.exceptions import NoCredentialsError
 
         # Mock boto3 to raise NoCredentialsError
-        mock_boto3.Session.side_effect = NoCredentialsError("No credentials found")
+        mock_boto3.Session.side_effect = NoCredentialsError()
 
         with pytest.raises(ValueError, match="AWS credentials not found"):
             await eks_manager._authenticate_eks_operation("us-west-2")
