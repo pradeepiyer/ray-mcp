@@ -19,6 +19,10 @@ class RayHandlers:
         """Handle job operations using pure prompt-driven interface."""
         return await self.unified_manager.handle_job_request(prompt)
 
+    async def handle_service(self, prompt: str) -> dict[str, Any]:
+        """Handle service operations using pure prompt-driven interface."""
+        return await self.unified_manager.handle_service_request(prompt)
+
     async def handle_cloud(self, prompt: str) -> dict[str, Any]:
         """Handle cloud operations using pure prompt-driven interface."""
         return await self.unified_manager.handle_cloud_request(prompt)

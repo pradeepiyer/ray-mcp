@@ -40,17 +40,18 @@ def parse_tool_response(result: Any) -> Dict[str, Any]:
 class TestToolRegistry:
     """Test tool registration and discovery functionality."""
 
-    def test_get_ray_tools_returns_three_tools(self):
-        """Test that get_ray_tools returns exactly 3 tools."""
+    def test_get_ray_tools_returns_four_tools(self):
+        """Test that get_ray_tools returns exactly 4 tools."""
         tools = get_ray_tools()
 
-        assert len(tools) == 3
+        assert len(tools) == 4
         assert all(isinstance(tool, Tool) for tool in tools)
 
         # Check tool names
         tool_names = [tool.name for tool in tools]
         assert "ray_cluster" in tool_names
         assert "ray_job" in tool_names
+        assert "ray_service" in tool_names
         assert "cloud" in tool_names
 
     def test_tool_schema_validation(self):
@@ -88,6 +89,11 @@ class TestToolRegistry:
         assert "submit" in job_desc.lower()
         assert "logs" in job_desc.lower()
 
+        # Check ray_service tool description
+        service_desc = tool_by_name["ray_service"].description
+        assert "service" in service_desc.lower()
+        assert "deploy" in service_desc.lower() or "inference" in service_desc.lower()
+
         # Check cloud tool description
         cloud_desc = tool_by_name["cloud"].description
         assert "cloud" in cloud_desc.lower()
@@ -98,13 +104,14 @@ class TestToolRegistry:
         """Test the MCP server list_tools handler."""
         tools = await list_tools()
 
-        assert len(tools) == 3
+        assert len(tools) == 4
         assert all(isinstance(tool, Tool) for tool in tools)
 
         # Verify the tools are properly formatted
         tool_names = [tool.name for tool in tools]
         assert "ray_cluster" in tool_names
         assert "ray_job" in tool_names
+        assert "ray_service" in tool_names
         assert "cloud" in tool_names
 
 
@@ -351,7 +358,6 @@ class TestMCPServerIntegration:
             patch("ray_mcp.main.handlers.handle_job") as mock_handle_job,
             patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud,
         ):
-
             # Set up mock responses
             mock_handle_cluster.return_value = {"tool": "cluster"}
             mock_handle_job.return_value = {"tool": "job"}

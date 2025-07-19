@@ -28,14 +28,14 @@ class LLMActionParser:
 User Request: "{prompt}"
 
 Based on the request, determine:
-1. The type of operation (cluster, job, or cloud)
+1. The type of operation (cluster, job, service, or cloud)
 2. The specific operation being requested
 3. Any parameters mentioned
 4. Runtime environment requirements (pip packages, conda, working directory, etc.)
 
 Return JSON in this exact format:
 {{
-    "type": "cluster|job|cloud",
+    "type": "cluster|job|service|cloud",
     "operation": "create|connect|list|scale|delete|get|logs|cancel|authenticate|list_clusters|connect_cluster|create_cluster|check_environment|get_cluster_info|disconnect|health_check|list_namespaces|list_contexts",
     "name": "cluster-name or job-id or null",
     "namespace": "namespace or null", 
@@ -66,6 +66,8 @@ Important parsing rules:
 - CRITICAL: List operations with cloud keywords (GKE, AWS, Azure, cloud) should be type "cloud" 
 - CRITICAL: Phrases like "current project", "available clusters", "all clusters" without explicit local/kubernetes context should be type "cloud"
 - For job submit operations, set operation to "create"
+- For service create/deploy operations, set operation to "create" and type to "service"
+- CRITICAL: Service operations with keywords "service", "serve", "serving", "inference", "deploy", "model" should be type "service"
 - For status/info/inspect operations, set operation to "get"
 - For stop/delete/terminate operations, set operation to "delete"
 - Detect "kubernetes", "k8s" keywords to set environment to "kubernetes"
@@ -102,6 +104,8 @@ Runtime Environment Examples:
 
 Examples:
 - "Create a Ray cluster named test-cluster with 3 workers" → {{"type": "cluster", "operation": "create", "name": "test-cluster", "workers": 3, "environment": "local"}}
+- "Create a local Ray cluster with 4 CPUs" → {{"type": "cluster", "operation": "create", "cpus": 4, "environment": "local"}}
+- "Create a local Ray cluster with 2 CPUs and dashboard on port 8267" → {{"type": "cluster", "operation": "create", "cpus": 2, "dashboard_port": 8267, "environment": "local"}}
 - "Check status of Ray cluster" → {{"type": "cluster", "operation": "get", "environment": "local"}}
 - "List jobs" → {{"type": "job", "operation": "list"}}
 - "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001", "environment": "local"}}
@@ -143,6 +147,13 @@ Examples:
 - "Connect to cluster ray-cluster in us-west1-c" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "ray-cluster", "zone": "us-west1-c", "provider": "gcp"}}
 - "Connect to cluster my-cluster in us-east-1" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-east-1", "provider": "aws"}}
 - "Connect to cluster my-cluster in eastus2" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "eastus2", "provider": "azure"}}
+- "Create Ray service with model serve.py" → {{"type": "service", "operation": "create", "script": "serve.py", "environment": "kubernetes"}}
+- "Deploy service named image-classifier with inference model classifier.py" → {{"type": "service", "operation": "create", "name": "image-classifier", "script": "classifier.py", "environment": "kubernetes"}}
+- "List all Ray services" → {{"type": "service", "operation": "list", "environment": "kubernetes"}}
+- "Get status of service model-serving" → {{"type": "service", "operation": "get", "name": "model-serving", "environment": "kubernetes"}}
+- "Delete service inference-api" → {{"type": "service", "operation": "delete", "name": "inference-api", "environment": "kubernetes"}}
+- "Get logs for service text-analyzer" → {{"type": "service", "operation": "logs", "name": "text-analyzer", "environment": "kubernetes"}}
+- "Scale service recommendation-engine to 5 replicas" → {{"type": "service", "operation": "scale", "name": "recommendation-engine", "workers": 5, "environment": "kubernetes"}}
 
 Parse the user request above and return only the JSON object, no additional text.
 """
@@ -247,6 +258,25 @@ Parse the user request above and return only the JSON object, no additional text
         result = await self.parse_action(prompt)
         # KubeRay cluster actions are cluster operations in kubernetes environment
         if result.get("type") == "cluster":
+            result["environment"] = "kubernetes"
+        return result
+
+    async def parse_kuberay_service_action(self, prompt: str) -> Dict[str, Any]:
+        """Parse KubeRay service action from prompt using OpenAI."""
+        result = await self.parse_action(prompt)
+        # KubeRay service actions are service operations in kubernetes environment
+        # Map from job type to service type if detected as a service operation
+        if any(
+            keyword in prompt.lower()
+            for keyword in ["service", "serve", "serving", "inference", "model"]
+        ):
+            result["type"] = "service"
+            result["environment"] = "kubernetes"
+        elif result.get("type") == "job" and any(
+            keyword in prompt.lower()
+            for keyword in ["serve", "serving", "inference", "model"]
+        ):
+            result["type"] = "service"
             result["environment"] = "kubernetes"
         return result
 

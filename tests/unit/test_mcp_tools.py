@@ -36,14 +36,14 @@ def parse_tool_response(result: Any) -> dict:
 
 @pytest.mark.unit
 class TestRayTools:
-    """Test the 3 Ray MCP tool definitions."""
+    """Test the 4 Ray MCP tool definitions."""
 
     def test_get_ray_tools_structure(self):
         """Test that get_ray_tools returns properly structured tools."""
         tools = get_ray_tools()
 
-        # Should return exactly 3 tools
-        assert len(tools) == 3
+        # Should return exactly 4 tools
+        assert len(tools) == 4
 
         # Check each tool has required attributes
         for tool in tools:
@@ -55,7 +55,7 @@ class TestRayTools:
 
         # Check tool names are exactly what we expect
         tool_names = [tool.name for tool in tools]
-        assert set(tool_names) == {"ray_cluster", "ray_job", "cloud"}
+        assert set(tool_names) == {"ray_cluster", "ray_job", "ray_service", "cloud"}
 
     def test_ray_cluster_tool_schema(self):
         """Test ray_cluster tool schema."""
@@ -92,6 +92,30 @@ class TestRayTools:
 
         # Verify input schema
         schema = job_tool.inputSchema
+        assert schema["type"] == "object"
+        assert "prompt" in schema["properties"]
+        assert schema["required"] == ["prompt"]
+
+        # Verify prompt property
+        prompt_prop = schema["properties"]["prompt"]
+        assert prompt_prop["type"] == "string"
+        assert "description" in prompt_prop
+        assert (
+            "example" in prompt_prop["description"].lower()
+            or "Examples" in prompt_prop["description"]
+        )
+
+    def test_ray_service_tool_schema(self):
+        """Test ray_service tool schema."""
+        tools = get_ray_tools()
+        service_tool = next(tool for tool in tools if tool.name == "ray_service")
+
+        # Verify basic structure
+        assert service_tool.name == "ray_service"
+        assert "service" in service_tool.description.lower()
+
+        # Verify input schema
+        schema = service_tool.inputSchema
         assert schema["type"] == "object"
         assert "prompt" in schema["properties"]
         assert schema["required"] == ["prompt"]
@@ -144,6 +168,11 @@ class TestRayTools:
                     assert any(
                         keyword in description.lower()
                         for keyword in ["job", "submit", "run", "execute"]
+                    )
+                elif tool.name == "ray_service":
+                    assert any(
+                        keyword in description.lower()
+                        for keyword in ["service", "serve", "deploy", "inference"]
                     )
                 elif tool.name == "cloud":
                     assert any(
@@ -207,6 +236,33 @@ class TestRayHandlers:
             assert response_data["status"] == "success"
             assert response_data["job_id"] == "raysubmit_123"
             assert response_data["message"] == "Job submitted successfully"
+
+    @pytest.mark.asyncio
+    async def test_handle_ray_service_tool(self):
+        """Test handling ray_service tool calls."""
+        with patch("ray_mcp.main.handlers.handle_service") as mock_handle_service:
+            # Mock successful service operation
+            mock_handle_service.return_value = {
+                "status": "success",
+                "service_name": "image-classifier",
+                "message": "Service created successfully",
+            }
+
+            # Simulate tool call
+            result = await call_tool(
+                "ray_service", {"prompt": "create Ray service with model serve.py"}
+            )
+
+            # Verify handler was called correctly
+            mock_handle_service.assert_called_once_with(
+                "create Ray service with model serve.py"
+            )
+
+            # Verify response content
+            response_data = parse_tool_response(result)
+            assert response_data["status"] == "success"
+            assert response_data["service_name"] == "image-classifier"
+            assert response_data["message"] == "Service created successfully"
 
     @pytest.mark.asyncio
     async def test_handle_cloud_tool(self):
@@ -295,6 +351,20 @@ class TestRayHandlers:
             assert "Job error" in response_data["message"]
 
     @pytest.mark.asyncio
+    async def test_handle_service_exception(self):
+        """Test handling exceptions in service handlers."""
+        with patch("ray_mcp.main.handlers.handle_service") as mock_handle_service:
+            # Mock exception from service handler
+            mock_handle_service.side_effect = Exception("Service error")
+
+            result = await call_tool("ray_service", {"prompt": "create service"})
+
+            # Should return error
+            response_data = parse_tool_response(result)
+            assert response_data["status"] == "error"
+            assert "Service error" in response_data["message"]
+
+    @pytest.mark.asyncio
     async def test_handle_cloud_exception(self):
         """Test handling exceptions in cloud handlers."""
         with patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud:
@@ -316,24 +386,27 @@ class TestRayHandlers:
         with (
             patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster,
             patch("ray_mcp.main.handlers.handle_job") as mock_handle_job,
+            patch("ray_mcp.main.handlers.handle_service") as mock_handle_service,
             patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud,
         ):
             # Mock different responses for different calls
             mock_handle_cluster.return_value = {"status": "success", "type": "cluster"}
             mock_handle_job.return_value = {"status": "success", "type": "job"}
+            mock_handle_service.return_value = {"status": "success", "type": "service"}
             mock_handle_cloud.return_value = {"status": "success", "type": "cloud"}
 
             # Make concurrent calls
             tasks = [
                 call_tool("ray_cluster", {"prompt": "cluster prompt"}),
                 call_tool("ray_job", {"prompt": "job prompt"}),
+                call_tool("ray_service", {"prompt": "service prompt"}),
                 call_tool("cloud", {"prompt": "cloud prompt"}),
             ]
 
             results = await asyncio.gather(*tasks)
 
             # All should succeed
-            assert len(results) == 3
+            assert len(results) == 4
 
             # Parse responses
             responses = [parse_tool_response(result) for result in results]
@@ -342,6 +415,7 @@ class TestRayHandlers:
             types = [resp["type"] for resp in responses]
             assert "cluster" in types
             assert "job" in types
+            assert "service" in types
             assert "cloud" in types
 
 

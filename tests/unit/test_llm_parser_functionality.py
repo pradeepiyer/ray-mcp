@@ -6,7 +6,7 @@ focusing on aspects that can be tested without making API calls.
 
 Test Focus:
 - Prompt construction and formatting
-- Response parsing and cleaning 
+- Response parsing and cleaning
 - Cache behavior
 - Error handling with real scenarios
 - Configuration and initialization

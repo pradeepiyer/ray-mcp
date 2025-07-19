@@ -90,7 +90,6 @@ class KubeRayClusterManager(ResourceManager):
         so explicit configuration setting is not needed.
         """
         try:
-
             LoggingUtility.log_info(
                 "kuberay_cluster_set_k8s_config",
                 f"Kubernetes config provided: {kubernetes_config is not None} - using kubectl with current context",
@@ -102,7 +101,6 @@ class KubeRayClusterManager(ResourceManager):
                 "Using kubectl with current kubeconfig context",
             )
         except Exception as e:
-
             LoggingUtility.log_error(
                 "kuberay_cluster_set_k8s_config",
                 Exception(f"Failed to configure kubectl context: {str(e)}"),
@@ -486,7 +484,6 @@ class KubeRayClusterManager(ResourceManager):
             except ApiException as e:
                 status = getattr(e, "status", "unknown")
                 if status == 404:
-
                     LoggingUtility.log_debug(
                         "get_external_dashboard_url",
                         f"Service {service_name} not found in namespace {namespace}",
@@ -504,7 +501,6 @@ class KubeRayClusterManager(ResourceManager):
             elif service_type == "NodePort":
                 return await self._get_nodeport_url(service, dashboard_port, namespace)
             else:
-
                 LoggingUtility.log_debug(
                     "get_external_dashboard_url",
                     f"Service {service_name} is type {service_type}, no external access",
@@ -512,7 +508,6 @@ class KubeRayClusterManager(ResourceManager):
                 return None
 
         except Exception as e:
-
             LoggingUtility.log_debug(
                 "get_external_dashboard_url", f"Error getting external URL: {e}"
             )
@@ -558,7 +553,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-
             LoggingUtility.log_debug(
                 "loadbalancer_url", f"Error getting LoadBalancer URL: {e}"
             )
@@ -588,7 +582,6 @@ class KubeRayClusterManager(ResourceManager):
                     break
 
             if not node_port:
-
                 LoggingUtility.log_debug(
                     "nodeport_url",
                     f"Dashboard port {dashboard_port} not found in service ports",
@@ -609,7 +602,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-
             LoggingUtility.log_debug("nodeport_url", f"Error getting NodePort URL: {e}")
             return None
 
@@ -666,7 +658,6 @@ class KubeRayClusterManager(ResourceManager):
                 if node.status.addresses:
                     for address in node.status.addresses:
                         if address.type == "InternalIP":
-
                             LoggingUtility.log_debug(
                                 "node_external_ip",
                                 f"Using internal IP {address.address} as fallback",
@@ -676,7 +667,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-
             LoggingUtility.log_debug(
                 "node_external_ip", f"Error getting node external IP: {e}"
             )
@@ -706,7 +696,6 @@ class KubeRayClusterManager(ResourceManager):
                     break
 
             if not node_port:
-
                 LoggingUtility.log_debug(
                     "nodeport_url_async",
                     f"No NodePort found for dashboard port {dashboard_port}",
@@ -723,7 +712,6 @@ class KubeRayClusterManager(ResourceManager):
                 )
                 return url
             else:
-
                 LoggingUtility.log_debug(
                     "nodeport_url_async",
                     "No external node IP available for NodePort access",
@@ -731,7 +719,6 @@ class KubeRayClusterManager(ResourceManager):
                 return None
 
         except Exception as e:
-
             LoggingUtility.log_debug(
                 "nodeport_url_async", f"Error getting NodePort URL: {e}"
             )
@@ -761,7 +748,6 @@ class KubeRayClusterManager(ResourceManager):
                     except ApiException as e:
                         status = getattr(e, "status", "unknown")
                         if status == 404:
-
                             LoggingUtility.log_debug(
                                 "service_ready_check",
                                 f"Attempt {attempt + 1}: Service {service_name} not found yet",
@@ -818,7 +804,6 @@ class KubeRayClusterManager(ResourceManager):
                             service, 8265, namespace
                         )
                         if external_url:
-
                             LoggingUtility.log_info(
                                 "service_ready",
                                 f"NodePort service {service_name} ready with external URL: {external_url}",
@@ -840,7 +825,6 @@ class KubeRayClusterManager(ResourceManager):
                         return None
 
                 except Exception as e:
-
                     LoggingUtility.log_debug(
                         "service_ready_check", f"Attempt {attempt + 1}: {e}"
                     )
@@ -854,7 +838,6 @@ class KubeRayClusterManager(ResourceManager):
             return None
 
         except Exception as e:
-
             LoggingUtility.log_error(
                 "wait_for_service_ready", Exception(f"Error waiting for service: {e}")
             )

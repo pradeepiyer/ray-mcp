@@ -127,7 +127,6 @@ async def cleanup_ray():
 
     # Force cleanup any stubborn Ray processes immediately
     try:
-
         # Kill all Ray-related processes more aggressively
         processes_to_kill = [
             "ray::",
@@ -156,7 +155,6 @@ async def cleanup_ray():
 
     # Also try command line cleanup
     try:
-
         subprocess.run(["ray", "stop"], capture_output=True, check=False, timeout=3)
     except:
         pass
@@ -165,7 +163,6 @@ async def cleanup_ray():
 def cleanup_all_ray_processes():
     """Nuclear cleanup option - use only when tests are completely stuck."""
     try:
-
         # Kill all Ray-related processes
         processes_to_kill = [
             "ray::",
@@ -547,7 +544,6 @@ print("Job finished successfully")
 
         # Extra cleanup for stubborn background processes
         try:
-
             # Force kill any remaining ray processes
             subprocess.run(["pkill", "-f", "ray"], capture_output=True, check=False)
             await asyncio.sleep(1)

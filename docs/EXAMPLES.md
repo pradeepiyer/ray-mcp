@@ -156,6 +156,56 @@ ray_job: "get status for job raysubmit_789"
 ray_job: "cancel job raysubmit_789"
 ```
 
+## Ray Service Management
+
+### Deploy and Manage Services
+
+```bash
+# Deploy inference service
+ray_service: "deploy service with inference model serve.py"
+
+# Create named service  
+ray_service: "create service named image-classifier with model classifier.py"
+
+# List all services
+ray_service: "list all services"
+
+# Get service status
+ray_service: "get status of service image-classifier"
+```
+
+### Service Scaling and Management
+
+```bash
+# Scale service replicas
+ray_service: "scale service model-api to 5 replicas"
+
+# Update service configuration
+ray_service: "update service recommendation-engine with new model updated_model.py"
+
+# Get service logs
+ray_service: "get logs for service text-analyzer"
+
+# Delete service
+ray_service: "delete service old-model-service"
+```
+
+### Production Service Patterns
+
+```bash
+# Deploy production inference service
+ray_service: "create service named prod-inference with model production_model.py in namespace production"
+
+# Monitor service health
+ray_service: "get status of service prod-inference"
+
+# Scale based on load
+ray_service: "scale service prod-inference to 10 replicas"
+
+# Update with zero downtime
+ray_service: "update service prod-inference with model updated_production_model.py"
+```
+
 ## Advanced Scenarios
 
 ### Multi-Environment Workflow
@@ -169,9 +219,9 @@ ray_job: "submit job with script test_model.py"
 ray_cluster: "create Ray cluster named dev-cluster with 5 workers on kubernetes"
 ray_job: "submit job with script full_training.py on kubernetes"
 
-# 3. Deploy to production GKE
+# 3. Deploy to production GKE with services
 cloud: "connect to GKE cluster production-cluster"
-ray_job: "submit job with script production_inference.py on kubernetes"
+ray_service: "deploy service named production-api with model inference_model.py"
 ```
 
 ### Resource Management

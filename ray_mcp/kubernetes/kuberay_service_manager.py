@@ -1,4 +1,4 @@
-"""Pure prompt-driven KubeRay job management for Ray MCP."""
+"""Pure prompt-driven KubeRay service management for Ray MCP."""
 
 import asyncio
 from typing import Any, Optional
@@ -10,8 +10,8 @@ from ..llm_parser import get_parser
 from .manifest_generator import ManifestGenerator
 
 
-class KubeRayJobManager(ResourceManager):
-    """Pure prompt-driven Ray job management using KubeRay - no traditional APIs."""
+class KubeRayServiceManager(ResourceManager):
+    """Pure prompt-driven Ray service management using KubeRay - no traditional APIs."""
 
     def __init__(self):
         super().__init__(
@@ -23,42 +23,42 @@ class KubeRayJobManager(ResourceManager):
         self._manifest_generator = ManifestGenerator()
 
     async def execute_request(self, prompt: str) -> dict[str, Any]:
-        """Execute KubeRay job operations using natural language prompts.
+        """Execute KubeRay service operations using natural language prompts.
 
         Examples:
-            - "create Ray job with training script train.py on kubernetes"
-            - "list all Ray jobs in production namespace"
-            - "get status of job training-run-123"
-            - "delete job experiment-456"
-            - "get logs for job data-processing"
+            - "create Ray service with inference model model.py on kubernetes"
+            - "list all Ray services in production namespace"
+            - "get status of service inference-service"
+            - "delete service model-serving"
+            - "get logs for service image-classifier"
         """
         try:
-            action = await get_parser().parse_kuberay_job_action(prompt)
+            action = await get_parser().parse_kuberay_service_action(prompt)
             operation = action["operation"]
 
             if operation == "create":
-                return await self._create_ray_job_from_prompt(action)
+                return await self._create_ray_service_from_prompt(action)
             elif operation == "list":
                 namespace = action.get("namespace", "default")
-                return await self._list_ray_jobs(namespace)
+                return await self._list_ray_services(namespace)
             elif operation == "get":
                 name = action.get("name")
                 namespace = action.get("namespace", "default")
                 if not name:
-                    return error_response("job name required")
-                return await self._get_ray_job(name, namespace)
+                    return error_response("service name required")
+                return await self._get_ray_service(name, namespace)
             elif operation == "delete":
                 name = action.get("name")
                 namespace = action.get("namespace", "default")
                 if not name:
-                    return error_response("job name required")
-                return await self._delete_ray_job(name, namespace)
+                    return error_response("service name required")
+                return await self._delete_ray_service(name, namespace)
             elif operation == "logs":
                 name = action.get("name")
                 namespace = action.get("namespace", "default")
                 if not name:
-                    return error_response("job name required")
-                return await self._get_ray_job_logs(name, namespace)
+                    return error_response("service name required")
+                return await self._get_ray_service_logs(name, namespace)
             else:
                 return error_response(f"Unknown operation: {operation}")
 
@@ -79,89 +79,89 @@ class KubeRayJobManager(ResourceManager):
         """
         try:
             LoggingUtility.log_info(
-                "kuberay_job_set_k8s_config",
+                "kuberay_service_set_k8s_config",
                 f"Kubernetes config provided: {kubernetes_config is not None} - using kubectl with current context",
             )
             LoggingUtility.log_info(
-                "kuberay_job_set_k8s_config",
+                "kuberay_service_set_k8s_config",
                 "Using kubectl with current kubeconfig context",
             )
         except Exception as e:
             LoggingUtility.log_error(
-                "kuberay_job_set_k8s_config",
+                "kuberay_service_set_k8s_config",
                 Exception(f"Failed to configure kubectl context: {str(e)}"),
             )
 
-    async def _create_ray_job_from_prompt(
+    async def _create_ray_service_from_prompt(
         self, action: dict[str, Any]
     ) -> dict[str, Any]:
-        """Create Ray job from parsed prompt action using manifest generation."""
+        """Create Ray service from parsed prompt action using manifest generation."""
         try:
             namespace = action.get("namespace", "default")
 
             # Generate manifest from action
-            manifest = self._manifest_generator.generate_ray_job_manifest(
-                f"create job {action.get('name', 'ray-job')}", action
+            manifest = self._manifest_generator.generate_ray_service_manifest(
+                f"create service {action.get('name', 'ray-service')}", action
             )
 
             # Apply manifest
             result = await self._manifest_generator.apply_manifest(manifest, namespace)
 
             if result.get("status") == "success":
-                job_name = action.get("name", "ray-job")
+                service_name = action.get("name", "ray-service")
 
                 return success_response(
-                    job_name=job_name,
+                    service_name=service_name,
                     namespace=namespace,
-                    job_status="creating",
-                    entrypoint=action.get("script", "python main.py"),
+                    service_status="creating",
+                    entrypoint=action.get("script", "python serve.py"),
                     runtime_env=action.get("runtime_env"),
-                    message=f"RayJob '{job_name}' creation initiated",
+                    message=f"RayService '{service_name}' creation initiated",
                     manifest_applied=True,
                 )
             else:
                 return error_response(result.get("message", "Unknown error"))
 
         except Exception as e:
-            return self._handle_error("create ray job from prompt", e)
+            return self._handle_error("create ray service from prompt", e)
 
-    async def _create_ray_job(
-        self, job_spec: dict[str, Any], namespace: str = "default"
+    async def _create_ray_service(
+        self, service_spec: dict[str, Any], namespace: str = "default"
     ) -> dict[str, Any]:
-        """Create a Ray job using KubeRay CRD."""
+        """Create a Ray service using KubeRay CRD."""
         try:
-            return await self._create_ray_job_operation(job_spec, namespace)
+            return await self._create_ray_service_operation(service_spec, namespace)
         except Exception as e:
-            return self._handle_error("create ray job", e)
+            return self._handle_error("create ray service", e)
 
-    async def _create_ray_job_operation(
-        self, job_spec: dict[str, Any], namespace: str = "default"
+    async def _create_ray_service_operation(
+        self, service_spec: dict[str, Any], namespace: str = "default"
     ) -> dict[str, Any]:
-        """Execute Ray job creation operation using manifest generation."""
+        """Execute Ray service creation operation using manifest generation."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
-        # Validate job specification
-        if not job_spec:
-            raise ValueError("Job specification is required")
+        # Validate service specification
+        if not service_spec:
+            raise ValueError("Service specification is required")
 
-        entrypoint = job_spec.get("entrypoint")
+        entrypoint = service_spec.get("entrypoint")
         if not entrypoint:
-            raise ValueError("entrypoint is required in job specification")
+            raise ValueError("entrypoint is required in service specification")
 
-        job_name = job_spec.get("job_name", "ray-job")
+        service_name = service_spec.get("service_name", "ray-service")
 
-        # Convert job_spec to action format for manifest generation
+        # Convert service_spec to action format for manifest generation
         action = {
-            "name": job_name,
+            "name": service_name,
             "namespace": namespace,
             "script": entrypoint,
-            "runtime_env": job_spec.get("runtime_env"),
+            "runtime_env": service_spec.get("runtime_env"),
         }
 
         # Generate and apply manifest
-        manifest = self._manifest_generator.generate_ray_job_manifest(
-            f"create job {job_name}", action
+        manifest = self._manifest_generator.generate_ray_service_manifest(
+            f"create service {service_name}", action
         )
 
         apply_result = await self._manifest_generator.apply_manifest(
@@ -170,46 +170,45 @@ class KubeRayJobManager(ResourceManager):
 
         if apply_result.get("status") != "success":
             raise RuntimeError(
-                f"Failed to create Ray job: {apply_result.get('message')}"
+                f"Failed to create Ray service: {apply_result.get('message')}"
             )
 
         return {
-            "job_name": job_name,
+            "service_name": service_name,
             "namespace": namespace,
             "entrypoint": entrypoint,
-            "runtime_env": job_spec.get("runtime_env"),
-            "job_status": "creating",
+            "runtime_env": service_spec.get("runtime_env"),
+            "service_status": "creating",
             "manifest_applied": True,
             **apply_result,
         }
 
-    async def _get_ray_job(
+    async def _get_ray_service(
         self, name: str, namespace: str = "default"
     ) -> dict[str, Any]:
-        """Get Ray job status."""
+        """Get Ray service status."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         result = await self._manifest_generator.get_resource_status(
-            "rayjob", name, namespace
+            "rayservice", name, namespace
         )
 
         if result.get("status") == "success":
             resource = result.get("resource", {})
             status = resource.get("status", {})
 
-            # Extract detailed job status
-            job_status_value = status.get("jobStatus", "Unknown")
-            job_status = {
+            # Extract detailed service status
+            service_status_value = status.get("serviceStatus", "Unknown")
+            service_status = {
                 "name": name,
                 "namespace": namespace,
-                "job_status": job_status_value,
+                "service_status": service_status_value,
                 "ray_cluster_name": status.get("rayClusterName"),
-                "job_deployment_status": status.get("jobDeploymentStatus", "Unknown"),
+                "service_deployment_status": status.get("deploymentStatus", "Unknown"),
                 "dashboard_url": status.get("dashboardURL"),
+                "serve_endpoint_url": status.get("serveEndpointURL"),
                 "start_time": status.get("startTime"),
-                "end_time": status.get("endTime"),
-                "submission_id": status.get("submissionId"),
                 "message": status.get("message"),
                 "creation_timestamp": resource.get("metadata", {}).get(
                     "creationTimestamp"
@@ -217,11 +216,16 @@ class KubeRayJobManager(ResourceManager):
             }
 
             # Add status flags for compatibility with tests
-            running = job_status_value in ["RUNNING", "PENDING"]
-            complete = job_status_value in ["SUCCEEDED", "FAILED", "STOPPED"]
+            running = service_status_value in ["Running", "RUNNING"]
+            complete = service_status_value in [
+                "Succeeded",
+                "SUCCEEDED",
+                "Failed",
+                "FAILED",
+            ]
 
             return success_response(
-                job=job_status,
+                service=service_status,
                 raw_resource=resource,
                 running=running,
                 complete=complete,
@@ -229,78 +233,78 @@ class KubeRayJobManager(ResourceManager):
         else:
             return result
 
-    async def _list_ray_jobs(self, namespace: str = "default") -> dict[str, Any]:
-        """List Ray jobs."""
+    async def _list_ray_services(self, namespace: str = "default") -> dict[str, Any]:
+        """List Ray services."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
-        result = await self._manifest_generator.list_resources("rayjob", namespace)
+        result = await self._manifest_generator.list_resources("rayservice", namespace)
 
         if result.get("status") == "success":
-            jobs = []
+            services = []
             for resource_summary in result.get("resources", []):
-                job_info = {
+                service_info = {
                     "name": resource_summary.get("name"),
                     "namespace": resource_summary.get("namespace"),
-                    "job_status": resource_summary.get("status", {}).get(
-                        "jobStatus", "Unknown"
+                    "service_status": resource_summary.get("status", {}).get(
+                        "serviceStatus", "Unknown"
                     ),
                     "creation_timestamp": resource_summary.get("creation_timestamp"),
                     "labels": resource_summary.get("labels", {}),
                 }
-                jobs.append(job_info)
+                services.append(service_info)
 
             return success_response(
-                jobs=jobs, total_count=len(jobs), namespace=namespace
+                services=services, total_count=len(services), namespace=namespace
             )
         else:
             return result
 
-    async def _delete_ray_job(
+    async def _delete_ray_service(
         self, name: str, namespace: str = "default"
     ) -> dict[str, Any]:
-        """Delete Ray job."""
+        """Delete Ray service."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
         result = await self._manifest_generator.delete_resource(
-            "rayjob", name, namespace
+            "rayservice", name, namespace
         )
 
         if result.get("status") == "success":
             return success_response(
-                job_name=name,
+                service_name=name,
                 namespace=namespace,
                 deleted=True,
                 deletion_timestamp=result.get("deletion_timestamp"),
-                message=f"RayJob '{name}' deletion initiated",
+                message=f"RayService '{name}' deletion initiated",
             )
         else:
             return result
 
-    async def _get_ray_job_logs(
+    async def _get_ray_service_logs(
         self, name: str, namespace: str = "default"
     ) -> dict[str, Any]:
-        """Get Ray job logs."""
+        """Get Ray service logs."""
         # Use ManagedComponent validation method instead of ResourceManager's
         self._ensure_kuberay_ready()
 
-        # First get the job to understand its current state
-        job_result = await self._get_ray_job(name, namespace)
-        if job_result.get("status") != "success":
-            return job_result
+        # First get the service to understand its current state
+        service_result = await self._get_ray_service(name, namespace)
+        if service_result.get("status") != "success":
+            return service_result
 
-        job_data = job_result.get("job", {})
+        service_data = service_result.get("service", {})
 
-        # Try to get cluster name from job status for log retrieval
+        # Try to get cluster name from service status for log retrieval
         # This maintains compatibility with existing tests
         ray_cluster_name = None
-        if job_result.get("raw_resource"):
-            status = job_result["raw_resource"].get("status", {})
+        if service_result.get("raw_resource"):
+            status = service_result["raw_resource"].get("status", {})
             ray_cluster_name = status.get("rayClusterName")
 
         if not ray_cluster_name:
-            return error_response(f"No Ray cluster associated with job '{name}'")
+            return error_response(f"No Ray cluster associated with service '{name}'")
 
         # Try to get logs using Kubernetes client for compatibility with tests
         try:
@@ -308,11 +312,11 @@ class KubeRayJobManager(ResourceManager):
 
             v1 = client.CoreV1Api()
 
-            # Try to get job-specific pod logs
+            # Try to get service-specific pod logs
             pods = await asyncio.to_thread(
                 v1.list_namespaced_pod,
                 namespace=namespace,
-                label_selector=f"ray.io/cluster={ray_cluster_name},ray.io/job-name={name}",
+                label_selector=f"ray.io/cluster={ray_cluster_name},ray.io/serve=yes",
             )
 
             logs = []
@@ -331,18 +335,18 @@ class KubeRayJobManager(ResourceManager):
 
             pod_logs_result = {"logs": "\n".join(logs), "status": "success"}
 
-            # Check if we got job-specific pods or need to fall back
+            # Check if we got service-specific pods or need to fall back
             if len(logs) > 0:
-                # Found job-specific pods
+                # Found service-specific pods
                 return success_response(
-                    job_name=name,
+                    service_name=name,
                     namespace=namespace,
                     ray_cluster_name=ray_cluster_name,
-                    job_status=job_data.get("job_status"),
+                    service_status=service_data.get("service_status"),
                     logs=pod_logs_result.get("logs", "No logs available"),
-                    log_source="job_runner_pods",
+                    log_source="serve_pods",
                     pod_count=len(logs),
-                    message=f"Retrieved logs for job '{name}' from cluster '{ray_cluster_name}'",
+                    message=f"Retrieved logs for service '{name}' from cluster '{ray_cluster_name}'",
                 )
             else:
                 # Fallback to head node logs
@@ -369,18 +373,18 @@ class KubeRayJobManager(ResourceManager):
                         continue
 
                 return success_response(
-                    job_name=name,
+                    service_name=name,
                     namespace=namespace,
                     ray_cluster_name=ray_cluster_name,
-                    job_status=job_data.get("job_status"),
+                    service_status=service_data.get("service_status"),
                     logs="\n".join(head_logs) if head_logs else "No logs available",
                     log_source="head_node_filtered",
                     pod_count=len(head_logs),
-                    message=f"Retrieved logs for job '{name}' from cluster '{ray_cluster_name}' head node",
+                    message=f"Retrieved logs for service '{name}' from cluster '{ray_cluster_name}' head node",
                 )
 
         except Exception as e:
-            return self._handle_error(f"kubernetes logs for job {name}", e)
+            return self._handle_error(f"kubernetes logs for service {name}", e)
 
     def _ensure_kuberay_ready(self) -> None:
         """Ensure KubeRay operator is available and ready."""

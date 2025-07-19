@@ -6,7 +6,7 @@ the Ray MCP system for consistent output formatting.
 
 Test Focus:
 - Response formatting consistency
-- Serialization compatibility  
+- Serialization compatibility
 - Helper function behavior
 """
 

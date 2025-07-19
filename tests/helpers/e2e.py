@@ -31,7 +31,7 @@ async def wait_for_job_completion(
         status_result = await call_tool("ray_job", {"prompt": f"inspect job {job_id}"})
         status_data = parse_tool_result(status_result)
         job_status = status_data.get("job_status", "UNKNOWN")
-        print(f"Job {job_id} status at {i+1}s: {job_status}")
+        print(f"Job {job_id} status at {i + 1}s: {job_status}")
 
         if job_status == expected_status:
             return status_data
