@@ -1,7 +1,7 @@
 """Minimal foundation for prompt-driven Ray MCP."""
 
 from .dashboard_client import DashboardAPIError, DashboardClient
-from .enums import AuthenticationType, CloudProvider
+from .enums import CloudProvider
 from .import_utils import (
     GOOGLE_AUTH_AVAILABLE,
     GOOGLE_CLOUD_AVAILABLE,
@@ -25,7 +25,6 @@ from .resource_manager import ResourceManager
 __all__ = [
     "ResourceManager",
     "CloudProvider",
-    "AuthenticationType",
     "DashboardAPIError",
     "DashboardClient",
     "LoggingUtility",

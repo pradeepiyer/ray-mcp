@@ -109,8 +109,6 @@ class CloudProviderManager(ResourceManager):
         provider = action.get("provider", "gcp")
         project = action.get("project_id")
 
-        # Normalize provider string
-        normalized_provider = self._normalize_provider(provider)
 
         if self._is_gcp_provider(provider):
             auth_config = {}

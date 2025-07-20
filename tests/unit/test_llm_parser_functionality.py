@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ray_mcp.llm_parser import LLMActionParser, get_parser, reset_global_parser
-from ray_mcp.parsers import ActionParser
 
 
 @pytest.mark.unit
@@ -66,22 +65,6 @@ class TestErrorHandling:
                 await parser.parse_job_action("test prompt")
 
 
-@pytest.mark.unit
-class TestCompatibilityLayer:
-    """Test compatibility layer functionality."""
-
-    def test_sync_wrapper_calls_async_method(self):
-        """Test sync wrapper correctly calls async methods."""
-        with patch("ray_mcp.parsers.get_parser") as mock_get_parser:
-            mock_parser = AsyncMock()
-            mock_parser.parse_job_action.return_value = {
-                "type": "job",
-                "operation": "list",
-            }
-            mock_get_parser.return_value = mock_parser
-
-            result = ActionParser.parse_job_action("test prompt")
-            assert result["type"] == "job"
 
 
 @pytest.fixture(autouse=True)
