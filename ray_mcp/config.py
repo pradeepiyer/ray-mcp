@@ -39,6 +39,10 @@ class Config:
     gke_region: str = "us-central1"
     gke_zone: str = "us-central1-a"
 
+    # AWS settings
+    aws_region: str = "us-west-2"
+    aws_profile: Optional[str] = None
+
     # General settings
     log_level: str = "INFO"
     timeout_seconds: int = 300
@@ -79,6 +83,8 @@ class Config:
             or _extract_project_id_from_service_account(),
             gke_region=os.getenv("GKE_REGION", "us-central1"),
             gke_zone=os.getenv("GKE_ZONE", "us-central1-a"),
+            aws_region=os.getenv("AWS_DEFAULT_REGION", "us-west-2"),
+            aws_profile=os.getenv("AWS_PROFILE"),
             log_level=os.getenv("RAY_MCP_LOG_LEVEL", "INFO"),
             timeout_seconds=safe_int_required(os.getenv("RAY_MCP_TIMEOUT", ""), 300),
             enhanced_output=os.getenv("RAY_MCP_ENHANCED_OUTPUT", "false").lower()

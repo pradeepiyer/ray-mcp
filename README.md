@@ -10,7 +10,7 @@
 
 - **4 Simple Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud`
 - **Natural Language Interface**: Single prompt parameter per tool
-- **Unified Management**: Works with local Ray, KubeRay, and cloud providers
+- **Unified Management**: Works with local Ray, KubeRay, GKE, and AWS EKS
 - **Automatic Detection**: Intelligent routing between environments
 
 ## 🚀 Quick Start
@@ -58,6 +58,8 @@ ray_service: "scale service model-api to 3 replicas"
 # Cloud providers
 cloud: "authenticate with GCP project ml-experiments"
 cloud: "list all GKE clusters"
+cloud: "authenticate with AWS region us-west-2"
+cloud: "list all EKS clusters"
 cloud: "connect to cluster production-cluster"
 ```
 
@@ -102,9 +104,13 @@ Manage cloud providers and authentication.
 **Examples:**
 - `"authenticate with GCP project ml-experiments"`
 - `"list all GKE clusters"`
+- `"authenticate with AWS region us-west-2"`
+- `"list all EKS clusters"`
 - `"connect to GKE cluster production-cluster"`
+- `"connect to EKS cluster training-cluster in region us-west-2"`
 - `"check cloud environment setup"`
 - `"create GKE cluster ml-cluster with 3 nodes"`
+- `"create EKS cluster ml-cluster with 3 nodes"
 
 ## 🏗️ Architecture
 
@@ -119,7 +125,7 @@ Manage cloud providers and authentication.
                    ▼                                 ▼                             ▼
             ┌─────────────┐                  ┌─────────────┐              ┌─────────────┐
             │ Local Ray   │                  │  KubeRay    │              │   Cloud     │
-            │ Clusters    │                  │ Clusters    │              │ Providers   │
+            │ Clusters    │                  │ Clusters    │              │ (GKE/EKS)   │
             └─────────────┘                  └─────────────┘              └─────────────┘
 ```
 
@@ -140,6 +146,17 @@ uv add "ray-mcp[gke]"
 
 # Set up authentication
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+```
+
+#### Amazon Web Services (EKS)
+```bash
+# Install with EKS support
+uv add "ray-mcp[eks]"
+
+# Set up authentication
+export AWS_ACCESS_KEY_ID="your_access_key"
+export AWS_SECRET_ACCESS_KEY="your_secret_key"
+export AWS_DEFAULT_REGION="us-west-2"
 ```
 
 #### Local Kubernetes
@@ -198,6 +215,7 @@ make format         # Format code
 
 **Optional:**
 - **Google Cloud SDK**: For GKE integration
+- **AWS CLI**: For EKS integration
 - **kubectl**: For Kubernetes management
 
 ## 📄 License

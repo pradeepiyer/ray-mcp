@@ -9,6 +9,7 @@ from ..foundation.enums import CloudProvider
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
 from ..llm_parser import get_parser
+from .eks_manager import EKSManager
 from .gke_manager import GKEManager
 
 
@@ -23,6 +24,7 @@ class CloudProviderManager(ResourceManager):
         )
 
         self._gke_manager = GKEManager()
+        self._eks_manager = EKSManager()
 
     async def execute_request(self, prompt: str) -> dict[str, Any]:
         """Execute cloud operations using natural language prompts.
@@ -46,7 +48,7 @@ class CloudProviderManager(ResourceManager):
                 if self._is_gcp_provider(provider):
                     return await self._list_cloud_clusters(CloudProvider.GKE)
                 elif self._is_aws_provider(provider):
-                    return error_response("AWS cluster listing not yet implemented")
+                    return await self._list_cloud_clusters(CloudProvider.AWS)
                 elif self._is_azure_provider(provider):
                     return error_response("Azure cluster listing not yet implemented")
                 else:
@@ -118,7 +120,12 @@ class CloudProviderManager(ResourceManager):
                 CloudProvider.GKE, auth_config=auth_config
             )
         elif self._is_aws_provider(provider):
-            return error_response("AWS authentication not yet implemented")
+            auth_config = {}
+            if action.get("zone"):  # AWS regions are passed as "zone" in LLM parser
+                auth_config["region"] = action.get("zone")
+            return await self._authenticate_cloud_provider(
+                CloudProvider.AWS, auth_config=auth_config
+            )
         elif self._is_azure_provider(provider):
             return error_response("Azure authentication not yet implemented")
         else:
@@ -139,7 +146,9 @@ class CloudProviderManager(ResourceManager):
                 CloudProvider.GKE, cluster_name=cluster_name
             )
         elif self._is_aws_provider(provider):
-            return error_response("AWS cluster connection not yet implemented")
+            return await self._connect_cloud_cluster(
+                CloudProvider.AWS, cluster_name=cluster_name
+            )
         elif self._is_azure_provider(provider):
             return error_response("Azure cluster connection not yet implemented")
         else:
@@ -162,7 +171,10 @@ class CloudProviderManager(ResourceManager):
                 CloudProvider.GKE, cluster_spec=cluster_spec
             )
         elif self._is_aws_provider(provider):
-            return error_response("AWS cluster creation not yet implemented")
+            cluster_spec = {"name": cluster_name, "region": zone}
+            return await self._create_cloud_cluster(
+                CloudProvider.AWS, cluster_spec=cluster_spec
+            )
         elif self._is_azure_provider(provider):
             return error_response("Azure cluster creation not yet implemented")
         else:
@@ -188,6 +200,25 @@ class CloudProviderManager(ResourceManager):
                     "reason": "Google Cloud SDK not available or not authenticated",
                 }
 
+            # Check AWS/EKS availability
+            aws_credentials_available = (
+                (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
+                or os.getenv("AWS_PROFILE")
+                or os.path.exists(os.path.expanduser("~/.aws/credentials"))
+            )
+
+            if aws_credentials_available:
+                providers_status["eks"] = {
+                    "available": True,
+                    "auth_type": "aws_credentials",
+                    "description": "Amazon Elastic Kubernetes Service",
+                }
+            else:
+                providers_status["eks"] = {
+                    "available": False,
+                    "reason": "AWS credentials not available or not configured",
+                }
+
             # Local Kubernetes
             try:
                 from kubernetes import config as k8s_config
@@ -208,7 +239,11 @@ class CloudProviderManager(ResourceManager):
             default_provider = (
                 "gke"
                 if providers_status["gke"]["available"]
-                else "local" if providers_status["local"]["available"] else None
+                else (
+                    "eks"
+                    if providers_status["eks"]["available"]
+                    else "local" if providers_status["local"]["available"] else None
+                )
             )
 
             return success_response(
@@ -217,6 +252,7 @@ class CloudProviderManager(ResourceManager):
                 providers=providers_status,
                 environment={
                     "gcp_project_id": config.gcp_project_id,
+                    "aws_region": getattr(config, "aws_region", None),
                     "kubernetes_namespace": config.kubernetes_namespace,
                 },
                 supported_providers=[p.value for p in CloudProvider],
@@ -237,6 +273,8 @@ class CloudProviderManager(ResourceManager):
             # Route to appropriate manager
             if provider == CloudProvider.GKE:
                 return await self._authenticate_gke(auth_config or {})
+            elif provider == CloudProvider.AWS:
+                return await self._authenticate_aws(auth_config or {})
             elif provider == CloudProvider.LOCAL:
                 return await self._authenticate_local(auth_config or {})
             else:
@@ -262,6 +300,12 @@ class CloudProviderManager(ResourceManager):
                 if kwargs.get("zone"):
                     prompt += f" in location {kwargs.get('zone')}"
                 return await self._gke_manager.execute_request(prompt)
+            elif provider == CloudProvider.AWS:
+                await self._ensure_aws_authenticated()
+                prompt = "list all EKS clusters"
+                if kwargs.get("region"):
+                    prompt += f" in region {kwargs.get('region')}"
+                return await self._eks_manager.execute_request(prompt)
             elif provider == CloudProvider.LOCAL:
                 return await self._list_local_contexts()
             else:
@@ -306,6 +350,31 @@ class CloudProviderManager(ResourceManager):
                 if kwargs.get("project_id"):
                     prompt += f" in project {kwargs.get('project_id')}"
                 return await self._gke_manager.execute_request(prompt)
+            elif provider == CloudProvider.AWS:
+                await self._ensure_aws_authenticated()
+                region = kwargs.get("region")
+                if not region:
+                    # Auto-discover region by listing clusters and finding matching cluster name
+                    try:
+                        discovery_result = await self._eks_manager.execute_request(
+                            "list all EKS clusters"
+                        )
+                        if "clusters" in discovery_result:
+                            for cluster in discovery_result["clusters"]:
+                                if cluster.get("name") == cluster_name:
+                                    region = cluster.get("region")
+                                    break
+
+                        if not region:
+                            return error_response(
+                                f"Could not find cluster '{cluster_name}' in any region. Please specify the region explicitly or ensure the cluster exists."
+                            )
+                    except Exception as e:
+                        return error_response(
+                            f"Could not auto-discover region for cluster '{cluster_name}': {str(e)}"
+                        )
+                prompt = f"connect to EKS cluster {cluster_name} in region {region}"
+                return await self._eks_manager.execute_request(prompt)
             elif provider == CloudProvider.LOCAL:
                 return await self._connect_local_cluster(cluster_name, kwargs)
             else:
@@ -338,6 +407,12 @@ class CloudProviderManager(ResourceManager):
                 if kwargs.get("project_id"):
                     prompt += f" in project {kwargs.get('project_id')}"
                 return await self._gke_manager.execute_request(prompt)
+            elif provider == CloudProvider.AWS:
+                await self._ensure_aws_authenticated()
+                cluster_name = cluster_spec.get("name", "ray-cluster")
+                region = cluster_spec.get("region", "us-west-2")
+                prompt = f"create EKS cluster {cluster_name} in region {region}"
+                return await self._eks_manager.execute_request(prompt)
             elif provider == CloudProvider.LOCAL:
                 return error_response(
                     "Local cluster creation not supported. Use existing clusters or Docker/minikube."
@@ -357,6 +432,13 @@ class CloudProviderManager(ResourceManager):
         if auth_config.get("project_id"):
             prompt += f" project {auth_config.get('project_id')}"
         return await self._gke_manager.execute_request(prompt)
+
+    async def _authenticate_aws(self, auth_config: dict[str, Any]) -> dict[str, Any]:
+        """Authenticate with AWS."""
+        prompt = "authenticate with AWS"
+        if auth_config.get("region"):
+            prompt += f" region {auth_config.get('region')}"
+        return await self._eks_manager.execute_request(prompt)
 
     async def _authenticate_local(self, auth_config: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with local Kubernetes."""
@@ -514,6 +596,10 @@ class CloudProviderManager(ResourceManager):
         """Get the GKE cluster manager."""
         return self._gke_manager
 
+    def get_eks_manager(self) -> EKSManager:
+        """Get the EKS cluster manager."""
+        return self._eks_manager
+
     def _get_current_time(self) -> str:
         """Get current time as ISO string."""
         from datetime import datetime
@@ -561,3 +647,12 @@ class CloudProviderManager(ResourceManager):
 
         except Exception as e:
             return self._handle_error("ensure gke authenticated", e)
+
+    async def _ensure_aws_authenticated(self) -> dict[str, Any]:
+        """Ensure AWS authentication is configured and credentials are valid."""
+        try:
+            # Delegate to the actual EKS manager for proper credential verification
+            return await self._eks_manager._ensure_eks_authenticated()
+
+        except Exception as e:
+            return self._handle_error("ensure aws authenticated", e)
