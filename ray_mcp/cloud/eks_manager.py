@@ -480,31 +480,29 @@ class EKSManager(ResourceManager):
 
             # Generate a new presigned URL with proper headers for EKS
             import urllib.parse
-            import botocore.awsrequest
+
             from botocore.auth import SigV4Auth
-            
+            import botocore.awsrequest
+
             # Create a proper request for EKS token
             endpoint = f"https://sts.{region}.amazonaws.com/"
             headers = {
-                'x-k8s-aws-id': cluster_name,
-                'Host': f"sts.{region}.amazonaws.com"
+                "x-k8s-aws-id": cluster_name,
+                "Host": f"sts.{region}.amazonaws.com",
             }
-            
+
             # Create signed request
             request = botocore.awsrequest.AWSRequest(
-                method='GET',
+                method="GET",
                 url=endpoint,
-                params={
-                    'Action': 'GetCallerIdentity',
-                    'Version': '2011-06-15'
-                },
-                headers=headers
+                params={"Action": "GetCallerIdentity", "Version": "2011-06-15"},
+                headers=headers,
             )
-            
+
             # Sign the request
             credentials = self._aws_session.get_credentials()
-            SigV4Auth(credentials, 'sts', region).add_auth(request)
-            
+            SigV4Auth(credentials, "sts", region).add_auth(request)
+
             # Create the EKS token from the signed URL
             signed_url = request.url
             token_string = f"k8s-aws-v1.{base64.urlsafe_b64encode(signed_url.encode()).decode().rstrip('=')}"
