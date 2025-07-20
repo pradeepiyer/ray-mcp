@@ -121,8 +121,8 @@ uv-check:
 
 # Update dependencies to latest compatible versions
 update-deps:
-	@echo "🔄 Running dependency update helper..."
-	@python scripts/update_dependencies.py
+	@echo "🔄 Updating dependencies..."
+	@uv sync --dev --upgrade
 
 # Create virtual environment with uv
 venv:
@@ -179,9 +179,6 @@ wc:
 	@echo ""
 	@echo "examples/ (example files):"
 	@find ./examples -name "*.py" | xargs wc -l | tail -1
-	@echo ""
-	@echo "scripts/ (utility scripts):"
-	@find ./scripts -name "*.py" -o -name "*.sh" | xargs wc -l | tail -1
 	@echo ""
 	@echo "docs/ (documentation):"
 	@find ./docs -name "*.md" -o -name "*.py" | xargs wc -l | tail -1
