@@ -96,7 +96,7 @@ Manage cloud providers and authentication.
 - `"connect to EKS cluster training-cluster in region us-west-2"`
 - `"check ray_cloud environment setup"`
 - `"create GKE cluster ml-cluster with 3 nodes"`
-- `"create EKS cluster ml-cluster with 3 nodes"
+-  "create EKS cluster ml-cluster with 3 nodes"
 
 **Key Components:**
 - **LLM Parser**: Uses Anthropic Claude to convert natural language prompts to structured actions
@@ -168,7 +168,6 @@ make dev-install
 
 # Run tests
 make test-fast      # Unit tests with mocking
-make test-e2e       # End-to-end integration tests
 make test           # Complete test suite
 
 # Code quality
@@ -184,7 +183,7 @@ make format         # Format code
 
 **Optional:**
 - **Google Cloud SDK**: For GKE integration
-- **AWS CLI**: For EKS integration
+- **AWS SDK**: For EKS integration
 - **kubectl**: For Kubernetes management
 
 ## 📄 License
