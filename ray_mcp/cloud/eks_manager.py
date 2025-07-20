@@ -469,20 +469,45 @@ class EKSManager(ResourceManager):
             # Use the AWS CLI approach to get token
             sts_client = self._aws_session.client("sts", region_name=region)
 
-            # Generate presigned URL for GetCallerIdentity
+            # Generate presigned URL for GetCallerIdentity with cluster name header
             presigned_url = await asyncio.to_thread(
                 sts_client.generate_presigned_url,
                 "get_caller_identity",
-                Params={"ClusterName": cluster_name},
+                Params={},
                 ExpiresIn=60,
                 HttpMethod="GET",
             )
 
-            # Extract token from URL and encode it
+            # Generate a new presigned URL with proper headers for EKS
             import urllib.parse
-
-            parsed_url = urllib.parse.urlparse(presigned_url)
-            token_string = f"k8s-aws-v1.{base64.urlsafe_b64encode(presigned_url.encode()).decode().rstrip('=')}"
+            import botocore.awsrequest
+            from botocore.auth import SigV4Auth
+            
+            # Create a proper request for EKS token
+            endpoint = f"https://sts.{region}.amazonaws.com/"
+            headers = {
+                'x-k8s-aws-id': cluster_name,
+                'Host': f"sts.{region}.amazonaws.com"
+            }
+            
+            # Create signed request
+            request = botocore.awsrequest.AWSRequest(
+                method='GET',
+                url=endpoint,
+                params={
+                    'Action': 'GetCallerIdentity',
+                    'Version': '2011-06-15'
+                },
+                headers=headers
+            )
+            
+            # Sign the request
+            credentials = self._aws_session.get_credentials()
+            SigV4Auth(credentials, 'sts', region).add_auth(request)
+            
+            # Create the EKS token from the signed URL
+            signed_url = request.url
+            token_string = f"k8s-aws-v1.{base64.urlsafe_b64encode(signed_url.encode()).decode().rstrip('=')}"
 
             return token_string
         except Exception as e:

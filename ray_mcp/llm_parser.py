@@ -146,6 +146,7 @@ Examples:
 - "Connect to cluster my-cluster in zone us-central1-a" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-central1-a", "provider": "gcp"}}
 - "Connect to cluster ray-cluster in us-west1-c" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "ray-cluster", "zone": "us-west1-c", "provider": "gcp"}}
 - "Connect to cluster my-cluster in us-east-1" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-east-1", "provider": "aws"}}
+- "Connect to EKS cluster my-cluster" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "provider": "aws"}}
 - "Connect to cluster my-cluster in eastus2" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "eastus2", "provider": "azure"}}
 - "Create Ray service with model serve.py" → {{"type": "service", "operation": "create", "script": "serve.py", "environment": "kubernetes"}}
 - "Deploy service named image-classifier with inference model classifier.py" → {{"type": "service", "operation": "create", "name": "image-classifier", "script": "classifier.py", "environment": "kubernetes"}}
