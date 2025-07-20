@@ -8,7 +8,7 @@
 
 ## ✨ Features
 
-- **3 Simple Tools**: `ray_job`, `ray_service`, `cloud`
+- **3 Simple Tools**: `ray_job`, `ray_service`, `ray_cloud`
 - **Natural Language Interface**: Single prompt parameter per tool
 - **Unified Management**: Works with local Ray, KubeRay, GKE, and AWS EKS
 - **Automatic Detection**: Intelligent routing between environments
@@ -52,11 +52,11 @@ ray_service: "list all services"
 ray_service: "scale service model-api to 3 replicas"
 
 # Cloud providers
-cloud: "authenticate with GCP project ml-experiments"
-cloud: "list all GKE clusters"
-cloud: "authenticate with AWS region us-west-2"
-cloud: "list all EKS clusters"
-cloud: "connect to cluster production-cluster"
+ray_cloud: "authenticate with GCP project ml-experiments"
+ray_cloud: "list all GKE clusters"
+ray_cloud: "authenticate with AWS region us-west-2"
+ray_cloud: "list all EKS clusters"
+ray_cloud: "connect to cluster production-cluster"
 ```
 
 ## 🎯 Tool Reference
@@ -84,7 +84,7 @@ Deploy and manage Ray services for long-running inference and serving.
 - `"get status of service inference-engine"`
 - `"delete service recommendation-api"`
 
-### `cloud`
+### `ray_cloud`
 Manage cloud providers and authentication.
 
 **Examples:**
@@ -94,26 +94,9 @@ Manage cloud providers and authentication.
 - `"list all EKS clusters"`
 - `"connect to GKE cluster production-cluster"`
 - `"connect to EKS cluster training-cluster in region us-west-2"`
-- `"check cloud environment setup"`
+- `"check ray_cloud environment setup"`
 - `"create GKE cluster ml-cluster with 3 nodes"`
 - `"create EKS cluster ml-cluster with 3 nodes"
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    Natural Language    ┌─────────────────┐
-│   LLM Agent     │──────────────────────►│   Ray MCP       │
-│                 │     Single Prompt      │   Server        │
-└─────────────────┘                        └─────────┬───────┘
-                                                     │
-                   ┌─────────────────────────────────┼─────────────────────────────┐
-                   │                                 │                             │
-                   ▼                                 ▼                             ▼
-            ┌─────────────┐                  ┌─────────────┐              ┌─────────────┐
-            │ Local Ray   │                  │  KubeRay    │              │   Cloud     │
-            │ Clusters    │                  │ Clusters    │              │ (GKE/EKS)   │
-            └─────────────┘                  └─────────────┘              └─────────────┘
-```
 
 **Key Components:**
 - **LLM Parser**: Uses Anthropic Claude to convert natural language prompts to structured actions

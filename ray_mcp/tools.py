@@ -35,7 +35,7 @@ def get_ray_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="cloud",
+            name="ray_cloud",
             description="Manage cloud authentication and cluster discovery: authenticate with cloud providers (GCP, AWS, Azure), list/discover available clusters",
             inputSchema={
                 "type": "object",

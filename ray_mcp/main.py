@@ -54,7 +54,7 @@ async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextCon
             result = await handlers.handle_job(prompt)
         elif name == "ray_service":
             result = await handlers.handle_service(prompt)
-        elif name == "cloud":
+        elif name == "ray_cloud":
             result = await handlers.handle_cloud(prompt)
         else:
             result = {"status": "error", "message": f"Unknown tool: {name}"}

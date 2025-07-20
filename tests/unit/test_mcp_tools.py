@@ -21,7 +21,7 @@ class TestToolRegistry:
         assert len(tools) == 3
 
         tool_names = [tool.name for tool in tools]
-        expected_tools = {"ray_job", "ray_service", "cloud"}
+        expected_tools = {"ray_job", "ray_service", "ray_cloud"}
         assert set(tool_names) == expected_tools
 
     def test_tool_descriptions_are_comprehensive(self):
@@ -47,7 +47,7 @@ class TestToolRegistry:
         tool_names = [tool.name for tool in tools]
         assert "ray_job" in tool_names
         assert "ray_service" in tool_names
-        assert "cloud" in tool_names
+        assert "ray_cloud" in tool_names
 
 
 @pytest.mark.unit
@@ -177,7 +177,7 @@ class TestMCPServerIntegration:
                 return_value={"status": "success", "test": "mocked"}
             )
 
-            valid_tools = ["ray_job", "ray_service", "cloud"]
+            valid_tools = ["ray_job", "ray_service", "ray_cloud"]
             for tool_name in valid_tools:
                 # Test each tool call with proper mocking
                 result = await call_tool(tool_name, {"prompt": "test"})

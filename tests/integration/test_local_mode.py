@@ -37,16 +37,19 @@ async def test_all_tools_consistency():
     """Test that all tools follow consistent patterns."""
     print("🔧 Testing tool consistency...")
 
-    tools = ["ray_job", "cloud"]
+    tools = ["ray_job", "ray_cloud"]
     minimal_prompts = {
         "ray_job": "list all jobs",
-        "cloud": "check environment",
+        "ray_cloud": "check environment",
     }
 
     # Expected behaviors for each tool when no cluster is running
     expected_behaviors = {
         "ray_job": ["error"],  # Should return error when no cluster is running
-        "cloud": ["success", "error"],  # May return success or error depending on setup
+        "ray_cloud": [
+            "success",
+            "error",
+        ],  # May return success or error depending on setup
     }
 
     for tool_name in tools:

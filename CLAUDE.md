@@ -3,7 +3,7 @@
 **3-tool prompt-driven Ray management via natural language.**
 
 ## Architecture
-- **3 Tools**: `ray_job`, `ray_service`, `cloud` (single `prompt` parameter each)
+- **3 Tools**: `ray_job`, `ray_service`, `ray_cloud` (single `prompt` parameter each)
 - **Natural Language**: OpenAI parses prompts into Ray operations
 - **Multi-Environment**: Local Ray + Kubernetes/KubeRay + AWS EKS support
 
@@ -59,7 +59,7 @@ python tests/integration/test_runner.py all     # Complete test suite
 - `python -m ray_mcp.main` - Direct module execution
 
 ## Key Files
-- `ray_mcp/tools.py` - 4-tool definitions
+- `ray_mcp/tools.py` - 3-tool definitions
 - `ray_mcp/parsers.py` - Natural language parsing
 - `ray_mcp/handlers.py` - MCP protocol handlers
 - `ray_mcp/managers/` - Business logic

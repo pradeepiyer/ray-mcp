@@ -77,7 +77,9 @@ class ManifestGenerator:
 
                         # Set up working_dir runtime environment with GitHub archive URL
                         # Ray supports working_dir with direct zip URLs from GitHub
-                        runtime_env["working_dir"] = f"{repo_base_url}/archive/{branch}.zip"
+                        runtime_env["working_dir"] = (
+                            f"{repo_base_url}/archive/{branch}.zip"
+                        )
 
                         # Set entrypoint to run the script from the downloaded repo
                         # Ray creates a URL-based directory structure like:
@@ -271,7 +273,9 @@ spec:
 
                         # Set up working_dir runtime environment with GitHub archive URL
                         # Ray supports working_dir with direct zip URLs from GitHub
-                        runtime_env["working_dir"] = f"{repo_base_url}/archive/{branch}.zip"
+                        runtime_env["working_dir"] = (
+                            f"{repo_base_url}/archive/{branch}.zip"
+                        )
 
                         # Set entrypoint to run the script from the downloaded repo
                         # Ray unpacks the zip and makes it available in the working directory

@@ -75,7 +75,7 @@ result = await call_tool("ray_job", {"prompt": "list all jobs"})
 response = parse_tool_result(result)
 
 # Test cloud operations
-result = await call_tool("cloud", {"prompt": "check environment"})
+result = await call_tool("ray_cloud", {"prompt": "check environment"})
 response = parse_tool_result(result)
 ```
 

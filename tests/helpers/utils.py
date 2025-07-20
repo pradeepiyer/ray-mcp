@@ -64,7 +64,7 @@ async def call_tool(
     elif tool_name == "ray_service":
         prompt = arguments.get("prompt", "list services")
         result = await handlers.handle_service(prompt)
-    elif tool_name == "cloud":
+    elif tool_name == "ray_cloud":
         prompt = arguments.get("prompt", "check environment")
         result = await handlers.handle_cloud(prompt)
     else:

@@ -114,7 +114,7 @@ class KubeRayJobManager(ResourceManager):
                     if resource.get("kind") == "RayJob":
                         job_name = resource.get("name")
                         break
-                
+
                 if not job_name:
                     job_name = action.get("name", "ray-job")
 

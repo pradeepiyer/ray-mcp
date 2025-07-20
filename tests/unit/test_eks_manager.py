@@ -287,7 +287,6 @@ class TestEKSManager:
     def test_cleanup_ca_cert_file(self, eks_manager):
         """Test CA certificate file cleanup."""
         with patch("os.path.exists") as mock_exists, patch("os.unlink") as mock_unlink:
-
             # Test cleanup when file exists
             mock_exists.return_value = True
             eks_manager._ca_cert_file = "/tmp/test.crt"
