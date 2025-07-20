@@ -35,6 +35,90 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ## Cloud Provider Setup
 
+### Amazon Web Services (EKS)
+
+#### 1. Install Dependencies
+
+```bash
+uv add "ray-mcp[eks]"
+```
+
+#### 2. AWS Credentials Setup
+
+Configure AWS credentials using one of these methods:
+
+**Option 1: Environment Variables**
+```bash
+export AWS_ACCESS_KEY_ID="your_access_key"
+export AWS_SECRET_ACCESS_KEY="your_secret_key"
+export AWS_DEFAULT_REGION="us-west-2"
+```
+
+**Option 2: AWS Credentials File**
+```bash
+# Configure using AWS CLI
+aws configure
+
+# Or manually edit ~/.aws/credentials
+[default]
+aws_access_key_id = your_access_key
+aws_secret_access_key = your_secret_key
+region = us-west-2
+```
+
+**Option 3: IAM Role** (for EC2 instances)
+```bash
+# Attach appropriate IAM role to EC2 instance
+# No additional configuration needed
+```
+
+#### 3. Required IAM Permissions
+
+Ensure your AWS credentials have these permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "eks:CreateCluster",
+        "eks:DeleteCluster",
+        "eks:DescribeNodegroup",
+        "eks:ListNodegroups",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+#### 4. Authentication
+
+```bash
+cloud: "authenticate with AWS region us-west-2"
+```
+
+#### 5. Common Operations
+
+```bash
+# List EKS clusters
+cloud: "list all EKS clusters in us-east-1"
+
+# Connect to cluster
+cloud: "connect to EKS cluster training-cluster in region us-west-2"
+
+# Create cluster
+cloud: "create EKS cluster ml-cluster with 3 nodes"
+
+# Get cluster info
+cloud: "get info for cluster production-cluster"
+```
+
 ### Google Cloud (GKE)
 
 #### 1. Install Dependencies
@@ -131,6 +215,11 @@ export RAY_MCP_LOG_LEVEL=INFO
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 export GOOGLE_CLOUD_PROJECT="your-project-id"
 
+# Amazon Web Services
+export AWS_ACCESS_KEY_ID="your_access_key"
+export AWS_SECRET_ACCESS_KEY="your_secret_key"
+export AWS_DEFAULT_REGION="us-west-2"
+
 # Kubernetes
 export KUBECONFIG="/path/to/kubeconfig"
 ```
@@ -157,6 +246,12 @@ gcloud auth application-default login
 
 # Verify service account
 gcloud auth list
+
+# Check AWS authentication
+aws sts get-caller-identity
+
+# Verify AWS credentials
+aws configure list
 ```
 
 #### KubeRay Issues

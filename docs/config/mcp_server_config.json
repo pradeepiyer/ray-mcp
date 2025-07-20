@@ -8,7 +8,10 @@
         "LLM_MODEL": "gpt-3.5-turbo",
         "RAY_ADDRESS": "127.0.0.1:10001",
         "RAY_MCP_ENHANCED_OUTPUT": "false",
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/your/service-account-key.json"
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/your/service-account-key.json",
+        "AWS_ACCESS_KEY_ID": "your_access_key",
+        "AWS_SECRET_ACCESS_KEY": "your_secret_key",
+        "AWS_DEFAULT_REGION": "us-west-2"
       }
     }
   },
@@ -59,6 +62,21 @@
         "description": "Path to Google Cloud service account JSON key file for GKE authentication",
         "example": "/path/to/your/service-account-key.json",
         "note": "Required for Google Kubernetes Engine (GKE) functionality"
+      },
+      "AWS_ACCESS_KEY_ID": {
+        "description": "AWS access key ID for EKS authentication",
+        "example": "your_access_key",
+        "note": "Required for Amazon Elastic Kubernetes Service (EKS) functionality"
+      },
+      "AWS_SECRET_ACCESS_KEY": {
+        "description": "AWS secret access key for EKS authentication",
+        "example": "your_secret_key",
+        "note": "Required for Amazon Elastic Kubernetes Service (EKS) functionality"
+      },
+      "AWS_DEFAULT_REGION": {
+        "description": "Default AWS region for EKS operations",
+        "example": "us-west-2",
+        "note": "Optional - can be overridden in cloud tool commands"
       },
       "RAY_ADDRESS": {
         "description": "Default Ray cluster address (leave empty to use tool parameters)",

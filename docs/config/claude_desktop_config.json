@@ -11,6 +11,9 @@
         "RAY_DASHBOARD_HOST": "0.0.0.0",
         "RAY_MCP_ENHANCED_OUTPUT": "true",
         "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/your/service-account-key.json",
+        "AWS_ACCESS_KEY_ID": "your_access_key",
+        "AWS_SECRET_ACCESS_KEY": "your_secret_key",
+        "AWS_DEFAULT_REGION": "us-west-2"
       }
     }
   }

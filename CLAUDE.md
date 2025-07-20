@@ -5,7 +5,7 @@
 ## Architecture
 - **4 Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud` (single `prompt` parameter each)
 - **Natural Language**: OpenAI parses prompts into Ray operations
-- **Dual Environment**: Local Ray + Kubernetes/KubeRay support
+- **Multi-Environment**: Local Ray + Kubernetes/KubeRay + AWS EKS support
 
 ## Configuration
 
@@ -20,6 +20,9 @@ LLM_MODEL=gpt-3.5-turbo                # OpenAI model (default: gpt-3.5-turbo)
 RAY_MCP_ENHANCED_OUTPUT=true           # LLM-friendly responses with suggestions
 RAY_MCP_LOG_LEVEL=DEBUG                # Logging level
 GOOGLE_APPLICATION_CREDENTIALS=path    # GKE authentication
+AWS_ACCESS_KEY_ID=your_key             # AWS authentication
+AWS_SECRET_ACCESS_KEY=your_secret      # AWS authentication
+AWS_DEFAULT_REGION=us-west-2           # AWS default region
 RAY_DISABLE_USAGE_STATS=1              # Disable Ray telemetry
 ```
 
@@ -46,6 +49,7 @@ python tests/integration/test_runner.py all     # Complete test suite
 - `mcp>=1.0.0` 
 - `openai>=1.0.0,<2.0.0`
 - `kubernetes>=26.1.0`
+- `boto3>=1.0.0` (AWS support)
 - `pydantic>=2.0.0`
 - Python 3.10+
 
@@ -64,5 +68,6 @@ python tests/integration/test_runner.py all     # Complete test suite
 ## Debugging
 - **LLM Issues**: Verify `OPENAI_API_KEY` is set
 - **GKE Issues**: Check `GOOGLE_APPLICATION_CREDENTIALS`
+- **EKS Issues**: Check AWS credentials and region configuration
 - **KubeRay Issues**: `kubectl get pods -n kuberay-system`
 - **Architecture Validation**: `make lint-tool-functions`

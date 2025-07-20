@@ -22,6 +22,7 @@ Generic MCP server configuration for other MCP clients.
 - **Working Directory (`cwd`)**: Set to your ray-mcp project root directory
 - **Command**: Use `uv run ray-mcp` for modern uv-based execution
 - **Google Cloud**: Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+- **Amazon Web Services**: Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION` environment variables
 - **Enhanced Output**: Set `RAY_MCP_ENHANCED_OUTPUT` to `"true"` for better debugging
 
 ## Client Locations
