@@ -50,9 +50,7 @@ async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextCon
     prompt = arguments["prompt"]
 
     try:
-        if name == "ray_cluster":
-            result = await handlers.handle_cluster(prompt)
-        elif name == "ray_job":
+        if name == "ray_job":
             result = await handlers.handle_job(prompt)
         elif name == "ray_service":
             result = await handlers.handle_service(prompt)

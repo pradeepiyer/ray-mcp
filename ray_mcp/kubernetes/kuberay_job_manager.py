@@ -37,7 +37,7 @@ class KubeRayJobManager(ResourceManager):
             operation = action["operation"]
 
             if operation == "create":
-                return await self._create_ray_job_from_prompt(action)
+                return await self._create_ray_job_from_prompt(prompt, action)
             elif operation == "list":
                 namespace = action.get("namespace", "default")
                 return await self._list_ray_jobs(namespace)
@@ -93,7 +93,7 @@ class KubeRayJobManager(ResourceManager):
             )
 
     async def _create_ray_job_from_prompt(
-        self, action: dict[str, Any]
+        self, prompt: str, action: dict[str, Any]
     ) -> dict[str, Any]:
         """Create Ray job from parsed prompt action using manifest generation."""
         try:
@@ -101,14 +101,22 @@ class KubeRayJobManager(ResourceManager):
 
             # Generate manifest from action
             manifest = self._manifest_generator.generate_ray_job_manifest(
-                f"create job {action.get('name', 'ray-job')}", action
+                prompt, action
             )
 
             # Apply manifest
             result = await self._manifest_generator.apply_manifest(manifest, namespace)
 
             if result.get("status") == "success":
-                job_name = action.get("name", "ray-job")
+                # Extract the actual job name from the applied resources
+                job_name = None
+                for resource in result.get("applied_resources", []):
+                    if resource.get("kind") == "RayJob":
+                        job_name = resource.get("name")
+                        break
+                
+                if not job_name:
+                    job_name = action.get("name", "ray-job")
 
                 return success_response(
                     job_name=job_name,

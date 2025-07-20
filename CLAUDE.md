@@ -1,9 +1,9 @@
 # Ray MCP Server
 
-**4-tool prompt-driven Ray cluster management via natural language.**
+**3-tool prompt-driven Ray management via natural language.**
 
 ## Architecture
-- **4 Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud` (single `prompt` parameter each)
+- **3 Tools**: `ray_job`, `ray_service`, `cloud` (single `prompt` parameter each)
 - **Natural Language**: OpenAI parses prompts into Ray operations
 - **Multi-Environment**: Local Ray + Kubernetes/KubeRay + AWS EKS support
 

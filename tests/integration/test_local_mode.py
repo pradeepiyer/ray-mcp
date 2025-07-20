@@ -12,102 +12,8 @@ import sys
 # Add the ray_mcp package to the path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from tests.helpers.e2e import (
-    start_ray_cluster,
-    stop_ray_cluster,
-    submit_and_wait_for_job,
-)
+from tests.helpers.e2e import submit_and_wait_for_job
 from tests.helpers.utils import call_tool, parse_tool_result
-
-
-async def test_local_cluster_lifecycle():
-    """Test complete local cluster lifecycle."""
-    print("🔧 Testing local cluster lifecycle...")
-
-    # Test cluster creation
-    result = await call_tool(
-        "ray_cluster", {"prompt": "create a local cluster with 4 CPUs"}
-    )
-    response = parse_tool_result(result)
-    print(f"✅ Cluster creation: {response['status']}")
-
-    if response["status"] != "success":
-        print(f"❌ Cluster creation failed: {response['message']}")
-        return False
-
-    # Test cluster inspection
-    result = await call_tool("ray_cluster", {"prompt": "inspect cluster status"})
-    response = parse_tool_result(result)
-    print(f"✅ Cluster inspection: {response['status']}")
-
-    # Test cluster shutdown
-    result = await call_tool("ray_cluster", {"prompt": "stop cluster"})
-    response = parse_tool_result(result)
-    print(f"✅ Cluster shutdown: {response['status']}")
-
-    return True
-
-
-async def test_local_job_submission():
-    """Test local job submission and monitoring."""
-    print("💼 Testing local job submission...")
-
-    try:
-        # Start cluster first
-        await start_ray_cluster(cpu_limit=2)
-
-        # Create a simple test script
-        test_script = """#!/usr/bin/env python3
-import time
-import sys
-
-# Simple test job that doesn't require Ray imports
-def simple_task(x):
-    time.sleep(0.1)
-    return x * 2
-
-# Run tasks
-results = []
-for i in range(5):
-    result = simple_task(i)
-    results.append(result)
-    
-print(f"Results: {results}")
-print("Job completed successfully!")
-"""
-
-        try:
-            # Submit job
-            print("Debug - About to submit job...")
-            job_id, final_status = await submit_and_wait_for_job(
-                test_script, expected_status="SUCCEEDED"
-            )
-            print(
-                f"Debug - Job submission result: job_id={job_id}, final_status={final_status}"
-            )
-            print(f"✅ Job {job_id} completed successfully")
-
-            # Test job logs
-            result = await call_tool(
-                "ray_job", {"prompt": f"get logs for job {job_id}"}
-            )
-            response = parse_tool_result(result)
-            print(f"Debug - Job logs response: {response}")
-            print(f"✅ Job logs retrieved: {response['status']}")
-
-        finally:
-            # Clean up
-            await stop_ray_cluster()
-
-        return True
-
-    except Exception as e:
-        print(f"Debug - Exception in test_local_job_submission: {e}")
-        print(f"Debug - Exception type: {type(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return False
 
 
 async def test_local_error_handling():
@@ -118,11 +24,6 @@ async def test_local_error_handling():
     result = await call_tool("ray_job", {"prompt": "submit job with script test.py"})
     response = parse_tool_result(result)
     print(f"✅ No cluster error handling: {response['status']}")
-
-    # Test invalid cluster operations (use quick-failing operations)
-    result = await call_tool("ray_cluster", {"prompt": "stop nonexistent cluster"})
-    response = parse_tool_result(result)
-    print(f"✅ Invalid cluster operation handling: {response['status']}")
 
     # Test invalid job operations
     result = await call_tool("ray_job", {"prompt": "cancel nonexistent job"})
@@ -136,16 +37,14 @@ async def test_all_tools_consistency():
     """Test that all tools follow consistent patterns."""
     print("🔧 Testing tool consistency...")
 
-    tools = ["ray_cluster", "ray_job", "cloud"]
+    tools = ["ray_job", "cloud"]
     minimal_prompts = {
-        "ray_cluster": "inspect cluster status",
         "ray_job": "list all jobs",
         "cloud": "check environment",
     }
 
     # Expected behaviors for each tool when no cluster is running
     expected_behaviors = {
-        "ray_cluster": ["success", "error"],  # May return success (no cluster) or error
         "ray_job": ["error"],  # Should return error when no cluster is running
         "cloud": ["success", "error"],  # May return success or error depending on setup
     }
@@ -177,8 +76,6 @@ async def main():
     tests = [
         test_all_tools_consistency,
         test_local_error_handling,
-        test_local_cluster_lifecycle,
-        test_local_job_submission,
     ]
 
     results = []

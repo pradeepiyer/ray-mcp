@@ -8,7 +8,7 @@
 
 ## ✨ Features
 
-- **4 Simple Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud`
+- **3 Simple Tools**: `ray_job`, `ray_service`, `cloud`
 - **Natural Language Interface**: Single prompt parameter per tool
 - **Unified Management**: Works with local Ray, KubeRay, GKE, and AWS EKS
 - **Automatic Detection**: Intelligent routing between environments
@@ -40,10 +40,6 @@ Add to your MCP client configuration:
 ### Basic Usage
 
 ```bash
-# Cluster management
-ray_cluster: "create a local cluster with 4 CPUs"
-ray_cluster: "connect to kubernetes cluster my-cluster"
-ray_cluster: "inspect cluster status"
 
 # Job operations
 ray_job: "submit job with script train.py"
@@ -65,16 +61,6 @@ cloud: "connect to cluster production-cluster"
 
 ## 🎯 Tool Reference
 
-### `ray_cluster`
-Manage Ray clusters with natural language prompts.
-
-**Examples:**
-- `"create a local cluster with 4 CPUs"`
-- `"create head-only cluster"`
-- `"connect to cluster at 192.168.1.100:10001"`
-- `"create Ray cluster named ml-cluster with 3 workers on kubernetes"`
-- `"stop the current cluster"`
-- `"inspect cluster status"`
 
 ### `ray_job`
 Submit and manage Ray jobs.

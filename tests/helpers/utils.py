@@ -58,12 +58,12 @@ async def call_tool(
     from ray_mcp.main import handlers
 
     # Convert tool name and arguments to prompt format
-    if tool_name == "ray_cluster":
-        prompt = arguments.get("prompt", "list clusters")
-        result = await handlers.handle_cluster(prompt)
-    elif tool_name == "ray_job":
+    if tool_name == "ray_job":
         prompt = arguments.get("prompt", "list jobs")
         result = await handlers.handle_job(prompt)
+    elif tool_name == "ray_service":
+        prompt = arguments.get("prompt", "list services")
+        result = await handlers.handle_service(prompt)
     elif tool_name == "cloud":
         prompt = arguments.get("prompt", "check environment")
         result = await handlers.handle_cloud(prompt)

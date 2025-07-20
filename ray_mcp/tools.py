@@ -4,22 +4,8 @@ from mcp.types import Tool
 
 
 def get_ray_tools() -> list[Tool]:
-    """The 4 Ray MCP tools with natural language interfaces."""
+    """The 3 Ray MCP tools with natural language interfaces."""
     return [
-        Tool(
-            name="ray_cluster",
-            description="Manage Ray cluster infrastructure: create/delete clusters, connect to existing, scale workers, inspect cluster status",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "What you want to do with Ray cluster infrastructure in plain English. Examples: 'Create a local Ray cluster with 4 CPUs', 'Connect to existing cluster at 192.168.1.5:8265', 'Scale my-cluster to 6 workers', 'Stop the training-cluster', 'Create Ray cluster on kubernetes'",
-                    }
-                },
-                "required": ["prompt"],
-            },
-        ),
         Tool(
             name="ray_job",
             description="Submit and manage Ray jobs: submit to existing clusters or create ephemeral clusters, monitor execution, get logs, cancel jobs",

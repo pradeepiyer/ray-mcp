@@ -4,11 +4,9 @@ from typing import Any
 
 from ..cloud.cloud_provider_manager import CloudProviderManager
 from ..foundation.logging_utils import error_response
-from ..kubernetes.kuberay_cluster_manager import KubeRayClusterManager
 from ..kubernetes.kuberay_job_manager import KubeRayJobManager
 from ..kubernetes.kuberay_service_manager import KubeRayServiceManager
 from ..kubernetes.kubernetes_manager import KubernetesManager
-from .cluster_manager import ClusterManager
 from .job_manager import JobManager
 from .log_manager import LogManager
 
@@ -22,11 +20,9 @@ class RayUnifiedManager:
 
     def __init__(self):
         # Initialize specialized managers - no state/port managers needed
-        self._cluster_manager = ClusterManager()
         self._job_manager = JobManager(unified_manager=self)
         self._log_manager = LogManager()
         self._kubernetes_manager = KubernetesManager()
-        self._kuberay_cluster_manager = KubeRayClusterManager()
         self._kuberay_job_manager = KubeRayJobManager()
         self._kuberay_service_manager = KubeRayServiceManager()
         self._cloud_provider_manager = CloudProviderManager()
@@ -34,58 +30,6 @@ class RayUnifiedManager:
     # =================================================================
     # PUBLIC PROMPT-DRIVEN INTERFACE: Only 3 methods
     # =================================================================
-
-    async def handle_cluster_request(self, prompt: str) -> dict[str, Any]:
-        """Handle cluster operations using natural language prompts.
-
-        Examples:
-            - "create a local cluster with 4 CPUs"
-            - "connect to cluster at 10.0.0.1:10001"
-            - "stop the current cluster"
-            - "inspect cluster status"
-            - "create Ray cluster named ml-cluster with 3 workers on kubernetes"
-            - "connect to kubernetes cluster with context my-cluster"
-        """
-        try:
-            # Parse the action first to get the environment
-            from ..llm_parser import get_parser
-
-            action = await get_parser().parse_cluster_action(prompt)
-            environment = action.get("environment", "auto")
-
-            # Route based on parsed environment, with fallback to prompt detection
-            if environment == "local":
-                return await self._cluster_manager.execute_request(prompt)
-            elif environment == "kubernetes":
-                # Check if it's KubeRay or general Kubernetes
-                if "ray" in prompt.lower():
-                    return await self._kuberay_cluster_manager.execute_request(prompt)
-                else:
-                    return await self._kubernetes_manager.execute_request(prompt)
-            else:
-                # Fallback to prompt-based detection for "auto" or unspecified environment
-                # Prioritize prompt content over connection status
-                if self._is_kubernetes_environment(prompt):
-                    # Check if it's KubeRay or general Kubernetes
-                    if "ray" in prompt.lower():
-                        return await self._kuberay_cluster_manager.execute_request(
-                            prompt
-                        )
-                    else:
-                        return await self._kubernetes_manager.execute_request(prompt)
-                elif self._is_kubernetes_connected():
-                    # Only default to Kubernetes if prompt doesn't specify local
-                    # Check if it's KubeRay or general Kubernetes
-                    if "ray" in prompt.lower():
-                        return await self._kuberay_cluster_manager.execute_request(
-                            prompt
-                        )
-                    else:
-                        return await self._kubernetes_manager.execute_request(prompt)
-                else:
-                    return await self._cluster_manager.execute_request(prompt)
-        except Exception as e:
-            return error_response(str(e))
 
     async def handle_job_request(self, prompt: str) -> dict[str, Any]:
         """Handle job operations using natural language prompts.
@@ -215,12 +159,3 @@ class RayUnifiedManager:
             return self._kuberay_job_manager._is_kubernetes_ready()
         except Exception:
             return False
-
-    def get_dashboard_url(self) -> str:
-        """Get the dashboard URL from the cluster manager."""
-        if (
-            hasattr(self._cluster_manager, "_dashboard_url")
-            and self._cluster_manager._dashboard_url
-        ):
-            return self._cluster_manager._dashboard_url
-        return "http://127.0.0.1:8265"  # Default fallback

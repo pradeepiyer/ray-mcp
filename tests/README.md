@@ -29,7 +29,7 @@ tests/
 │   ├── test_mcp_tools.py          # MCP tool functionality
 │   └── test_parsers_and_formatters.py  # Parsing and formatting logic
 ├── e2e/                            # End-to-end tests (no mocking)
-│   └── test_critical_workflows.py  # Critical system workflows
+│   └── (Future GKE integration tests)
 └── helpers/                        # Test utilities
     ├── fixtures.py                 # Reusable test fixtures
     ├── utils.py                    # Test helper functions
@@ -105,11 +105,11 @@ pytest tests/unit/test_prompt_managers.py
 
 ### End-to-End Tests (`tests/e2e/`)
 
-**test_critical_workflows.py**
-- Tests complete system workflows without mocking
-- Validates real Ray cluster operations
-- Tests actual MCP server integration
-- Covers critical user scenarios
+**Future GKE Integration Tests**
+- Will test complete system workflows without mocking
+- Will validate real Kubernetes cluster operations
+- Will test actual MCP server integration with GKE
+- Will cover critical cloud user scenarios
 
 ## Test Utilities
 
