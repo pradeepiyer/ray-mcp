@@ -1,21 +1,17 @@
-"""Prompt-to-manifest generation for Ray clusters and jobs using native Kubernetes API."""
+"""KubeRay manifest generation for Ray MCP."""
 
 import asyncio
+import base64
 import json
-from typing import Any, Optional
+import logging
+from typing import Any, Dict, List, Optional, Union
 
+# Kubernetes is now a required dependency
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 import yaml
 
-from ..foundation.logging_utils import LoggingUtility
-from ..foundation.name_utils import NameGenerator
-
-try:
-    from kubernetes import client, config
-    from kubernetes.client.rest import ApiException
-
-    KUBERNETES_AVAILABLE = True
-except ImportError:
-    KUBERNETES_AVAILABLE = False
+from ..core_utils import LoggingUtility, generate_ray_resource_name
 
 
 class ManifestGenerator:
@@ -29,11 +25,6 @@ class ManifestGenerator:
 
     def _ensure_kubernetes_client(self) -> None:
         """Initialize Kubernetes clients if not already done."""
-        if not KUBERNETES_AVAILABLE:
-            raise RuntimeError(
-                "Kubernetes client not available. Please install kubernetes package."
-            )
-
         if not self._client_initialized:
             try:
                 # Try to load in-cluster config first, then kubeconfig
@@ -54,7 +45,7 @@ class ManifestGenerator:
         """Generate RayService manifest from parsed action data."""
         # Extract parameters from action
         base_name = action.get("name")
-        name = NameGenerator.generate_ray_resource_name("service", base_name)
+        name = generate_ray_resource_name("service", base_name)
         namespace = action.get("namespace", "default")
         gateway = action.get("gateway", "ray-gateway")
         script = action.get("script") or action.get("source", "python serve.py")
@@ -251,7 +242,7 @@ spec:
         """Generate RayJob manifest from parsed action data."""
         # Extract parameters from action
         base_name = action.get("name")
-        name = NameGenerator.generate_ray_resource_name("job", base_name)
+        name = generate_ray_resource_name("job", base_name)
         namespace = action.get("namespace", "default")
         script = action.get("script") or action.get("source", "python main.py")
         runtime_env = action.get("runtime_env", {})

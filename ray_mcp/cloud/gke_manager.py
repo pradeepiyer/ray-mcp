@@ -1,30 +1,37 @@
-"""Google Kubernetes Engine (GKE) cluster management for Ray MCP."""
+"""GKE Manager for Ray MCP - Direct cloud imports."""
 
 import asyncio
 import base64
 from contextlib import contextmanager
 import json
+import logging
 import os
 import tempfile
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Union
+
+# Direct Google Cloud imports
+from google.auth import default
+from google.auth.exceptions import DefaultCredentialsError
+from google.auth.transport import requests as google_auth_transport
+from google.cloud import container_v1
+from google.oauth2 import service_account
+
+# Direct Kubernetes imports
+from kubernetes import client, config as k8s_config
+from kubernetes.client.rest import ApiException
+from kubernetes.config.config_exception import ConfigException
 
 from ..config import config
-from ..foundation.enums import CloudProvider
-from ..foundation.import_utils import (
-    GOOGLE_AUTH_AVAILABLE,
-    GOOGLE_CLOUD_AVAILABLE,
-    GOOGLE_SERVICE_ACCOUNT_AVAILABLE,
-    KUBERNETES_AVAILABLE,
-    client,
-    container_v1,
-    google_auth_transport,
-    service_account,
+from ..core_utils import (
+    CloudProvider,
+    LoggingUtility,
+    error_response,
+    handle_error,
+    success_response,
 )
-from ..foundation.logging_utils import error_response, success_response
-from ..foundation.resource_manager import ResourceManager
 
 
-class GKEManager(ResourceManager):
+class GKEManager:
     """Pure prompt-driven Google Kubernetes Engine management - no traditional APIs."""
 
     # GKE-specific constants
@@ -35,10 +42,7 @@ class GKEManager(ResourceManager):
     DEFAULT_NUM_NODES = 3
 
     def __init__(self):
-        super().__init__(
-            enable_kubernetes=True,
-            enable_cloud=True,
-        )
+        self.logger = LoggingUtility()
 
         self._gke_client = None
         self._k8s_client = None  # Add Kubernetes client
@@ -91,7 +95,7 @@ class GKEManager(ResourceManager):
         except ValueError as e:
             return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._handle_error("execute_request", e)
+            return handle_error(self.logger, "execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -149,7 +153,7 @@ class GKEManager(ResourceManager):
                 service_account_path, project_id
             )
         except Exception as e:
-            return self._handle_error("gke authentication", e)
+            return handle_error(self.logger, "gke authentication", e)
 
     async def _authenticate_gke_operation(
         self,
@@ -157,8 +161,6 @@ class GKEManager(ResourceManager):
         project_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Execute GKE authentication operation."""
-        self._ensure_gcp_available()
-
         # Use service account path from parameter or environment
         service_account_path = service_account_path or os.getenv(
             "GOOGLE_APPLICATION_CREDENTIALS"
@@ -178,8 +180,6 @@ class GKEManager(ResourceManager):
             credentials_data = json.load(f)
 
         # Create credentials object
-        if not GOOGLE_SERVICE_ACCOUNT_AVAILABLE:
-            raise RuntimeError("Google Auth service account module not available")
         self._credentials = service_account.Credentials.from_service_account_info(
             credentials_data,
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
@@ -236,11 +236,6 @@ class GKEManager(ResourceManager):
     def _authenticate(self, credentials: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with Google Cloud Platform."""
         try:
-            if not GOOGLE_CLOUD_AVAILABLE:
-                return error_response(
-                    "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
-                )
-
             credentials_json = credentials.get("service_account_json")
             if not credentials_json:
                 return error_response(
@@ -259,8 +254,6 @@ class GKEManager(ResourceManager):
                 credentials_data = credentials_json
 
             # Create credentials object
-            if not GOOGLE_SERVICE_ACCOUNT_AVAILABLE:
-                raise RuntimeError("Google Auth service account module not available")
             self._credentials = service_account.Credentials.from_service_account_info(
                 credentials_data,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
@@ -285,7 +278,7 @@ class GKEManager(ResourceManager):
 
         except Exception as e:
             self.logger.log_error("gke authentication", e)
-            return self._handle_error("gke authentication", e)
+            return handle_error(self.logger, "gke authentication", e)
 
     async def _discover_clusters(
         self, project_id: Optional[str] = None
@@ -294,14 +287,12 @@ class GKEManager(ResourceManager):
         try:
             return await self._discover_clusters_operation(project_id)
         except Exception as e:
-            return self._handle_error("gke cluster discovery", e)
+            return handle_error(self.logger, "gke cluster discovery", e)
 
     async def _discover_clusters_operation(
         self, project_id: Optional[str] = None
     ) -> dict[str, Any]:
         """Execute GKE cluster discovery operation."""
-        self._ensure_gcp_available()
-
         # Use ManagedComponent validation method instead of manual check
         await self._ensure_gke_authenticated()
 
@@ -356,8 +347,6 @@ class GKEManager(ResourceManager):
 
     def _ensure_clients(self) -> None:
         """Ensure GKE clients are initialized."""
-        self._ensure_gcp_available()
-
         if not self._credentials:
             raise RuntimeError("Not authenticated with GKE")
 
@@ -403,21 +392,12 @@ class GKEManager(ResourceManager):
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> dict[str, Any]:
         """Connect to a GKE cluster and establish Kubernetes connection."""
-        if not GOOGLE_CLOUD_AVAILABLE:
-            return error_response(
-                "Google Cloud SDK is not available. Please install google-cloud-container: pip install google-cloud-container"
-            )
-
-        if not KUBERNETES_AVAILABLE:
-            return error_response(
-                "Kubernetes client library is not available. Please install kubernetes package: pip install kubernetes"
-            )
 
         # Use ManagedComponent validation method instead of manual check
         try:
             await self._ensure_gke_authenticated()
         except RuntimeError as e:
-            return self._handle_error("gke cluster connection", e)
+            return handle_error(self.logger, "gke cluster connection", e)
 
         try:
             project_id = self._resolve_project_id(project_id)
@@ -461,16 +441,13 @@ class GKEManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("gke cluster connection", e)
+            return handle_error(self.logger, "gke cluster connection", e)
 
     async def _establish_kubernetes_connection(
         self, cluster, project_id: str, location: str
     ) -> dict[str, Any]:
         """Establish Kubernetes connection using GKE cluster details and Google Cloud credentials."""
         try:
-            if not GOOGLE_AUTH_AVAILABLE:
-                return error_response("Google auth transport not available")
-
             # Create Kubernetes client configuration
             configuration = client.Configuration()
             configuration.host = f"https://{cluster.endpoint}"
@@ -549,7 +526,7 @@ class GKEManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("establish kubernetes connection", e)
+            return handle_error(self.logger, "establish kubernetes connection", e)
 
     def _get_kubernetes_client(self) -> Optional[Any]:
         """Get the current Kubernetes client configuration."""
@@ -583,17 +560,12 @@ class GKEManager(ResourceManager):
             return success_response(disconnected=True, provider="gke")
 
         except Exception as e:
-            return self._handle_error("gke disconnect", e)
+            return handle_error(self.logger, "gke disconnect", e)
 
     async def _create_cluster(
         self, cluster_spec: dict[str, Any], project_id: Optional[str] = None
     ) -> dict[str, Any]:
         """Create a GKE cluster."""
-        if not GOOGLE_CLOUD_AVAILABLE:
-            return error_response(
-                "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
-            )
-
         if not self._is_authenticated:
             return error_response(
                 "Not authenticated with GKE. Please authenticate first."
@@ -633,17 +605,12 @@ class GKEManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("gke cluster creation", e)
+            return handle_error(self.logger, "gke cluster creation", e)
 
     async def _get_cluster_info(
         self, cluster_name: str, location: str, project_id: Optional[str] = None
     ) -> dict[str, Any]:
         """Get information about a GKE cluster."""
-        if not GOOGLE_CLOUD_AVAILABLE:
-            return error_response(
-                "Google Cloud SDK is not available. Please install google-cloud-sdk: pip install google-cloud-sdk"
-            )
-
         if not self._is_authenticated:
             return error_response(
                 "Not authenticated with GKE. Please authenticate first."
@@ -723,7 +690,7 @@ class GKEManager(ResourceManager):
             return success_response(cluster=cluster_info)
 
         except Exception as e:
-            return self._handle_error("gke cluster info", e)
+            return handle_error(self.logger, "gke cluster info", e)
 
     def _build_cluster_config(
         self, cluster_spec: dict[str, Any], project_id: str
@@ -788,8 +755,6 @@ class GKEManager(ResourceManager):
                     self._gke_client = None
 
             # Try to authenticate
-            self._ensure_gcp_available()
-
             # Get service account path and project ID
             service_account_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
             project_id = config.gcp_project_id
@@ -821,7 +786,7 @@ class GKEManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("ensure gke authenticated", e)
+            return handle_error(self.logger, "ensure gke authenticated", e)
 
     def _resolve_project_id(self, project_id: Optional[str] = None) -> Optional[str]:
         """Resolve project ID from multiple sources with fallback."""
@@ -844,8 +809,6 @@ class GKEManager(ResourceManager):
         try:
             environment_status = {
                 "provider": "gke",
-                "google_cloud_available": GOOGLE_CLOUD_AVAILABLE,
-                "kubernetes_available": KUBERNETES_AVAILABLE,
                 "authenticated": self._is_authenticated,
                 "project_id": self._project_id,
                 "credentials_configured": bool(
@@ -853,22 +816,7 @@ class GKEManager(ResourceManager):
                 ),
             }
 
-            # Additional checks
-            if GOOGLE_CLOUD_AVAILABLE:
-                environment_status["google_cloud_status"] = "available"
-            else:
-                environment_status["google_cloud_status"] = (
-                    "missing - install google-cloud-container"
-                )
-
-            if KUBERNETES_AVAILABLE:
-                environment_status["kubernetes_status"] = "available"
-            else:
-                environment_status["kubernetes_status"] = (
-                    "missing - install kubernetes package"
-                )
-
-            # Check authentication
+            # Add authentication details
             if self._is_authenticated:
                 environment_status["authentication_status"] = "authenticated"
                 if self._project_id:
@@ -882,7 +830,7 @@ class GKEManager(ResourceManager):
             return success_response(**environment_status)
 
         except Exception as e:
-            return self._handle_error("check environment", e)
+            return handle_error(self.logger, "check environment", e)
 
     def __del__(self):
         """Cleanup resources when object is destroyed."""

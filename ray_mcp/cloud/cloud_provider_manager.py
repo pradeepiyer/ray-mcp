@@ -5,21 +5,22 @@ import os
 from typing import Any, Optional
 
 from ..config import config
-from ..foundation.enums import CloudProvider
-from ..foundation.logging_utils import error_response, success_response
-from ..foundation.resource_manager import ResourceManager
+from ..core_utils import (
+    CloudProvider,
+    LoggingUtility,
+    error_response,
+    handle_error,
+    success_response,
+)
 from .eks_manager import EKSManager
 from .gke_manager import GKEManager
 
 
-class CloudProviderManager(ResourceManager):
+class CloudProviderManager:
     """Pure prompt-driven cloud provider management - no traditional APIs."""
 
     def __init__(self):
-        super().__init__(
-            enable_kubernetes=True,
-            enable_cloud=True,
-        )
+        self.logger = LoggingUtility()
 
         self._gke_manager = GKEManager()
         self._eks_manager = EKSManager()
@@ -91,7 +92,7 @@ class CloudProviderManager(ResourceManager):
         except ValueError as e:
             return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._handle_error("execute_request", e)
+            return handle_error(self.logger, "execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -224,7 +225,7 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("detect cloud provider", e)
+            return handle_error(self.logger, "detect cloud provider", e)
 
     async def _list_cloud_clusters(
         self, provider: CloudProvider, action: dict[str, Any]
@@ -246,7 +247,7 @@ class CloudProviderManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("list cloud clusters", e)
+            return handle_error(self.logger, "list cloud clusters", e)
 
     async def _connect_cloud_cluster(
         self, provider: CloudProvider, cluster_name: str, action: dict[str, Any]
@@ -326,7 +327,7 @@ class CloudProviderManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("connect cloud cluster", e)
+            return handle_error(self.logger, "connect cloud cluster", e)
 
     async def _create_cloud_cluster(
         self, provider: CloudProvider, action: dict[str, Any]
@@ -350,7 +351,7 @@ class CloudProviderManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("create cloud cluster", e)
+            return handle_error(self.logger, "create cloud cluster", e)
 
     # Provider-specific authentication methods
     async def _authenticate_gke(self, action: dict[str, Any]) -> dict[str, Any]:
@@ -396,7 +397,7 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("local authentication", e)
+            return handle_error(self.logger, "local authentication", e)
 
     # Local Kubernetes operations
     async def _list_local_contexts(self) -> dict[str, Any]:
@@ -427,7 +428,7 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("list local contexts", e)
+            return handle_error(self.logger, "list local contexts", e)
 
     async def _connect_local_cluster(
         self, cluster_name: str, action: dict[str, Any]
@@ -461,7 +462,7 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("connect local cluster", e)
+            return handle_error(self.logger, "connect local cluster", e)
 
     # Validation methods
     async def _validate_cluster_spec(
@@ -480,7 +481,7 @@ class CloudProviderManager(ResourceManager):
                 return success_response(valid=True, cluster_spec=cluster_spec)
 
         except Exception as e:
-            return self._handle_error("validate cluster spec", e)
+            return handle_error(self.logger, "validate cluster spec", e)
 
     async def _validate_gke_cluster_spec(
         self, cluster_spec: dict[str, Any]
@@ -558,7 +559,7 @@ class CloudProviderManager(ResourceManager):
             )
 
         except Exception as e:
-            return self._handle_error("check environment", e)
+            return handle_error(self.logger, "check environment", e)
 
     async def _ensure_gke_authenticated(self) -> dict[str, Any]:
         """Ensure GKE authentication is configured and credentials are valid."""
@@ -567,7 +568,7 @@ class CloudProviderManager(ResourceManager):
             return await self._gke_manager._ensure_gke_authenticated()
 
         except Exception as e:
-            return self._handle_error("ensure gke authenticated", e)
+            return handle_error(self.logger, "ensure gke authenticated", e)
 
     async def _ensure_aws_authenticated(self) -> dict[str, Any]:
         """Ensure AWS authentication is configured and credentials are valid."""
@@ -576,4 +577,4 @@ class CloudProviderManager(ResourceManager):
             return await self._eks_manager._ensure_eks_authenticated()
 
         except Exception as e:
-            return self._handle_error("ensure aws authenticated", e)
+            return handle_error(self.logger, "ensure aws authenticated", e)

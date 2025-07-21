@@ -1,6 +1,6 @@
 # Ray MCP Server
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Ray 2.47+](https://img.shields.io/badge/ray-2.47+-orange.svg)](https://docs.ray.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
@@ -157,7 +157,7 @@ make format         # Format code
 
 ## 📋 Requirements
 
-- **Python**: 3.10+
+- **Python**: 3.11+
 - **Ray**: 2.47.0+
 - **Kubernetes**: 1.20+ (for KubeRay features)
 

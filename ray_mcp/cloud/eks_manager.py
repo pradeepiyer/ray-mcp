@@ -1,31 +1,35 @@
-"""Amazon Elastic Kubernetes Service (EKS) cluster management for Ray MCP."""
+"""EKS Manager for Ray MCP - Direct cloud imports."""
 
 import asyncio
 import base64
 from contextlib import contextmanager
+import logging
 import os
 import tempfile
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Union
+
+# Direct AWS imports
+import boto3
+from botocore.auth import SigV4Auth
+import botocore.awsrequest
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+
+# Direct Kubernetes imports
+from kubernetes import client, config as k8s_config
+from kubernetes.client.rest import ApiException
+from kubernetes.config.config_exception import ConfigException
 
 from ..config import config
-from ..foundation.enums import CloudProvider
-
-# AWS and Kubernetes imports
-from ..foundation.import_utils import (
-    AWS_AVAILABLE,
-    KUBERNETES_AVAILABLE,
-    BotoCoreError,
-    ClientError,
-    NoCredentialsError,
-    boto3,
-    client,
-    config as k8s_config,
+from ..core_utils import (
+    CloudProvider,
+    LoggingUtility,
+    error_response,
+    handle_error,
+    success_response,
 )
-from ..foundation.logging_utils import error_response, success_response
-from ..foundation.resource_manager import ResourceManager
 
 
-class EKSManager(ResourceManager):
+class EKSManager:
     """Pure prompt-driven Amazon Elastic Kubernetes Service management - no traditional APIs."""
 
     # EKS-specific constants
@@ -38,10 +42,7 @@ class EKSManager(ResourceManager):
     DEFAULT_MAX_SIZE = 10
 
     def __init__(self):
-        super().__init__(
-            enable_kubernetes=True,
-            enable_cloud=True,
-        )
+        self.logger = LoggingUtility()
 
         self._eks_client = None
         self._ec2_client = None
@@ -95,7 +96,7 @@ class EKSManager(ResourceManager):
         except ValueError as e:
             return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._handle_error("execute_request", e)
+            return handle_error(self.logger, "execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -146,14 +147,12 @@ class EKSManager(ResourceManager):
         try:
             return await self._authenticate_eks_operation(region)
         except Exception as e:
-            return self._handle_error("eks authentication", e)
+            return handle_error(self.logger, "eks authentication", e)
 
     async def _authenticate_eks_operation(
         self, region: Optional[str] = None
     ) -> dict[str, Any]:
         """Execute EKS authentication operation."""
-        self._ensure_aws_available()
-
         # Default region if not provided
         region = region or "us-west-2"
 
@@ -199,14 +198,12 @@ class EKSManager(ResourceManager):
         try:
             return await self._discover_clusters_operation(region)
         except Exception as e:
-            return self._handle_error("eks cluster discovery", e)
+            return handle_error(self.logger, "eks cluster discovery", e)
 
     async def _discover_clusters_operation(
         self, region: Optional[str] = None
     ) -> dict[str, Any]:
         """Execute EKS cluster discovery operation."""
-        self._ensure_aws_available()
-
         # Use ManagedComponent validation method
         await self._ensure_eks_authenticated()
 
@@ -262,8 +259,6 @@ class EKSManager(ResourceManager):
 
     def _ensure_clients(self) -> None:
         """Ensure EKS clients are initialized."""
-        self._ensure_aws_available()
-
         if not self._aws_session:
             raise RuntimeError("Not authenticated with AWS")
 
@@ -303,21 +298,11 @@ class EKSManager(ResourceManager):
 
     async def _connect_cluster(self, cluster_name: str, region: str) -> dict[str, Any]:
         """Connect to an EKS cluster and establish Kubernetes connection."""
-        if not AWS_AVAILABLE:
-            return error_response(
-                "AWS SDK is not available. Please install boto3: pip install boto3"
-            )
-
-        if not KUBERNETES_AVAILABLE:
-            return error_response(
-                "Kubernetes client library is not available. Please install kubernetes package: pip install kubernetes"
-            )
-
         # Use ManagedComponent validation method
         try:
             await self._ensure_eks_authenticated()
         except RuntimeError as e:
-            return self._handle_error("eks cluster connection", e)
+            return handle_error(self.logger, "eks cluster connection", e)
 
         try:
             resolved_region = self._resolve_region(region)
@@ -363,18 +348,15 @@ class EKSManager(ResourceManager):
                     f"EKS cluster '{cluster_name}' not found in region '{region}'"
                 )
             else:
-                return self._handle_error("eks cluster connection", e)
+                return handle_error(self.logger, "eks cluster connection", e)
         except Exception as e:
-            return self._handle_error("eks cluster connection", e)
+            return handle_error(self.logger, "eks cluster connection", e)
 
     async def _establish_kubernetes_connection(
         self, cluster: dict[str, Any], region: str
     ) -> dict[str, Any]:
         """Establish Kubernetes connection using EKS cluster details and AWS credentials."""
         try:
-            if not AWS_AVAILABLE:
-                return error_response("AWS SDK not available")
-
             # Create Kubernetes client configuration
             configuration = client.Configuration()
             endpoint = cluster.get("endpoint")
@@ -453,7 +435,7 @@ class EKSManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("establish kubernetes connection", e)
+            return handle_error(self.logger, "establish kubernetes connection", e)
 
     async def _get_eks_token(self, cluster_name: str, region: str) -> Optional[str]:
         """Get EKS authentication token using AWS STS."""
@@ -537,17 +519,12 @@ class EKSManager(ResourceManager):
             return success_response(disconnected=True, provider="eks")
 
         except Exception as e:
-            return self._handle_error("eks disconnect", e)
+            return handle_error(self.logger, "eks disconnect", e)
 
     async def _create_cluster(
         self, cluster_spec: dict[str, Any], region: Optional[str] = None
     ) -> dict[str, Any]:
         """Create an EKS cluster."""
-        if not AWS_AVAILABLE:
-            return error_response(
-                "AWS SDK is not available. Please install boto3: pip install boto3"
-            )
-
         if not self._is_authenticated:
             return error_response(
                 "Not authenticated with AWS. Please authenticate first."
@@ -585,17 +562,12 @@ class EKSManager(ResourceManager):
                     f"EKS cluster '{cluster_spec.get('name')}' already exists"
                 )
             else:
-                return self._handle_error("eks cluster creation", e)
+                return handle_error(self.logger, "eks cluster creation", e)
         except Exception as e:
-            return self._handle_error("eks cluster creation", e)
+            return handle_error(self.logger, "eks cluster creation", e)
 
     async def _get_cluster_info(self, cluster_name: str, region: str) -> dict[str, Any]:
         """Get information about an EKS cluster."""
-        if not AWS_AVAILABLE:
-            return error_response(
-                "AWS SDK is not available. Please install boto3: pip install boto3"
-            )
-
         if not self._is_authenticated:
             return error_response(
                 "Not authenticated with AWS. Please authenticate first."
@@ -677,9 +649,9 @@ class EKSManager(ResourceManager):
                     f"EKS cluster '{cluster_name}' not found in region '{region}'"
                 )
             else:
-                return self._handle_error("eks cluster info", e)
+                return handle_error(self.logger, "eks cluster info", e)
         except Exception as e:
-            return self._handle_error("eks cluster info", e)
+            return handle_error(self.logger, "eks cluster info", e)
 
     def _build_cluster_config(
         self, cluster_spec: dict[str, Any], region: str
@@ -792,8 +764,6 @@ class EKSManager(ResourceManager):
                     self._eks_client = None
 
             # Try to authenticate
-            self._ensure_aws_available()
-
             # Get region from config or use default
             region = getattr(config, "aws_region", None) or "us-west-2"
 
@@ -812,7 +782,7 @@ class EKSManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error("ensure eks authenticated", e)
+            return handle_error(self.logger, "ensure eks authenticated", e)
 
     def _resolve_region(self, region: Optional[str] = None) -> Optional[str]:
         """Resolve region from multiple sources with fallback."""
@@ -835,27 +805,12 @@ class EKSManager(ResourceManager):
         try:
             environment_status = {
                 "provider": "eks",
-                "aws_available": AWS_AVAILABLE,
-                "kubernetes_available": KUBERNETES_AVAILABLE,
                 "authenticated": self._is_authenticated,
                 "region": self._region,
                 "credentials_configured": bool(self._aws_session),
             }
 
-            # Additional checks
-            if AWS_AVAILABLE:
-                environment_status["aws_status"] = "available"
-            else:
-                environment_status["aws_status"] = "missing - install boto3"
-
-            if KUBERNETES_AVAILABLE:
-                environment_status["kubernetes_status"] = "available"
-            else:
-                environment_status["kubernetes_status"] = (
-                    "missing - install kubernetes package"
-                )
-
-            # Check authentication
+            # Add authentication details
             if self._is_authenticated:
                 environment_status["authentication_status"] = "authenticated"
                 if self._region:
@@ -869,14 +824,7 @@ class EKSManager(ResourceManager):
             return success_response(**environment_status)
 
         except Exception as e:
-            return self._handle_error("check environment", e)
-
-    def _ensure_aws_available(self) -> None:
-        """Ensure AWS SDK is available."""
-        if not AWS_AVAILABLE:
-            raise RuntimeError(
-                "AWS SDK (boto3) is not available. Please install boto3: pip install boto3"
-            )
+            return handle_error(self.logger, "check environment", e)
 
     def __del__(self):
         """Cleanup resources when object is destroyed."""

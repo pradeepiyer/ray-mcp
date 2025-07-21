@@ -1,11 +1,12 @@
-"""Unit tests for EKSManager functionality."""
+"""Tests for EKS Manager functionality - direct imports."""
 
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
+from botocore.exceptions import NoCredentialsError
 import pytest
 
 from ray_mcp.cloud.eks_manager import EKSManager
-from ray_mcp.foundation.enums import CloudProvider
 
 
 @pytest.mark.unit
@@ -150,8 +151,6 @@ class TestEKSManager:
         self, mock_boto3, eks_manager
     ):
         """Test EKS authentication with no credentials."""
-        from botocore.exceptions import NoCredentialsError
-
         # Mock boto3 to raise NoCredentialsError
         mock_boto3.Session.side_effect = NoCredentialsError()
 
@@ -253,19 +252,6 @@ class TestEKSManager:
 
         dt = datetime(2023, 1, 1)
         assert eks_manager._format_timestamp(dt) == dt.isoformat()
-
-    def test_ensure_aws_available(self, eks_manager):
-        """Test AWS availability check."""
-        with patch("ray_mcp.cloud.eks_manager.AWS_AVAILABLE", True):
-            # Should not raise when AWS is available
-            eks_manager._ensure_aws_available()
-
-        with patch("ray_mcp.cloud.eks_manager.AWS_AVAILABLE", False):
-            # Should raise when AWS is not available
-            with pytest.raises(
-                RuntimeError, match="AWS SDK \\(boto3\\) is not available"
-            ):
-                eks_manager._ensure_aws_available()
 
     def test_cleanup_ca_cert_file(self, eks_manager):
         """Test CA certificate file cleanup."""

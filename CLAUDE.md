@@ -49,7 +49,7 @@ python tests/integration/test_runner.py all     # Complete test suite
 - `kubernetes>=26.1.0`
 - `boto3>=1.0.0` (AWS support)
 - `pydantic>=2.0.0`
-- Python 3.10+
+- Python 3.11+
 
 ## Entry Points
 - `uv run ray-mcp` - Start MCP server

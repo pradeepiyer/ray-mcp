@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from ray_mcp.foundation.logging_utils import error_response, success_response
+from ray_mcp.core_utils import error_response, success_response
 
 
 @pytest.mark.unit

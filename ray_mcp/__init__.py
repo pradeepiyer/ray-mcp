@@ -25,7 +25,7 @@ Environment Variables:
 Dependencies:
     - Ray: The distributed computing framework
     - MCP: Model Context Protocol libraries
-    - Python 3.10+: Required for async/await support
+    - Python 3.11+: Required for async/await support
 
 For more information, see the documentation in the docs/ directory.
 """

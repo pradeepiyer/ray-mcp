@@ -21,11 +21,11 @@ class TestingSetup:
     def check_python_version(self) -> bool:
         """Check if Python version is compatible."""
         version = sys.version_info
-        if version.major >= 3 and version.minor >= 10:
+        if version.major >= 3 and version.minor >= 11:
             print(f"✅ Python {version.major}.{version.minor} - Compatible")
             return True
         else:
-            print(f"❌ Python {version.major}.{version.minor} - Requires Python 3.10+")
+            print(f"❌ Python {version.major}.{version.minor} - Requires Python 3.11+")
             return False
 
     def check_dependencies(self) -> Dict[str, bool]:
@@ -225,7 +225,7 @@ fi
 
         # Check Python version
         if not self.check_python_version():
-            print("\n❌ Python version incompatible. Please upgrade to Python 3.10+")
+            print("\n❌ Python version incompatible. Please upgrade to Python 3.11+")
             sys.exit(1)
 
         # Check dependencies

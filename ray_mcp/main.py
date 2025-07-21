@@ -13,7 +13,7 @@ from mcp.types import ServerCapabilities, TextContent, Tool
 
 from . import __version__
 from .cloud.cloud_provider_manager import CloudProviderManager
-from .foundation.logging_utils import LoggingUtility, error_response
+from .core_utils import LoggingUtility, error_response
 from .kuberay.job_manager import JobManager
 from .kuberay.service_manager import ServiceManager
 from .llm_parser import get_parser

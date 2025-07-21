@@ -3,19 +3,21 @@
 import asyncio
 from typing import Any, Optional
 
-from ..foundation.logging_utils import LoggingUtility, error_response, success_response
-from ..foundation.resource_manager import ResourceManager
+from ..core_utils import (
+    LoggingUtility,
+    error_response,
+    handle_error,
+    is_kubernetes_ready,
+    success_response,
+)
 from .manifest_generator import ManifestGenerator
 
 
-class JobManager(ResourceManager):
+class JobManager:
     """Ray job management using KubeRay."""
 
     def __init__(self):
-        super().__init__(
-            enable_kubernetes=True,
-            enable_cloud=False,
-        )
+        self.logger = LoggingUtility()
 
         self._manifest_generator = ManifestGenerator()
 
@@ -59,7 +61,7 @@ class JobManager(ResourceManager):
         except ValueError as e:
             return error_response(f"Could not parse request: {str(e)}")
         except Exception as e:
-            return self._handle_error("execute_request", e)
+            return handle_error(self.logger, "execute_request", e)
 
     # =================================================================
     # INTERNAL IMPLEMENTATION: All methods are now private
@@ -123,7 +125,7 @@ class JobManager(ResourceManager):
                 return error_response(result.get("message", "Unknown error"))
 
         except Exception as e:
-            return self._handle_error("create ray job from action", e)
+            return handle_error(self.logger, "create ray job from action", e)
 
     async def _create_ray_job(
         self, job_spec: dict[str, Any], namespace: str = "default"
@@ -132,7 +134,7 @@ class JobManager(ResourceManager):
         try:
             return await self._create_ray_job_operation(job_spec, namespace)
         except Exception as e:
-            return self._handle_error("create ray job", e)
+            return handle_error(self.logger, "create ray job", e)
 
     async def _create_ray_job_operation(
         self, job_spec: dict[str, Any], namespace: str = "default"
@@ -378,14 +380,12 @@ class JobManager(ResourceManager):
                 )
 
         except Exception as e:
-            return self._handle_error(f"kubernetes logs for job {name}", e)
+            return handle_error(self.logger, f"kubernetes logs for job {name}", e)
 
     def _ensure_kuberay_ready(self) -> None:
         """Ensure KubeRay operator is available and ready."""
-        self._ensure_kubernetes_available()
-
         # Try to connect to kubernetes
-        if not self._is_kubernetes_ready():
+        if not is_kubernetes_ready():
             raise RuntimeError(
                 "Kubernetes is not available or configured. Please check kubeconfig."
             )

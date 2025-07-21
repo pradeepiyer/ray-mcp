@@ -190,7 +190,7 @@ async def test_complete_job_workflow():
 ## Environment Requirements
 
 ### Unit Tests
-- Python 3.10+
+- Python 3.11+
 - Ray MCP dependencies
 - pytest and mocking libraries
 
