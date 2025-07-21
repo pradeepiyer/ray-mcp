@@ -1,7 +1,7 @@
 """Test LLM parser functionality - simplified for 3-tool interface."""
 
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -52,19 +52,19 @@ class TestErrorHandling:
     """Test error handling scenarios."""
 
     @pytest.mark.asyncio
-    async def test_type_validation_in_specialized_methods(self):
-        """Test type validation in specialized parsing methods."""
+    async def test_parse_action_basic_functionality(self):
+        """Test that parse_action method works correctly."""
         parser = LLMActionParser()
 
-        # Mock parse_action to return wrong type
-        with patch.object(parser, "parse_action") as mock_parse:
-            mock_parse.return_value = {"type": "cloud", "operation": "list"}
+        # Mock the OpenAI client to return a valid response
+        with patch.object(parser, "_client") as mock_client:
+            mock_client.chat.completions.create = AsyncMock()
+            mock_client.chat.completions.create.return_value.choices = [
+                Mock(message=Mock(content='{"type": "job", "operation": "create"}'))
+            ]
 
-            # Should raise ValueError for wrong type
-            with pytest.raises(ValueError, match="Expected job action"):
-                await parser.parse_job_action("test prompt")
-
-
+            result = await parser.parse_action("submit job")
+            assert result == {"type": "job", "operation": "create"}
 
 
 @pytest.fixture(autouse=True)

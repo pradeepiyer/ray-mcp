@@ -1,7 +1,6 @@
 """Simple unique name generation utilities for Ray resources."""
 
 from datetime import datetime
-import hashlib
 import re
 import time
 from typing import Optional

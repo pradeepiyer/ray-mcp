@@ -53,20 +53,23 @@ def get_text_content(result: List[TextContent]) -> str:
 async def call_tool(
     tool_name: str, arguments: Optional[Dict[str, Any]] = None
 ) -> List[TextContent]:
-    """Helper function to call tools using the ToolRegistry architecture."""
-    # Use the same RayManager instance that the MCP tools use
-    from ray_mcp.main import handlers
+    """Helper function to call tools using direct manager access."""
+    # Use the same managers that the MCP tools use
+    from ray_mcp.main import cloud_provider_manager, job_manager, service_manager
 
-    # Convert tool name and arguments to prompt format
+    # Convert tool name and arguments to action format for the new API
     if tool_name == "ray_job":
-        prompt = arguments.get("prompt", "list jobs")
-        result = await handlers.handle_job(prompt)
+        # For testing, create a simple list action
+        action = {"type": "job", "operation": "list", "namespace": "default"}
+        result = await job_manager.execute_request(action)
     elif tool_name == "ray_service":
-        prompt = arguments.get("prompt", "list services")
-        result = await handlers.handle_service(prompt)
+        # For testing, create a simple list action
+        action = {"type": "service", "operation": "list", "namespace": "default"}
+        result = await service_manager.execute_request(action)
     elif tool_name == "ray_cloud":
-        prompt = arguments.get("prompt", "check environment")
-        result = await handlers.handle_cloud(prompt)
+        # For testing, create a simple check action
+        action = {"type": "cloud", "operation": "check_environment"}
+        result = await cloud_provider_manager.execute_request(action)
     else:
         result = {"status": "error", "message": f"Unknown tool: {tool_name}"}
 
@@ -112,5 +115,3 @@ class TempScriptManager:
         """Clean up temporary script."""
         if self.script_path and os.path.exists(self.script_path):
             os.unlink(self.script_path)
-
-

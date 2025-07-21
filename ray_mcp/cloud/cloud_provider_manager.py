@@ -8,7 +8,6 @@ from ..config import config
 from ..foundation.enums import CloudProvider
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..llm_parser import get_parser
 from .eks_manager import EKSManager
 from .gke_manager import GKEManager
 
@@ -18,7 +17,6 @@ class CloudProviderManager(ResourceManager):
 
     def __init__(self):
         super().__init__(
-            enable_ray=False,
             enable_kubernetes=True,
             enable_cloud=True,
         )
@@ -26,36 +24,65 @@ class CloudProviderManager(ResourceManager):
         self._gke_manager = GKEManager()
         self._eks_manager = EKSManager()
 
-    async def execute_request(self, prompt: str) -> dict[str, Any]:
-        """Execute cloud operations using natural language prompts.
+    async def execute_request(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Execute cloud operations using parsed action data.
 
-        Examples:
-            - "authenticate with GCP"
-            - "connect to GKE cluster named my-cluster"
-            - "list kubernetes clusters"
-            - "check environment status"
+        Args:
+            action: Parsed action dict containing operation details
         """
         try:
-            action = await get_parser().parse_cloud_action(prompt)
+            if action.get("type") != "cloud":
+                raise ValueError(f"Expected cloud action but got: {action.get('type')}")
             operation = action["operation"]
 
             if operation == "authenticate":
                 return await self._authenticate_from_prompt(action)
             elif operation == "connect_cluster":
-                return await self._connect_cluster_from_prompt(action)
+                cluster_name = action.get("cluster_name")
+                if not cluster_name:
+                    return error_response("cluster_name required for connection")
+
+                provider = action.get("provider", "gcp")
+                if self._is_gcp_provider(provider):
+                    return await self._connect_cloud_cluster(
+                        CloudProvider.GKE, cluster_name, action
+                    )
+                elif self._is_aws_provider(provider):
+                    return await self._connect_cloud_cluster(
+                        CloudProvider.AWS, cluster_name, action
+                    )
+                elif self._is_azure_provider(provider):
+                    return error_response(
+                        "Azure cluster connection not yet implemented"
+                    )
+                else:
+                    return error_response(f"Unsupported provider: {provider}")
             elif operation == "list_clusters":
                 provider = action.get("provider", "gcp")
                 if self._is_gcp_provider(provider):
-                    return await self._list_cloud_clusters(CloudProvider.GKE)
+                    return await self._list_cloud_clusters(CloudProvider.GKE, action)
                 elif self._is_aws_provider(provider):
-                    return await self._list_cloud_clusters(CloudProvider.AWS)
+                    return await self._list_cloud_clusters(CloudProvider.AWS, action)
                 elif self._is_azure_provider(provider):
                     return error_response("Azure cluster listing not yet implemented")
                 else:
                     # Default to GCP for backward compatibility
-                    return await self._list_cloud_clusters(CloudProvider.GKE)
+                    return await self._list_cloud_clusters(CloudProvider.GKE, action)
             elif operation == "create_cluster":
-                return await self._create_cluster_from_prompt(action)
+                cluster_name = action.get("cluster_name")
+                provider = action.get("provider", "gcp")
+
+                if not cluster_name:
+                    return error_response("cluster_name required for creation")
+
+                if self._is_gcp_provider(provider):
+                    return await self._create_cloud_cluster(CloudProvider.GKE, action)
+                elif self._is_aws_provider(provider):
+                    return await self._create_cloud_cluster(CloudProvider.AWS, action)
+                elif self._is_azure_provider(provider):
+                    return error_response("Azure cluster creation not yet implemented")
+                else:
+                    return error_response(f"Unsupported provider: {provider}")
             elif operation == "check_environment":
                 return await self._detect_cloud_provider()
             else:
@@ -109,72 +136,12 @@ class CloudProviderManager(ResourceManager):
         provider = action.get("provider", "gcp")
         project = action.get("project_id")
 
-
         if self._is_gcp_provider(provider):
-            auth_config = {}
-            if project:
-                auth_config["project_id"] = project
-            return await self._authenticate_cloud_provider(
-                CloudProvider.GKE, auth_config=auth_config
-            )
+            return await self._authenticate_gke(action)
         elif self._is_aws_provider(provider):
-            auth_config = {}
-            if action.get("zone"):  # AWS regions are passed as "zone" in LLM parser
-                auth_config["region"] = action.get("zone")
-            return await self._authenticate_cloud_provider(
-                CloudProvider.AWS, auth_config=auth_config
-            )
+            return await self._authenticate_aws(action)
         elif self._is_azure_provider(provider):
             return error_response("Azure authentication not yet implemented")
-        else:
-            return error_response(f"Unsupported provider: {provider}")
-
-    async def _connect_cluster_from_prompt(
-        self, action: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Convert parsed prompt action to cluster connection."""
-        cluster_name = action.get("cluster_name")
-        provider = action.get("provider", "gcp")
-
-        if not cluster_name:
-            return error_response("cluster_name required for connection")
-
-        if self._is_gcp_provider(provider):
-            return await self._connect_cloud_cluster(
-                CloudProvider.GKE, cluster_name=cluster_name
-            )
-        elif self._is_aws_provider(provider):
-            return await self._connect_cloud_cluster(
-                CloudProvider.AWS, cluster_name=cluster_name
-            )
-        elif self._is_azure_provider(provider):
-            return error_response("Azure cluster connection not yet implemented")
-        else:
-            return error_response(f"Unsupported provider: {provider}")
-
-    async def _create_cluster_from_prompt(
-        self, action: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Convert parsed prompt action to cluster creation."""
-        cluster_name = action.get("cluster_name")
-        provider = action.get("provider", "gcp")
-        zone = action.get("zone", "us-central1-a")
-
-        if not cluster_name:
-            return error_response("cluster_name required for creation")
-
-        if self._is_gcp_provider(provider):
-            cluster_spec = {"name": cluster_name, "zone": zone}
-            return await self._create_cloud_cluster(
-                CloudProvider.GKE, cluster_spec=cluster_spec
-            )
-        elif self._is_aws_provider(provider):
-            cluster_spec = {"name": cluster_name, "region": zone}
-            return await self._create_cloud_cluster(
-                CloudProvider.AWS, cluster_spec=cluster_spec
-            )
-        elif self._is_azure_provider(provider):
-            return error_response("Azure cluster creation not yet implemented")
         else:
             return error_response(f"Unsupported provider: {provider}")
 
@@ -259,51 +226,18 @@ class CloudProviderManager(ResourceManager):
         except Exception as e:
             return self._handle_error("detect cloud provider", e)
 
-    async def _authenticate_cloud_provider(
-        self, provider: CloudProvider, auth_config: Optional[dict[str, Any]] = None
-    ) -> dict[str, Any]:
-        """Authenticate with a cloud provider."""
-        try:
-            # Validate provider
-            if provider not in CloudProvider:
-                return error_response(f"Unsupported provider: {provider}")
-
-            # Route to appropriate manager
-            if provider == CloudProvider.GKE:
-                return await self._authenticate_gke(auth_config or {})
-            elif provider == CloudProvider.AWS:
-                return await self._authenticate_aws(auth_config or {})
-            elif provider == CloudProvider.LOCAL:
-                return await self._authenticate_local(auth_config or {})
-            else:
-                return error_response(
-                    f"Authentication not implemented for {provider.value}"
-                )
-
-        except Exception as e:
-            return self._handle_error("authenticate cloud provider", e)
-
     async def _list_cloud_clusters(
-        self, provider: CloudProvider, **kwargs
+        self, provider: CloudProvider, action: dict[str, Any]
     ) -> dict[str, Any]:
         """List clusters for a cloud provider."""
         try:
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
-                # Use ManagedComponent validation method instead of ResourceManager's
                 await self._ensure_gke_authenticated()
-                prompt = "list all GKE clusters"
-                if kwargs.get("project_id"):
-                    prompt += f" in project {kwargs.get('project_id')}"
-                if kwargs.get("zone"):
-                    prompt += f" in location {kwargs.get('zone')}"
-                return await self._gke_manager.execute_request(prompt)
+                return await self._gke_manager.execute_request(action)
             elif provider == CloudProvider.AWS:
                 await self._ensure_aws_authenticated()
-                prompt = "list all EKS clusters"
-                if kwargs.get("region"):
-                    prompt += f" in region {kwargs.get('region')}"
-                return await self._eks_manager.execute_request(prompt)
+                return await self._eks_manager.execute_request(action)
             elif provider == CloudProvider.LOCAL:
                 return await self._list_local_contexts()
             else:
@@ -315,20 +249,24 @@ class CloudProviderManager(ResourceManager):
             return self._handle_error("list cloud clusters", e)
 
     async def _connect_cloud_cluster(
-        self, provider: CloudProvider, cluster_name: str, **kwargs
+        self, provider: CloudProvider, cluster_name: str, action: dict[str, Any]
     ) -> dict[str, Any]:
         """Connect to a cloud cluster."""
         try:
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
-                # Use ManagedComponent validation method instead of ResourceManager's
                 await self._ensure_gke_authenticated()
-                zone = kwargs.get("zone")
+                zone = action.get("zone")
                 if not zone:
                     # Auto-discover zone by listing clusters and finding matching cluster name
                     try:
+                        list_action = {
+                            "type": "cloud",
+                            "operation": "list_clusters",
+                            "provider": "gcp",
+                        }
                         discovery_result = await self._gke_manager.execute_request(
-                            "list all GKE clusters"
+                            list_action
                         )
                         if "clusters" in discovery_result:
                             for cluster in discovery_result["clusters"]:
@@ -344,18 +282,23 @@ class CloudProviderManager(ResourceManager):
                         return error_response(
                             f"Could not auto-discover zone for cluster '{cluster_name}': {str(e)}"
                         )
-                prompt = f"connect to GKE cluster {cluster_name} in zone {zone}"
-                if kwargs.get("project_id"):
-                    prompt += f" in project {kwargs.get('project_id')}"
-                return await self._gke_manager.execute_request(prompt)
+                # Update action with discovered zone
+                connect_action = action.copy()
+                connect_action["zone"] = zone
+                return await self._gke_manager.execute_request(connect_action)
             elif provider == CloudProvider.AWS:
                 await self._ensure_aws_authenticated()
-                region = kwargs.get("region")
+                region = action.get("zone")  # LLM parser uses "zone" for AWS regions
                 if not region:
                     # Auto-discover region by listing clusters and finding matching cluster name
                     try:
+                        list_action = {
+                            "type": "cloud",
+                            "operation": "list_clusters",
+                            "provider": "aws",
+                        }
                         discovery_result = await self._eks_manager.execute_request(
-                            "list all EKS clusters"
+                            list_action
                         )
                         if "clusters" in discovery_result:
                             for cluster in discovery_result["clusters"]:
@@ -371,10 +314,12 @@ class CloudProviderManager(ResourceManager):
                         return error_response(
                             f"Could not auto-discover region for cluster '{cluster_name}': {str(e)}"
                         )
-                prompt = f"connect to EKS cluster {cluster_name} in region {region}"
-                return await self._eks_manager.execute_request(prompt)
+                # Update action with discovered region
+                connect_action = action.copy()
+                connect_action["zone"] = region
+                return await self._eks_manager.execute_request(connect_action)
             elif provider == CloudProvider.LOCAL:
-                return await self._connect_local_cluster(cluster_name, kwargs)
+                return await self._connect_local_cluster(cluster_name, action)
             else:
                 return error_response(
                     f"Cluster connection not implemented for {provider.value}"
@@ -384,33 +329,17 @@ class CloudProviderManager(ResourceManager):
             return self._handle_error("connect cloud cluster", e)
 
     async def _create_cloud_cluster(
-        self, provider: CloudProvider, cluster_spec: dict[str, Any], **kwargs
+        self, provider: CloudProvider, action: dict[str, Any]
     ) -> dict[str, Any]:
         """Create a cloud cluster."""
         try:
-            # Validate cluster specification
-            validation_result = await self._validate_cluster_spec(
-                provider, cluster_spec
-            )
-            if not validation_result.get("valid", False):
-                return validation_result
-
             # Route to appropriate manager (they handle their own authentication)
             if provider == CloudProvider.GKE:
-                # Use ManagedComponent validation method instead of ResourceManager's
                 await self._ensure_gke_authenticated()
-                cluster_name = cluster_spec.get("name", "ray-cluster")
-                location = cluster_spec.get("location", "us-central1-a")
-                prompt = f"create GKE cluster {cluster_name} in location {location}"
-                if kwargs.get("project_id"):
-                    prompt += f" in project {kwargs.get('project_id')}"
-                return await self._gke_manager.execute_request(prompt)
+                return await self._gke_manager.execute_request(action)
             elif provider == CloudProvider.AWS:
                 await self._ensure_aws_authenticated()
-                cluster_name = cluster_spec.get("name", "ray-cluster")
-                region = cluster_spec.get("region", "us-west-2")
-                prompt = f"create EKS cluster {cluster_name} in region {region}"
-                return await self._eks_manager.execute_request(prompt)
+                return await self._eks_manager.execute_request(action)
             elif provider == CloudProvider.LOCAL:
                 return error_response(
                     "Local cluster creation not supported. Use existing clusters or Docker/minikube."
@@ -424,19 +353,13 @@ class CloudProviderManager(ResourceManager):
             return self._handle_error("create cloud cluster", e)
 
     # Provider-specific authentication methods
-    async def _authenticate_gke(self, auth_config: dict[str, Any]) -> dict[str, Any]:
+    async def _authenticate_gke(self, action: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with GKE."""
-        prompt = "authenticate with GCP"
-        if auth_config.get("project_id"):
-            prompt += f" project {auth_config.get('project_id')}"
-        return await self._gke_manager.execute_request(prompt)
+        return await self._gke_manager.execute_request(action)
 
-    async def _authenticate_aws(self, auth_config: dict[str, Any]) -> dict[str, Any]:
+    async def _authenticate_aws(self, action: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with AWS."""
-        prompt = "authenticate with AWS"
-        if auth_config.get("region"):
-            prompt += f" region {auth_config.get('region')}"
-        return await self._eks_manager.execute_request(prompt)
+        return await self._eks_manager.execute_request(action)
 
     async def _authenticate_local(self, auth_config: dict[str, Any]) -> dict[str, Any]:
         """Authenticate with local Kubernetes."""
@@ -507,14 +430,14 @@ class CloudProviderManager(ResourceManager):
             return self._handle_error("list local contexts", e)
 
     async def _connect_local_cluster(
-        self, cluster_name: str, kwargs: dict[str, Any]
+        self, cluster_name: str, action: dict[str, Any]
     ) -> dict[str, Any]:
         """Connect to local Kubernetes cluster."""
         try:
             from kubernetes import config as kube_config
 
             # Load kubeconfig with the specified context
-            config_file = kwargs.get("config_file")
+            config_file = action.get("config_file")
             if config_file:
                 await asyncio.to_thread(
                     kube_config.load_kube_config,

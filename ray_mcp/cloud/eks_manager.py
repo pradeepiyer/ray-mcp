@@ -3,10 +3,9 @@
 import asyncio
 import base64
 from contextlib import contextmanager
-import json
 import os
 import tempfile
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from ..config import config
 from ..foundation.enums import CloudProvider
@@ -24,7 +23,6 @@ from ..foundation.import_utils import (
 )
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..llm_parser import get_parser
 
 
 class EKSManager(ResourceManager):
@@ -41,7 +39,6 @@ class EKSManager(ResourceManager):
 
     def __init__(self):
         super().__init__(
-            enable_ray=False,
             enable_kubernetes=True,
             enable_cloud=True,
         )
@@ -56,18 +53,13 @@ class EKSManager(ResourceManager):
         self._aws_session = None
         self._ca_cert_file = None  # Track the CA certificate file for cleanup
 
-    async def execute_request(self, prompt: str) -> dict[str, Any]:
-        """Execute EKS operations using natural language prompts.
+    async def execute_request(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Execute EKS operations using parsed action data.
 
-        Examples:
-            - "authenticate with AWS region us-west-2"
-            - "list all EKS clusters in us-east-1"
-            - "connect to EKS cluster training-cluster in region us-west-2"
-            - "create EKS cluster ml-cluster with 3 nodes"
-            - "get info for cluster production-cluster"
+        Args:
+            action: Parsed action dict containing operation details
         """
         try:
-            action = await get_parser().parse_cloud_action(prompt)
             operation = action["operation"]
 
             if operation == "authenticate":
@@ -80,18 +72,18 @@ class EKSManager(ResourceManager):
                 return await self._discover_clusters(region)
             elif operation == "connect_cluster":
                 cluster_name = action.get("cluster_name")
-                region = action.get("zone")  # parse_cloud_action uses "zone"
+                region = action.get("zone")  # parse_action uses "zone"
                 if not cluster_name or not region:
                     return error_response("cluster name and region required")
                 return await self._connect_cluster(cluster_name, region)
             elif operation == "create_cluster":
                 cluster_name = action.get("cluster_name")
-                region = action.get("zone")  # parse_cloud_action uses "zone"
+                region = action.get("zone")  # parse_action uses "zone"
                 cluster_spec = {"name": cluster_name, "region": region}
                 return await self._create_cluster(cluster_spec, region)
             elif operation == "get_cluster_info":
                 cluster_name = action.get("cluster_name")
-                region = action.get("zone")  # parse_cloud_action uses "zone"
+                region = action.get("zone")  # parse_action uses "zone"
                 if not cluster_name or not region:
                     return error_response("cluster name and region required")
                 return await self._get_cluster_info(cluster_name, region)

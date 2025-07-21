@@ -180,9 +180,6 @@ wc:
 	@echo "examples/ (example files):"
 	@find ./examples -name "*.py" | xargs wc -l | tail -1
 	@echo ""
-	@echo "docs/ (documentation):"
-	@find ./docs -name "*.md" -o -name "*.py" | xargs wc -l | tail -1
-	@echo ""
 	@echo "📈 Summary:"
 	@echo "================================"
 	@echo "Total Python lines:"
@@ -251,4 +248,4 @@ help:
 	@echo "🎯 Architecture:"
 	@echo "  3 Tools: ray_cluster, ray_job, cloud"
 	@echo "  Interface: Natural language prompts"
-	@echo "  Tests: 96 unit tests" 
+	@echo "  Tests: 96 unit tests"

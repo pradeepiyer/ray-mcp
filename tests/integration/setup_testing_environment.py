@@ -45,29 +45,6 @@ class TestingSetup:
             print("❌ UV not found")
             results["uv"] = False
 
-        # Check Ray
-        try:
-            result = subprocess.run(
-                [
-                    "uv",
-                    "run",
-                    "python",
-                    "-c",
-                    "import ray; print(f'Ray {ray.__version__}')",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                print(f"✅ {result.stdout.strip()}")
-                results["ray"] = True
-            else:
-                print("❌ Ray not available")
-                results["ray"] = False
-        except Exception:
-            print("❌ Ray not available")
-            results["ray"] = False
-
         # Check MCP
         try:
             result = subprocess.run(
@@ -86,47 +63,6 @@ class TestingSetup:
             results["mcp"] = False
 
         return results
-
-    def check_local_setup(self) -> bool:
-        """Check local Ray setup."""
-        print("\n🔧 Checking Local Ray Setup...")
-
-        # Check if Ray can start
-        try:
-            result = subprocess.run(
-                [
-                    "uv",
-                    "run",
-                    "python",
-                    "-c",
-                    """
-import ray
-try:
-    ray.init(num_cpus=1, dashboard_port=8265)
-    print("✅ Ray cluster started successfully")
-    ray.shutdown()
-except Exception as e:
-    print(f"❌ Ray startup failed: {e}")
-    exit(1)
-""",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            if result.returncode == 0:
-                print("✅ Local Ray setup working")
-                return True
-            else:
-                print(f"❌ Local Ray setup failed: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            print("❌ Ray startup timed out")
-            return False
-        except Exception as e:
-            print(f"❌ Error testing Ray: {e}")
-            return False
 
     def check_gke_setup(self) -> Dict[str, bool]:
         """Check GKE setup."""
@@ -262,23 +198,14 @@ echo "=============================="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check what mode to run
-if [ "$1" = "local" ]; then
-    echo "Running local mode tests..."
-    python "$SCRIPT_DIR/test_local_mode.py"
-elif [ "$1" = "gke" ]; then
+if [ "$1" = "gke" ]; then
     echo "Running GKE mode tests..."
     python "$SCRIPT_DIR/test_gke_mode.py"
-elif [ "$1" = "both" ]; then
-    echo "Running both local and GKE tests..."
-    python "$SCRIPT_DIR/test_local_mode.py"
-    python "$SCRIPT_DIR/test_gke_mode.py"
 else
-    echo "Usage: $0 [local|gke|both]"
+    echo "Usage: $0 [gke]"
     echo ""
     echo "Options:"
-    echo "  local - Run local Ray testing"
     echo "  gke   - Run GKE testing (requires GCP setup)"
-    echo "  both  - Run both test suites"
     exit 1
 fi
 """
@@ -309,9 +236,6 @@ fi
                 print("❌ Failed to install dependencies")
                 sys.exit(1)
 
-        # Check local setup
-        local_ok = self.check_local_setup()
-
         # Check GKE setup
         gke_results = self.check_gke_setup()
         gke_ok = all(gke_results.values())
@@ -322,23 +246,19 @@ fi
         # Summary
         print("\n" + "=" * 50)
         print("📊 Setup Summary:")
-        print(f"  Local Ray: {'✅ Ready' if local_ok else '❌ Not Ready'}")
-        print(f"  GKE Mode: {'✅ Ready' if gke_ok else '❌ Not Ready'}")
+        print(f"  Kubernetes Mode: {'✅ Ready' if gke_ok else '❌ Not Ready'}")
 
         if not gke_ok:
-            print("\n⚠️  To enable GKE testing:")
+            print("\n⚠️  To enable Kubernetes testing:")
             print("  1. Set up GCP service account with Container Admin role")
             print("  2. Export GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_CLOUD_PROJECT")
             print("  3. Run: uv add 'ray-mcp[gke]'")
 
         print("\n🎯 Ready to test!")
         print("Usage:")
-        print("  ./tests/integration/run_tests.sh local  # Test local mode")
         print("  ./tests/integration/run_tests.sh gke    # Test GKE mode")
-        print("  ./tests/integration/run_tests.sh both   # Test both modes")
 
         print("\nAlternative:")
-        print("  python tests/integration/test_local_mode.py")
         print("  python tests/integration/test_gke_mode.py")
 
         print("\nExisting test suite:")
