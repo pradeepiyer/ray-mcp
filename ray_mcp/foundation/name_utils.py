@@ -10,64 +10,37 @@ class NameGenerator:
     """Generates simple unique names for Ray resources based on tool context."""
 
     @staticmethod
-    def generate_ray_job_name(
-        base_name: Optional[str] = None, max_length: int = 63
+    def generate_ray_resource_name(
+        resource_type: str, base_name: Optional[str] = None, max_length: int = 63
     ) -> str:
-        """Generate a simple unique name for a Ray job.
+        """Generate a simple unique name for a Ray resource.
 
         Args:
+            resource_type: Type of resource ("job" or "service")
             base_name: Optional base name from action parsing
             max_length: Maximum name length (Kubernetes limit is 63 characters)
 
         Returns:
             A unique name following Kubernetes naming conventions
         """
+        default_name = f"ray-{resource_type}"
+        service_infix = "-svc-" if resource_type == "service" else "-"
+
         # If base_name is provided and is not a default, use it (with uniqueness)
-        if base_name and base_name != "ray-job":
+        if base_name and base_name != default_name:
             if NameGenerator._is_likely_unique(base_name):
                 return NameGenerator._sanitize_k8s_name(base_name, max_length)
             else:
                 # Make the custom name unique
                 timestamp = datetime.now().strftime("%m%d-%H%M")
                 unique_id = NameGenerator._generate_unique_id()
-                name = f"{base_name}-{timestamp}-{unique_id}"
+                name = f"{base_name}{service_infix}{timestamp}-{unique_id}"
                 return NameGenerator._sanitize_k8s_name(name, max_length)
 
-        # Generate simple unique job name
+        # Generate simple unique resource name
         timestamp = datetime.now().strftime("%m%d-%H%M")
         unique_id = NameGenerator._generate_unique_id()
-        name = f"ray-job-{timestamp}-{unique_id}"
-
-        return NameGenerator._sanitize_k8s_name(name, max_length)
-
-    @staticmethod
-    def generate_ray_service_name(
-        base_name: Optional[str] = None, max_length: int = 63
-    ) -> str:
-        """Generate a simple unique name for a Ray service.
-
-        Args:
-            base_name: Optional base name from action parsing
-            max_length: Maximum name length (Kubernetes limit is 63 characters)
-
-        Returns:
-            A unique name following Kubernetes naming conventions
-        """
-        # If base_name is provided and is not a default, use it (with uniqueness)
-        if base_name and base_name != "ray-service":
-            if NameGenerator._is_likely_unique(base_name):
-                return NameGenerator._sanitize_k8s_name(base_name, max_length)
-            else:
-                # Make the custom name unique
-                timestamp = datetime.now().strftime("%m%d-%H%M")
-                unique_id = NameGenerator._generate_unique_id()
-                name = f"{base_name}-svc-{timestamp}-{unique_id}"
-                return NameGenerator._sanitize_k8s_name(name, max_length)
-
-        # Generate simple unique service name
-        timestamp = datetime.now().strftime("%m%d-%H%M")
-        unique_id = NameGenerator._generate_unique_id()
-        name = f"ray-service-{timestamp}-{unique_id}"
+        name = f"{default_name}-{timestamp}-{unique_id}"
 
         return NameGenerator._sanitize_k8s_name(name, max_length)
 

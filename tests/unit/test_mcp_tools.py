@@ -164,7 +164,6 @@ class TestDirectManagerIntegration:
             patch("ray_mcp.main.cloud_provider_manager") as mock_cloud_mgr,
             patch("ray_mcp.main.get_parser") as mock_parser,
         ):
-
             # Set up different responses for each manager
             mock_job_mgr.execute_request = AsyncMock(
                 return_value={"type": "job", "status": "success"}
@@ -303,7 +302,6 @@ class TestMCPServerIntegration:
             patch("ray_mcp.main.cloud_provider_manager") as mock_cloud_mgr,
             patch("ray_mcp.main.get_parser") as mock_parser,
         ):
-
             # Set up mock responses
             mock_job_mgr.execute_request = AsyncMock(
                 return_value={"status": "success", "test": "mocked"}
