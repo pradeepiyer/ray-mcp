@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Test runner for Ray MCP with different test suites.
+"""Test runner for Ray MCP unit tests.
 
-This script provides convenient commands for running different test categories:
+This script provides convenient commands for running unit tests:
 - Unit tests: Fast, fully mocked tests
-- E2E tests: End-to-end integration tests
-- All tests: Complete test suite
+- All tests: Runs unit tests (equivalent to unit)
 
 Usage:
-    python test_runner.py unit          # Run unit tests only
-    python test_runner.py e2e           # Run E2E tests only
-    python test_runner.py all           # Run all tests
+    python test_runner.py unit          # Run unit tests
+    python test_runner.py all           # Run unit tests
     python test_runner.py --help        # Show help
 """
 
@@ -34,8 +32,8 @@ class TestRunner:
 
         start_time = time.time()
 
-        # Set timeout - longer for E2E tests, shorter for others
-        timeout = 300 if "e2e" in description.lower() else 120
+        # Set timeout for unit tests
+        timeout = 120
 
         try:
             result = subprocess.run(cmd, cwd=self.project_root, timeout=timeout)
@@ -57,37 +55,13 @@ class TestRunner:
         cmd = ["uv", "run", "pytest", "tests/unit/", "-m", "unit", "--tb=short", "-v"]
         return self.run_command(cmd, "Running unit tests")
 
-    def run_e2e_tests(self) -> bool:
-        """Run end-to-end integration tests."""
-        cmd = [
-            "uv",
-            "run",
-            "pytest",
-            "tests/e2e/",
-            "-m",
-            "e2e",
-            "--tb=short",
-            "-v",
-            "-s",  # Don't capture output for E2E tests
-        ]
-        return self.run_command(cmd, "Running E2E tests")
-
     def run_all_tests(self) -> bool:
-        """Run the complete test suite."""
-        print("🎯 Running complete Ray MCP test suite")
+        """Run the complete test suite (currently only unit tests)."""
+        print("🎯 Running Ray MCP test suite")
         print("=" * 60)
 
-        success = True
-
-        # Run unit tests first (fast feedback)
-        if not self.run_unit_tests():
-            success = False
-
-        # Run E2E tests (slower but critical)
-        if not self.run_e2e_tests():
-            success = False
-
-        return success
+        # Run unit tests
+        return self.run_unit_tests()
 
     def check_dependencies(self) -> bool:
         """Check that required dependencies are available."""
@@ -102,14 +76,14 @@ class TestRunner:
             return False
         print(f"✅ {result.stdout.strip()}")
 
-        # Check Ray (optional but recommended for E2E tests)
+        # Check Kubernetes client
         result = subprocess.run(
             [
                 "uv",
                 "run",
                 "python",
                 "-c",
-                "import ray; print(f'Ray {ray.__version__}')",
+                "from kubernetes import client; print('Kubernetes client available')",
             ],
             capture_output=True,
             text=True,
@@ -117,7 +91,7 @@ class TestRunner:
         if result.returncode == 0:
             print(f"✅ {result.stdout.strip()}")
         else:
-            print("⚠️  Ray not available (E2E tests may fail)")
+            print("⚠️  Kubernetes client not available")
 
         return True
 
@@ -139,30 +113,20 @@ class TestRunner:
                 unit_count = len([l for l in lines if "test_" in l])
                 print(f"Unit tests: {unit_count} tests in tests/unit/")
 
-            # E2E tests
-            result = subprocess.run(
-                ["uv", "run", "pytest", "tests/e2e/", "--collect-only", "-q"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split("\n")
-                e2e_count = len([l for l in lines if "test_" in l])
-                print(f"E2E tests: {e2e_count} tests in tests/e2e/")
+            # Note: E2E tests not currently implemented
+            print("E2E tests: 0 tests (not implemented)")
 
         except Exception as e:
             print(f"Could not count tests: {e}")
 
         print("\nTest Categories:")
         print("- unit: Fast tests with full mocking (< 1s each)")
-        print("- e2e: Integration tests without mocking (5-60s each)")
+        print("- all: Runs unit tests (equivalent to unit)")
         print("")
 
         print("\nUsage Examples:")
         print("  python test_runner.py unit     # Fast feedback during development")
-        print("  python test_runner.py e2e      # Validate real functionality")
-        print("")
-        print("  python test_runner.py all      # Complete validation")
+        print("  python test_runner.py all      # Run all available tests")
 
 
 def main():
@@ -173,14 +137,13 @@ def main():
         epilog="""
 Examples:
   python test_runner.py unit          # Fast unit tests
-  python test_runner.py e2e           # Integration tests  
-  python test_runner.py all           # Complete test suite
+  python test_runner.py all           # Run all tests (unit only)
   python test_runner.py info          # Show test information
         """,
     )
 
     parser.add_argument(
-        "suite", choices=["unit", "e2e", "all", "info"], help="Test suite to run"
+        "suite", choices=["unit", "all", "info"], help="Test suite to run"
     )
 
     parser.add_argument(
@@ -208,8 +171,6 @@ Examples:
 
     if args.suite == "unit":
         success = runner.run_unit_tests()
-    elif args.suite == "e2e":
-        success = runner.run_e2e_tests()
     elif args.suite == "all":
         success = runner.run_all_tests()
 

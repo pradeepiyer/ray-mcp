@@ -35,73 +35,60 @@ class TestEKSManager:
         assert eks_manager._aws_session is None
 
     @pytest.mark.asyncio
-    @patch("ray_mcp.cloud.eks_manager.get_parser")
-    async def test_execute_request_authenticate(self, mock_get_parser, eks_manager):
-        """Test execute_request with authenticate operation."""
-        # Mock parser
-        mock_parser = AsyncMock()
-        mock_parser.parse_cloud_action.return_value = {
-            "operation": "authenticate",
-            "zone": "us-west-2",
-        }
-        mock_get_parser.return_value = mock_parser
-
+    async def test_execute_request_authenticate(self, eks_manager):
+        """Test execute_request with authenticate operation using new action-only API."""
         # Mock authenticate method
         eks_manager._authenticate_from_prompt = AsyncMock(
             return_value={"status": "success"}
         )
 
-        result = await eks_manager.execute_request(
-            "authenticate with AWS region us-west-2"
-        )
+        # Create action data directly (no parsing needed)
+        action = {
+            "type": "cloud",
+            "operation": "authenticate",
+            "zone": "us-west-2",
+        }
+
+        result = await eks_manager.execute_request(action)
 
         assert result["status"] == "success"
-        mock_parser.parse_cloud_action.assert_called_once_with(
-            "authenticate with AWS region us-west-2"
-        )
         eks_manager._authenticate_from_prompt.assert_called_once_with("us-west-2")
 
     @pytest.mark.asyncio
-    @patch("ray_mcp.cloud.eks_manager.get_parser")
-    async def test_execute_request_list_clusters(self, mock_get_parser, eks_manager):
-        """Test execute_request with list_clusters operation."""
-        # Mock parser
-        mock_parser = AsyncMock()
-        mock_parser.parse_cloud_action.return_value = {
-            "operation": "list_clusters",
-            "zone": "us-west-2",
-        }
-        mock_get_parser.return_value = mock_parser
-
+    async def test_execute_request_list_clusters(self, eks_manager):
+        """Test execute_request with list_clusters operation using new action-only API."""
         # Mock discover method
         eks_manager._discover_clusters = AsyncMock(
             return_value={"status": "success", "clusters": []}
         )
 
-        result = await eks_manager.execute_request("list EKS clusters in us-west-2")
+        # Create action data directly (no parsing needed)
+        action = {
+            "type": "cloud",
+            "operation": "list_clusters",
+            "zone": "us-west-2",
+        }
+
+        result = await eks_manager.execute_request(action)
 
         assert result["status"] == "success"
         eks_manager._discover_clusters.assert_called_once_with("us-west-2")
 
     @pytest.mark.asyncio
-    @patch("ray_mcp.cloud.eks_manager.get_parser")
-    async def test_execute_request_connect_cluster(self, mock_get_parser, eks_manager):
-        """Test execute_request with connect_cluster operation."""
-        # Mock parser
-        mock_parser = AsyncMock()
-        mock_parser.parse_cloud_action.return_value = {
+    async def test_execute_request_connect_cluster(self, eks_manager):
+        """Test execute_request with connect_cluster operation using new action-only API."""
+        # Mock connect method
+        eks_manager._connect_cluster = AsyncMock(return_value={"status": "success"})
+
+        # Create action data directly (no parsing needed)
+        action = {
+            "type": "cloud",
             "operation": "connect_cluster",
             "cluster_name": "test-cluster",
             "zone": "us-west-2",
         }
-        mock_get_parser.return_value = mock_parser
 
-        # Mock connect method
-        eks_manager._connect_cluster = AsyncMock(return_value={"status": "success"})
-
-        result = await eks_manager.execute_request(
-            "connect to EKS cluster test-cluster in us-west-2"
-        )
+        result = await eks_manager.execute_request(action)
 
         assert result["status"] == "success"
         eks_manager._connect_cluster.assert_called_once_with(
@@ -109,21 +96,17 @@ class TestEKSManager:
         )
 
     @pytest.mark.asyncio
-    @patch("ray_mcp.cloud.eks_manager.get_parser")
-    async def test_execute_request_missing_required_params(
-        self, mock_get_parser, eks_manager
-    ):
-        """Test execute_request with missing required parameters."""
-        # Mock parser
-        mock_parser = AsyncMock()
-        mock_parser.parse_cloud_action.return_value = {
+    async def test_execute_request_missing_required_params(self, eks_manager):
+        """Test execute_request with missing required parameters using new action-only API."""
+        # Create action data with missing cluster_name (directly testing validation)
+        action = {
+            "type": "cloud",
             "operation": "connect_cluster",
             "cluster_name": None,
             "zone": "us-west-2",
         }
-        mock_get_parser.return_value = mock_parser
 
-        result = await eks_manager.execute_request("connect to cluster")
+        result = await eks_manager.execute_request(action)
 
         assert result["status"] == "error"
         assert "cluster name and region required" in result["message"]
@@ -287,7 +270,6 @@ class TestEKSManager:
     def test_cleanup_ca_cert_file(self, eks_manager):
         """Test CA certificate file cleanup."""
         with patch("os.path.exists") as mock_exists, patch("os.unlink") as mock_unlink:
-
             # Test cleanup when file exists
             mock_exists.return_value = True
             eks_manager._ca_cert_file = "/tmp/test.crt"

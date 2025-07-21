@@ -1,11 +1,11 @@
 # Ray MCP Server
 
-**4-tool prompt-driven Ray cluster management via natural language.**
+**Single-tool prompt-driven Ray management via natural language on Kubernetes.**
 
 ## Architecture
-- **4 Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud` (single `prompt` parameter each)
+- **1 Tool**: `ray` with automatic operation routing (single `prompt` parameter)
 - **Natural Language**: OpenAI parses prompts into Ray operations
-- **Multi-Environment**: Local Ray + Kubernetes/KubeRay + AWS EKS support
+- **Kubernetes-Only**: KubeRay on GKE/EKS/AKS clusters
 
 ## Configuration
 
@@ -23,7 +23,6 @@ GOOGLE_APPLICATION_CREDENTIALS=path    # GKE authentication
 AWS_ACCESS_KEY_ID=your_key             # AWS authentication
 AWS_SECRET_ACCESS_KEY=your_secret      # AWS authentication
 AWS_DEFAULT_REGION=us-west-2           # AWS default region
-RAY_DISABLE_USAGE_STATS=1              # Disable Ray telemetry
 ```
 
 ## Commands
@@ -31,7 +30,7 @@ RAY_DISABLE_USAGE_STATS=1              # Disable Ray telemetry
 ### Development
 ```bash
 make test-fast     # Unit tests (mocked)
-make test-e2e      # Integration tests
+
 make lint          # Code quality
 make dev-install   # Setup development environment
 uv run ray-mcp     # Run MCP server
@@ -45,7 +44,6 @@ python tests/integration/test_runner.py all     # Complete test suite
 ```
 
 ## Dependencies
-- `ray[default]>=2.47.0`
 - `mcp>=1.0.0` 
 - `openai>=1.0.0,<2.0.0`
 - `kubernetes>=26.1.0`
@@ -59,10 +57,10 @@ python tests/integration/test_runner.py all     # Complete test suite
 - `python -m ray_mcp.main` - Direct module execution
 
 ## Key Files
-- `ray_mcp/tools.py` - 4-tool definitions
-- `ray_mcp/parsers.py` - Natural language parsing
-- `ray_mcp/handlers.py` - MCP protocol handlers
-- `ray_mcp/managers/` - Business logic
+- `ray_mcp/tools.py` - Single tool definition with LLM routing
+- `ray_mcp/main.py` - MCP server and direct routing to managers
+- `ray_mcp/kuberay/` - KubeRay operations (job and service management)
+- `ray_mcp/cloud/` - Cloud provider authentication and management
 - `ray_mcp/llm_parser.py` - OpenAI API integration
 
 ## Debugging

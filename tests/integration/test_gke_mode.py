@@ -45,7 +45,7 @@ async def test_gke_environment_setup():
         return False
 
     # Test cloud environment check
-    result = await call_tool("cloud", {"prompt": "check environment"})
+    result = await call_tool("ray_cloud", {"prompt": "check environment"})
     response = parse_tool_result(result)
     print(f"✅ Environment check: {response['status']}")
 
@@ -76,7 +76,7 @@ async def test_gcp_authentication():
 
     # Test authentication
     result = await call_tool(
-        "cloud", {"prompt": f"authenticate with GCP project {project_id}"}
+        "ray_cloud", {"prompt": f"authenticate with GCP project {project_id}"}
     )
     response = parse_tool_result(result)
 
@@ -112,7 +112,7 @@ async def test_gke_cluster_listing():
     # First ensure we're authenticated
     project_id = GKETestConfig.get_project_id()
     auth_result = await call_tool(
-        "cloud", {"prompt": f"authenticate with GCP project {project_id}"}
+        "ray_cloud", {"prompt": f"authenticate with GCP project {project_id}"}
     )
     auth_response = parse_tool_result(auth_result)
 
@@ -122,7 +122,7 @@ async def test_gke_cluster_listing():
         return False
 
     # Test cluster listing
-    result = await call_tool("cloud", {"prompt": "list all GKE clusters"})
+    result = await call_tool("ray_cloud", {"prompt": "list all GKE clusters"})
     response = parse_tool_result(result)
 
     # Check for successful listing - GKE cluster listing returns "clusters" field, not "status"
@@ -161,7 +161,7 @@ async def test_gke_cluster_creation():
     # First ensure we're authenticated
     project_id = GKETestConfig.get_project_id()
     auth_result = await call_tool(
-        "cloud", {"prompt": f"authenticate with GCP project {project_id}"}
+        "ray_cloud", {"prompt": f"authenticate with GCP project {project_id}"}
     )
     auth_response = parse_tool_result(auth_result)
 
@@ -173,7 +173,7 @@ async def test_gke_cluster_creation():
     # Create a test cluster
     cluster_name = "ray-mcp-test-cluster"
     result = await call_tool(
-        "cloud",
+        "ray_cloud",
         {
             "prompt": f"create GKE cluster named {cluster_name} with 2 nodes in us-central1-a"
         },
@@ -200,7 +200,7 @@ async def test_kubernetes_integration():
     # First ensure we're authenticated
     project_id = GKETestConfig.get_project_id()
     auth_result = await call_tool(
-        "cloud", {"prompt": f"authenticate with GCP project {project_id}"}
+        "ray_cloud", {"prompt": f"authenticate with GCP project {project_id}"}
     )
     auth_response = parse_tool_result(auth_result)
 
@@ -210,7 +210,7 @@ async def test_kubernetes_integration():
         return False
 
     # List clusters to find one to test with
-    list_result = await call_tool("cloud", {"prompt": "list all GKE clusters"})
+    list_result = await call_tool("ray_cloud", {"prompt": "list all GKE clusters"})
     list_response = parse_tool_result(list_result)
 
     # Check for successful listing - returns clusters field, not status
@@ -241,7 +241,7 @@ async def test_kubernetes_integration():
 
     # Test connecting to the cluster
     result = await call_tool(
-        "cloud",
+        "ray_cloud",
         {"prompt": f"connect to GKE cluster {cluster_name} in {cluster_location}"},
     )
     response = parse_tool_result(result)
@@ -270,7 +270,7 @@ async def test_ray_on_kubernetes():
     # First ensure we're authenticated and connected
     project_id = GKETestConfig.get_project_id()
     auth_result = await call_tool(
-        "cloud", {"prompt": f"authenticate with GCP project {project_id}"}
+        "ray_cloud", {"prompt": f"authenticate with GCP project {project_id}"}
     )
     auth_response = parse_tool_result(auth_result)
 
@@ -315,7 +315,7 @@ async def test_gke_error_handling():
 
     # Test connecting to non-existent cluster (this should definitely fail)
     result = await call_tool(
-        "cloud",
+        "ray_cloud",
         {"prompt": "connect to GKE cluster non-existent-cluster-xyz in us-central1-a"},
     )
     response = parse_tool_result(result)
@@ -329,7 +329,7 @@ async def test_gke_error_handling():
 
     # Test connecting to cluster without location (this should fail)
     result = await call_tool(
-        "cloud", {"prompt": "connect to GKE cluster missing-location-cluster"}
+        "ray_cloud", {"prompt": "connect to GKE cluster missing-location-cluster"}
     )
     response = parse_tool_result(result)
 

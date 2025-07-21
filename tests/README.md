@@ -4,17 +4,18 @@ Comprehensive test suite for Ray MCP Server's prompt-driven architecture.
 
 ## Test Strategy
 
-### Two-Tier Testing Architecture
+### Current Testing Architecture
 
 **Unit Tests** (`tests/unit/`)
 - 100% mocked for fast execution
 - Tests individual components in isolation
 - Focused on logic validation and edge cases
+- Complete MCP tool integration testing
 
-**End-to-End Tests** (`tests/e2e/`)
-- No mocking, real system integration
-- Complete workflows from prompt to result
-- Validates actual Ray/Kubernetes operations
+**Future End-to-End Tests** (`tests/e2e/`)
+- Not currently implemented
+- Will test real system integration when added
+- Will validate actual Ray/Kubernetes operations
 
 
 ## Test Structure
@@ -28,8 +29,8 @@ tests/
 │   ├── test_tool_registry.py       # Tool registry and MCP integration
 │   ├── test_mcp_tools.py          # MCP tool functionality
 │   └── test_parsers_and_formatters.py  # Parsing and formatting logic
-├── e2e/                            # End-to-end tests (no mocking)
-│   └── test_critical_workflows.py  # Critical system workflows
+├── e2e/                            # End-to-end tests (future)
+│   └── __init__.py                 # Placeholder for future tests
 └── helpers/                        # Test utilities
     ├── fixtures.py                 # Reusable test fixtures
     ├── utils.py                    # Test helper functions
@@ -44,11 +45,7 @@ tests/
 # Fast unit tests with mocking
 make test-fast
 
-
-# Integration testing
-make test-e2e
-
-# Complete test suite
+# Complete test suite (currently unit tests only)
 make test
 ```
 
@@ -56,9 +53,8 @@ make test
 
 ```bash
 # Run specific test types
-python test_runner.py unit      # Unit tests only
-python test_runner.py e2e       # End-to-end tests only
-python test_runner.py all       # All tests
+python test_runner.py unit      # Unit tests
+python test_runner.py all       # All tests (currently unit only)
 
 # With coverage
 python test_runner.py unit --coverage
@@ -70,8 +66,7 @@ python test_runner.py unit --coverage
 # Run all unit tests
 pytest tests/unit/ -m unit
 
-# Run all e2e tests
-pytest tests/e2e/ -m e2e
+# Note: E2E tests not currently implemented
 
 # Run specific test file
 pytest tests/unit/test_prompt_managers.py
@@ -90,7 +85,7 @@ pytest tests/unit/test_prompt_managers.py
 **test_tool_registry.py**
 - Tests MCP tool registration and routing
 - Validates tool schema and parameter handling
-- Tests integration with handlers and managers
+- Tests integration with direct manager access
 - Covers 3-tool architecture validation
 
 **test_mcp_tools.py**
@@ -105,11 +100,11 @@ pytest tests/unit/test_prompt_managers.py
 
 ### End-to-End Tests (`tests/e2e/`)
 
-**test_critical_workflows.py**
-- Tests complete system workflows without mocking
-- Validates real Ray cluster operations
-- Tests actual MCP server integration
-- Covers critical user scenarios
+**Not Currently Implemented**
+- Future: Will test complete system workflows without mocking
+- Future: Will validate real Kubernetes cluster operations
+- Future: Will test actual MCP server integration with GKE
+- Future: Will cover critical cloud user scenarios
 
 ## Test Utilities
 

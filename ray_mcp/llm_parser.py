@@ -28,21 +28,20 @@ class LLMActionParser:
 User Request: "{prompt}"
 
 Based on the request, determine:
-1. The type of operation (cluster, job, service, or cloud)
+1. The type of operation (job, service, or cloud)
 2. The specific operation being requested
 3. Any parameters mentioned
 4. Runtime environment requirements (pip packages, conda, working directory, etc.)
 
 Return JSON in this exact format:
 {{
-    "type": "cluster|job|service|cloud",
+    "type": "job|service|cloud",
     "operation": "create|connect|list|scale|delete|get|logs|cancel|authenticate|list_clusters|connect_cluster|create_cluster|check_environment|get_cluster_info|disconnect|health_check|list_namespaces|list_contexts",
     "name": "cluster-name or job-id or null",
     "namespace": "namespace or null", 
     "zone": "zone or null",
     "workers": "number or null",
     "script": "script-path or null",
-    "environment": "kubernetes|local|auto",
     "head_only": "true|false|null",
     "cpus": "number or null",
     "gpus": "number or null",
@@ -62,29 +61,24 @@ Return JSON in this exact format:
 }}
 
 Important parsing rules:
-- For listing operations, set operation to "list" (except for cloud clusters which use "list_clusters")
-- CRITICAL: List operations with cloud keywords (GKE, AWS, Azure, cloud) should be type "cloud" 
-- CRITICAL: Phrases like "current project", "available clusters", "all clusters" without explicit local/kubernetes context should be type "cloud"
-- For job submit operations, set operation to "create"
+- CRITICAL: Any cluster-related operations (create, list, connect, delete cluster) should be type "cloud"
+- For cluster listing operations, set operation to "list_clusters" and type to "cloud"
+- For job submit operations, set operation to "create" and type to "job"
 - For service create/deploy operations, set operation to "create" and type to "service"
 - CRITICAL: Service operations with keywords "service", "serve", "serving", "inference", "deploy", "model" should be type "service"
 - For status/info/inspect operations, set operation to "get"
 - For stop/delete/terminate operations, set operation to "delete"
-- Detect "kubernetes", "k8s" keywords to set environment to "kubernetes"
-- CRITICAL: If request mentions "authenticate", "cloud", or cloud providers (aws, azure, gcp), prioritize as cloud operation
-- CRITICAL: If request mentions cloud zones/regions (like "us-west1-c", "us-east-1", "eastus2"), treat as cloud operation
-- CRITICAL: For provider field, ALWAYS use standardized names: "gcp" for Google Cloud/GCP/GKE, "aws" for AWS/Amazon Cloud, "azure" for Azure/Microsoft Azure - never use full names like "Google Cloud" or "Amazon Cloud"
-- CRITICAL: "List GKE clusters", "List cloud clusters", "List AWS clusters" are CLOUD operations, not cluster operations
-- CRITICAL: "List available clusters", "List all clusters", "clusters in project" are CLOUD operations, not cluster operations
-- Cloud cluster operations are CLOUD operations, not local cluster operations
-- IMPORTANT: For connect operations with IP addresses, set environment to "local" unless explicitly mentioning kubernetes/k8s or cloud keywords
+- All operations use Kubernetes environment
+- CRITICAL: If request mentions "authenticate", "cloud", or cloud providers (aws, azure, gcp), set type to "cloud"
+- CRITICAL: If request mentions cloud zones/regions (like "us-west1-c", "us-east-1", "eastus2"), set type to "cloud"
+- CRITICAL: For provider field, ALWAYS use standardized names: "gcp" for Google Cloud/GCP/GKE, "aws" for AWS/Amazon Cloud, "azure" for Azure/Microsoft Azure
+- CRITICAL: Cluster operations like "List clusters", "Connect to cluster", "Create cluster" are CLOUD operations
 - Extract numeric values for workers, cpus, gpus, dashboard_port
 - Extract cluster/job names but ignore common words like "ray", "cluster", "the", "all"
-- CRITICAL: For "Connect to [cloud] cluster X" patterns, extract X as cluster_name (not name)
+- CRITICAL: For "Connect to cluster X" patterns, extract X as cluster_name (not name)
 - For job operations, extract job IDs and script paths
 - For cloud operations, detect provider and extract zones/regions
 - Set head_only to true if "head only" or "no worker" is mentioned
-- Extract addresses in host:port format
 
 **RUNTIME ENVIRONMENT PARSING:**
 - Extract pip packages from phrases like "with pip packages pandas numpy", "install pandas", "requires numpy"
@@ -103,18 +97,10 @@ Runtime Environment Examples:
 - Only include non-null values in the response
 
 Examples:
-- "Create a Ray cluster named test-cluster with 3 workers" → {{"type": "cluster", "operation": "create", "name": "test-cluster", "workers": 3, "environment": "local"}}
-- "Create a local Ray cluster with 4 CPUs" → {{"type": "cluster", "operation": "create", "cpus": 4, "environment": "local"}}
-- "Create a local Ray cluster with 2 CPUs and dashboard on port 8267" → {{"type": "cluster", "operation": "create", "cpus": 2, "dashboard_port": 8267, "environment": "local"}}
-- "Check status of Ray cluster" → {{"type": "cluster", "operation": "get", "environment": "local"}}
 - "List jobs" → {{"type": "job", "operation": "list"}}
-- "Connect to cluster at 192.168.1.1:10001" → {{"type": "cluster", "operation": "connect", "address": "192.168.1.1:10001", "environment": "local"}}
-- "Create kubernetes cluster with head only" → {{"type": "cluster", "operation": "create", "environment": "kubernetes", "head_only": true, "workers": 0}}
-- "Submit job script train.py to kubernetes" → {{"type": "job", "operation": "create", "script": "train.py", "environment": "kubernetes"}}
+- "Submit job script train.py" → {{"type": "job", "operation": "create", "script": "train.py"}}
 - "Submit job with script train.py and pip packages pandas numpy" → {{"type": "job", "operation": "create", "script": "train.py", "runtime_env": {{"pip": ["pandas", "numpy"]}}}}
-- "Stop local cluster" → {{"type": "cluster", "operation": "delete", "environment": "local"}}
-- "Delete kubernetes cluster" → {{"type": "cluster", "operation": "delete", "environment": "kubernetes"}}
-- "Get status of job on kubernetes" → {{"type": "job", "operation": "get", "environment": "kubernetes"}}
+- "Get status of job" → {{"type": "job", "operation": "get"}}
 - "Authenticate with GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
 - "Authenticate with Google Cloud" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
 - "Login to GCP" → {{"type": "cloud", "operation": "authenticate", "provider": "gcp"}}
@@ -148,13 +134,13 @@ Examples:
 - "Connect to cluster my-cluster in us-east-1" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "us-east-1", "provider": "aws"}}
 - "Connect to EKS cluster my-cluster" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "provider": "aws"}}
 - "Connect to cluster my-cluster in eastus2" → {{"type": "cloud", "operation": "connect_cluster", "cluster_name": "my-cluster", "zone": "eastus2", "provider": "azure"}}
-- "Create Ray service with model serve.py" → {{"type": "service", "operation": "create", "script": "serve.py", "environment": "kubernetes"}}
-- "Deploy service named image-classifier with inference model classifier.py" → {{"type": "service", "operation": "create", "name": "image-classifier", "script": "classifier.py", "environment": "kubernetes"}}
-- "List all Ray services" → {{"type": "service", "operation": "list", "environment": "kubernetes"}}
-- "Get status of service model-serving" → {{"type": "service", "operation": "get", "name": "model-serving", "environment": "kubernetes"}}
-- "Delete service inference-api" → {{"type": "service", "operation": "delete", "name": "inference-api", "environment": "kubernetes"}}
-- "Get logs for service text-analyzer" → {{"type": "service", "operation": "logs", "name": "text-analyzer", "environment": "kubernetes"}}
-- "Scale service recommendation-engine to 5 replicas" → {{"type": "service", "operation": "scale", "name": "recommendation-engine", "workers": 5, "environment": "kubernetes"}}
+- "Create Ray service with model serve.py" → {{"type": "service", "operation": "create", "script": "serve.py"}}
+- "Deploy service named image-classifier with inference model classifier.py" → {{"type": "service", "operation": "create", "name": "image-classifier", "script": "classifier.py"}}
+- "List all Ray services" → {{"type": "service", "operation": "list"}}
+- "Get status of service model-serving" → {{"type": "service", "operation": "get", "name": "model-serving"}}
+- "Delete service inference-api" → {{"type": "service", "operation": "delete", "name": "inference-api"}}
+- "Get logs for service text-analyzer" → {{"type": "service", "operation": "logs", "name": "text-analyzer"}}
+- "Scale service recommendation-engine to 5 replicas" → {{"type": "service", "operation": "scale", "name": "recommendation-engine", "workers": 5}}
 
 Parse the user request above and return only the JSON object, no additional text.
 """
@@ -207,79 +193,6 @@ Parse the user request above and return only the JSON object, no additional text
         except Exception as e:
             # Fallback error response
             raise ValueError(f"Failed to parse action '{prompt}': {str(e)}")
-
-    async def parse_cluster_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse cluster action from prompt using OpenAI."""
-        result = await self.parse_action(prompt)
-        if result.get("type") != "cluster":
-            raise ValueError(f"Expected cluster action but got: {result.get('type')}")
-        return result
-
-    async def parse_job_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse job action from prompt using OpenAI."""
-        result = await self.parse_action(prompt)
-        if result.get("type") != "job":
-            raise ValueError(f"Expected job action but got: {result.get('type')}")
-        return result
-
-    async def parse_cloud_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse cloud action from prompt using OpenAI."""
-        result = await self.parse_action(prompt)
-        if result.get("type") != "cloud":
-            raise ValueError(f"Expected cloud action but got: {result.get('type')}")
-        return result
-
-    async def parse_kubernetes_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse kubernetes action from prompt using OpenAI."""
-        # For kubernetes operations, we use a specialized prompt
-        result = await self.parse_action(prompt)
-        # Kubernetes actions might be parsed as cluster type with kubernetes environment
-        if (
-            result.get("type") not in ["cluster", "kubernetes"]
-            and result.get("environment") != "kubernetes"
-        ):
-            # Try to infer it's a kubernetes operation
-            if any(
-                keyword in prompt.lower()
-                for keyword in ["kubernetes", "k8s", "namespace", "context"]
-            ):
-                result["type"] = "kubernetes"
-        return result
-
-    async def parse_kuberay_job_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse KubeRay job action from prompt using OpenAI."""
-        result = await self.parse_action(prompt)
-        # KubeRay job actions are job operations in kubernetes environment
-        if result.get("type") == "job":
-            result["environment"] = "kubernetes"
-        return result
-
-    async def parse_kuberay_cluster_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse KubeRay cluster action from prompt using OpenAI."""
-        result = await self.parse_action(prompt)
-        # KubeRay cluster actions are cluster operations in kubernetes environment
-        if result.get("type") == "cluster":
-            result["environment"] = "kubernetes"
-        return result
-
-    async def parse_kuberay_service_action(self, prompt: str) -> Dict[str, Any]:
-        """Parse KubeRay service action from prompt using OpenAI."""
-        result = await self.parse_action(prompt)
-        # KubeRay service actions are service operations in kubernetes environment
-        # Map from job type to service type if detected as a service operation
-        if any(
-            keyword in prompt.lower()
-            for keyword in ["service", "serve", "serving", "inference", "model"]
-        ):
-            result["type"] = "service"
-            result["environment"] = "kubernetes"
-        elif result.get("type") == "job" and any(
-            keyword in prompt.lower()
-            for keyword in ["serve", "serving", "inference", "model"]
-        ):
-            result["type"] = "service"
-            result["environment"] = "kubernetes"
-        return result
 
     def clear_cache(self):
         """Clear the parsing cache."""

@@ -1,43 +1,37 @@
-"""Pure prompt-driven KubeRay job management for Ray MCP."""
+"""Ray job management for Ray MCP via KubeRay."""
 
 import asyncio
 from typing import Any, Optional
 
-from ..config import config
 from ..foundation.logging_utils import LoggingUtility, error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..llm_parser import get_parser
 from .manifest_generator import ManifestGenerator
 
 
-class KubeRayJobManager(ResourceManager):
-    """Pure prompt-driven Ray job management using KubeRay - no traditional APIs."""
+class JobManager(ResourceManager):
+    """Ray job management using KubeRay."""
 
     def __init__(self):
         super().__init__(
-            enable_ray=True,
             enable_kubernetes=True,
             enable_cloud=False,
         )
 
         self._manifest_generator = ManifestGenerator()
 
-    async def execute_request(self, prompt: str) -> dict[str, Any]:
-        """Execute KubeRay job operations using natural language prompts.
+    async def execute_request(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Execute KubeRay job operations using parsed action data.
 
-        Examples:
-            - "create Ray job with training script train.py on kubernetes"
-            - "list all Ray jobs in production namespace"
-            - "get status of job training-run-123"
-            - "delete job experiment-456"
-            - "get logs for job data-processing"
+        Args:
+            action: Parsed action dict containing operation details
         """
         try:
-            action = await get_parser().parse_kuberay_job_action(prompt)
+            if action.get("type") != "job":
+                raise ValueError(f"Expected job action but got: {action.get('type')}")
             operation = action["operation"]
 
             if operation == "create":
-                return await self._create_ray_job_from_prompt(action)
+                return await self._create_ray_job_from_action(action)
             elif operation == "list":
                 namespace = action.get("namespace", "default")
                 return await self._list_ray_jobs(namespace)
@@ -92,7 +86,7 @@ class KubeRayJobManager(ResourceManager):
                 Exception(f"Failed to configure kubectl context: {str(e)}"),
             )
 
-    async def _create_ray_job_from_prompt(
+    async def _create_ray_job_from_action(
         self, action: dict[str, Any]
     ) -> dict[str, Any]:
         """Create Ray job from parsed prompt action using manifest generation."""
@@ -100,15 +94,21 @@ class KubeRayJobManager(ResourceManager):
             namespace = action.get("namespace", "default")
 
             # Generate manifest from action
-            manifest = self._manifest_generator.generate_ray_job_manifest(
-                f"create job {action.get('name', 'ray-job')}", action
-            )
+            manifest = self._manifest_generator.generate_ray_job_manifest(action)
 
             # Apply manifest
             result = await self._manifest_generator.apply_manifest(manifest, namespace)
 
             if result.get("status") == "success":
-                job_name = action.get("name", "ray-job")
+                # Extract the actual job name from the applied resources
+                job_name = None
+                for resource in result.get("applied_resources", []):
+                    if resource.get("kind") == "RayJob":
+                        job_name = resource.get("name")
+                        break
+
+                if not job_name:
+                    job_name = action.get("name", "ray-job")
 
                 return success_response(
                     job_name=job_name,
@@ -123,7 +123,7 @@ class KubeRayJobManager(ResourceManager):
                 return error_response(result.get("message", "Unknown error"))
 
         except Exception as e:
-            return self._handle_error("create ray job from prompt", e)
+            return self._handle_error("create ray job from action", e)
 
     async def _create_ray_job(
         self, job_spec: dict[str, Any], namespace: str = "default"
@@ -160,9 +160,7 @@ class KubeRayJobManager(ResourceManager):
         }
 
         # Generate and apply manifest
-        manifest = self._manifest_generator.generate_ray_job_manifest(
-            f"create job {job_name}", action
-        )
+        manifest = self._manifest_generator.generate_ray_job_manifest(action)
 
         apply_result = await self._manifest_generator.apply_manifest(
             manifest, namespace

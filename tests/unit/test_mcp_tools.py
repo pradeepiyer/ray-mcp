@@ -1,423 +1,360 @@
-#!/usr/bin/env python3
-"""Unit tests for MCP server tools and handlers.
-
-This module tests the MCP tool definitions, handlers, and the integration
-between the server layer and the manager layer.
-
-Test Focus:
-- Tool schema validation
-- Handler routing and delegation
-- MCP protocol compliance
-- Error propagation and formatting
-"""
+"""Test tool registry and MCP server integration - simplified architecture."""
 
 import json
-from typing import Any, List
-from unittest.mock import AsyncMock, Mock, patch
+from typing import cast
+from unittest.mock import AsyncMock, patch
 
 from mcp.types import TextContent
 import pytest
 
-from ray_mcp.main import call_tool
+from ray_mcp.main import call_tool, list_tools
 from ray_mcp.tools import get_ray_tools
 
 
-def parse_tool_response(result: Any) -> dict:
-    """Helper to parse tool response."""
-    # Type checker satisfaction - cast to expected type
-    from typing import cast
-
-    result_list = cast(List[TextContent], result)
-    assert len(result_list) == 1
-    text_content = cast(TextContent, result_list[0])
-    assert isinstance(text_content, TextContent)
-    return json.loads(text_content.text)
-
-
 @pytest.mark.unit
-class TestRayTools:
-    """Test the 4 Ray MCP tool definitions."""
+class TestToolRegistry:
+    """Test tool registry functionality."""
 
-    def test_get_ray_tools_structure(self):
-        """Test that get_ray_tools returns properly structured tools."""
+    def test_get_ray_tools_returns_single_tool(self):
+        """Test that get_ray_tools returns exactly 1 unified tool."""
         tools = get_ray_tools()
+        assert len(tools) == 1
 
-        # Should return exactly 4 tools
-        assert len(tools) == 4
-
-        # Check each tool has required attributes
-        for tool in tools:
-            assert hasattr(tool, "name")
-            assert hasattr(tool, "description")
-            assert hasattr(tool, "inputSchema")
-            assert isinstance(tool.name, str)
-            assert tool.description is None or isinstance(tool.description, str)
-
-        # Check tool names are exactly what we expect
         tool_names = [tool.name for tool in tools]
-        assert set(tool_names) == {"ray_cluster", "ray_job", "ray_service", "cloud"}
+        expected_tools = {"ray"}
+        assert set(tool_names) == expected_tools
 
-    def test_ray_cluster_tool_schema(self):
-        """Test ray_cluster tool schema."""
-        tools = get_ray_tools()
-        cluster_tool = next(tool for tool in tools if tool.name == "ray_cluster")
-
-        # Verify basic structure
-        assert cluster_tool.name == "ray_cluster"
-        assert "cluster" in cluster_tool.description.lower()
-
-        # Verify input schema
-        schema = cluster_tool.inputSchema
-        assert schema["type"] == "object"
-        assert "prompt" in schema["properties"]
-        assert schema["required"] == ["prompt"]
-
-        # Verify prompt property
-        prompt_prop = schema["properties"]["prompt"]
-        assert prompt_prop["type"] == "string"
-        assert "description" in prompt_prop
-        assert (
-            "example" in prompt_prop["description"].lower()
-            or "Examples" in prompt_prop["description"]
-        )
-
-    def test_ray_job_tool_schema(self):
-        """Test ray_job tool schema."""
-        tools = get_ray_tools()
-        job_tool = next(tool for tool in tools if tool.name == "ray_job")
-
-        # Verify basic structure
-        assert job_tool.name == "ray_job"
-        assert "job" in job_tool.description.lower()
-
-        # Verify input schema
-        schema = job_tool.inputSchema
-        assert schema["type"] == "object"
-        assert "prompt" in schema["properties"]
-        assert schema["required"] == ["prompt"]
-
-        # Verify prompt property
-        prompt_prop = schema["properties"]["prompt"]
-        assert prompt_prop["type"] == "string"
-        assert "description" in prompt_prop
-        assert (
-            "example" in prompt_prop["description"].lower()
-            or "Examples" in prompt_prop["description"]
-        )
-
-    def test_ray_service_tool_schema(self):
-        """Test ray_service tool schema."""
-        tools = get_ray_tools()
-        service_tool = next(tool for tool in tools if tool.name == "ray_service")
-
-        # Verify basic structure
-        assert service_tool.name == "ray_service"
-        assert "service" in service_tool.description.lower()
-
-        # Verify input schema
-        schema = service_tool.inputSchema
-        assert schema["type"] == "object"
-        assert "prompt" in schema["properties"]
-        assert schema["required"] == ["prompt"]
-
-        # Verify prompt property
-        prompt_prop = schema["properties"]["prompt"]
-        assert prompt_prop["type"] == "string"
-        assert "description" in prompt_prop
-        assert (
-            "example" in prompt_prop["description"].lower()
-            or "Examples" in prompt_prop["description"]
-        )
-
-    def test_cloud_tool_schema(self):
-        """Test cloud tool schema."""
-        tools = get_ray_tools()
-        cloud_tool = next(tool for tool in tools if tool.name == "cloud")
-
-        # Verify basic structure
-        assert cloud_tool.name == "cloud"
-        assert "cloud" in cloud_tool.description.lower()
-
-        # Verify input schema
-        schema = cloud_tool.inputSchema
-        assert schema["type"] == "object"
-        assert "prompt" in schema["properties"]
-        assert schema["required"] == ["prompt"]
-
-        # Verify prompt property
-        prompt_prop = schema["properties"]["prompt"]
-        assert prompt_prop["type"] == "string"
-        assert "description" in prompt_prop
-
-    def test_tool_descriptions_contain_examples(self):
-        """Test that tool descriptions contain helpful examples."""
+    def test_tool_descriptions_are_comprehensive(self):
+        """Test that all tools have comprehensive descriptions."""
         tools = get_ray_tools()
 
         for tool in tools:
-            description = tool.description
-            if description is not None:
-                assert len(description) > 50  # Should be substantial
+            # Each tool should have a description
+            assert tool.description
+            assert len(tool.description) > 20  # Substantial description
 
-                # Check that descriptions contain helpful keywords
-                if tool.name == "ray_cluster":
-                    assert any(
-                        keyword in description.lower()
-                        for keyword in ["cluster", "connect", "create", "manage"]
-                    )
-                elif tool.name == "ray_job":
-                    assert any(
-                        keyword in description.lower()
-                        for keyword in ["job", "submit", "run", "execute"]
-                    )
-                elif tool.name == "ray_service":
-                    assert any(
-                        keyword in description.lower()
-                        for keyword in ["service", "serve", "deploy", "inference"]
-                    )
-                elif tool.name == "cloud":
-                    assert any(
-                        keyword in description.lower()
-                        for keyword in ["cloud", "gcp", "gke", "kubernetes"]
-                    )
+            # Each tool should have prompt parameter with examples
+            prompt_desc = tool.inputSchema["properties"]["prompt"]["description"]
+            assert len(prompt_desc) > 50  # Detailed prompt description
+            assert "example" in prompt_desc.lower() or "examples" in prompt_desc.lower()
+
+    @pytest.mark.asyncio
+    async def test_list_tools_handler(self):
+        """Test list_tools handler returns the unified ray tool."""
+        tools = await list_tools()
+        assert len(tools) == 1
+
+        tool_names = [tool.name for tool in tools]
+        assert "ray" in tool_names
 
 
 @pytest.mark.unit
-class TestRayHandlers:
-    """Test RayHandlers integration via call_tool."""
+class TestDirectManagerIntegration:
+    """Test direct manager integration without abstraction layers."""
 
     @pytest.mark.asyncio
-    async def test_handle_ray_cluster_tool(self):
-        """Test handling ray_cluster tool calls."""
-        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
-            # Mock successful cluster operation
-            mock_handle_cluster.return_value = {
-                "status": "success",
-                "message": "Cluster created successfully",
-                "cluster_address": "localhost:8265",
-            }
+    async def test_job_manager_integration(self):
+        """Test that ray tool routes to JobManager for job operations."""
+        with (
+            patch("ray_mcp.main.job_manager") as mock_job_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
+        ):
+            expected_response = {"status": "success", "message": "Job handled"}
+            mock_job_mgr.execute_request = AsyncMock(return_value=expected_response)
 
-            # Simulate tool call
+            # Mock the LLM parser to return job type
+            mock_parser_instance = AsyncMock()
+            mock_parser_instance.parse_action = AsyncMock(
+                return_value={"type": "job", "operation": "create"}
+            )
+            mock_parser.return_value = mock_parser_instance
+
             result = await call_tool(
-                "ray_cluster", {"prompt": "create a local cluster with 4 CPUs"}
+                "ray", {"prompt": "submit job with script test.py"}
             )
 
-            # Verify handler was called correctly
-            mock_handle_cluster.assert_called_once_with(
-                "create a local cluster with 4 CPUs"
+            # Parse the JSON response
+            result_text = cast(TextContent, cast(list, result)[0]).text
+            parsed_result = json.loads(result_text)
+
+            # With the new API, managers only receive the action, not the prompt
+            mock_job_mgr.execute_request.assert_called_once_with(
+                {"type": "job", "operation": "create"}
             )
-
-            # Verify response format and content
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "success"
-            assert response_data["message"] == "Cluster created successfully"
-            assert response_data["cluster_address"] == "localhost:8265"
+            assert parsed_result == expected_response
 
     @pytest.mark.asyncio
-    async def test_handle_ray_job_tool(self):
-        """Test handling ray_job tool calls."""
-        with patch("ray_mcp.main.handlers.handle_job") as mock_handle_job:
-            # Mock successful job operation
-            mock_handle_job.return_value = {
-                "status": "success",
-                "job_id": "raysubmit_123",
-                "message": "Job submitted successfully",
-            }
+    async def test_service_manager_integration(self):
+        """Test that ray tool routes to ServiceManager for service operations."""
+        with (
+            patch("ray_mcp.main.service_manager") as mock_service_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
+        ):
+            expected_response = {"status": "success", "message": "Service handled"}
+            mock_service_mgr.execute_request = AsyncMock(return_value=expected_response)
 
-            # Simulate tool call
-            result = await call_tool(
-                "ray_job", {"prompt": "submit job with script train.py"}
+            # Mock the LLM parser to return service type
+            mock_parser_instance = AsyncMock()
+            mock_parser_instance.parse_action = AsyncMock(
+                return_value={"type": "service", "operation": "create"}
             )
+            mock_parser.return_value = mock_parser_instance
 
-            # Verify handler was called correctly
-            mock_handle_job.assert_called_once_with("submit job with script train.py")
+            result = await call_tool("ray", {"prompt": "deploy service with model.py"})
 
-            # Verify response content
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "success"
-            assert response_data["job_id"] == "raysubmit_123"
-            assert response_data["message"] == "Job submitted successfully"
+            # Parse the JSON response
+            result_text = cast(TextContent, cast(list, result)[0]).text
+            parsed_result = json.loads(result_text)
 
-    @pytest.mark.asyncio
-    async def test_handle_ray_service_tool(self):
-        """Test handling ray_service tool calls."""
-        with patch("ray_mcp.main.handlers.handle_service") as mock_handle_service:
-            # Mock successful service operation
-            mock_handle_service.return_value = {
-                "status": "success",
-                "service_name": "image-classifier",
-                "message": "Service created successfully",
-            }
-
-            # Simulate tool call
-            result = await call_tool(
-                "ray_service", {"prompt": "create Ray service with model serve.py"}
+            # With the new API, managers only receive the action, not the prompt
+            mock_service_mgr.execute_request.assert_called_once_with(
+                {"type": "service", "operation": "create"}
             )
+            assert parsed_result == expected_response
 
-            # Verify handler was called correctly
-            mock_handle_service.assert_called_once_with(
-                "create Ray service with model serve.py"
+    @pytest.mark.asyncio
+    async def test_cloud_manager_integration(self):
+        """Test that ray tool routes to CloudProviderManager for cloud operations."""
+        with (
+            patch("ray_mcp.main.cloud_provider_manager") as mock_cloud_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
+        ):
+            expected_response = {"status": "success", "message": "Cloud handled"}
+            mock_cloud_mgr.execute_request = AsyncMock(return_value=expected_response)
+
+            # Mock the LLM parser to return cloud type
+            mock_parser_instance = AsyncMock()
+            mock_parser_instance.parse_action = AsyncMock(
+                return_value={"type": "cloud", "operation": "authenticate"}
             )
+            mock_parser.return_value = mock_parser_instance
 
-            # Verify response content
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "success"
-            assert response_data["service_name"] == "image-classifier"
-            assert response_data["message"] == "Service created successfully"
+            result = await call_tool("ray", {"prompt": "authenticate with GCP"})
 
-    @pytest.mark.asyncio
-    async def test_handle_cloud_tool(self):
-        """Test handling cloud tool calls."""
-        with patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud:
-            # Mock successful cloud operation
-            mock_handle_cloud.return_value = {
-                "status": "success",
-                "message": "Authenticated with GCP",
-                "project_id": "ml-experiments",
-            }
+            # Parse the JSON response
+            result_text = cast(TextContent, cast(list, result)[0]).text
+            parsed_result = json.loads(result_text)
 
-            # Simulate tool call
-            result = await call_tool(
-                "cloud", {"prompt": "authenticate with GCP project ml-experiments"}
+            # With the new API, managers only receive the action, not the prompt
+            mock_cloud_mgr.execute_request.assert_called_once_with(
+                {"type": "cloud", "operation": "authenticate"}
             )
-
-            # Verify handler was called correctly
-            mock_handle_cloud.assert_called_once_with(
-                "authenticate with GCP project ml-experiments"
-            )
-
-            # Verify response content
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "success"
-            assert response_data["message"] == "Authenticated with GCP"
-            assert response_data["project_id"] == "ml-experiments"
+            assert parsed_result == expected_response
 
     @pytest.mark.asyncio
-    async def test_handle_invalid_tool_name(self):
-        """Test handling calls to invalid tool names."""
-        result = await call_tool("invalid_tool", {"prompt": "some prompt"})
+    async def test_unknown_tool_handling(self):
+        """Test handling of unknown tool names."""
+        result = await call_tool("unknown_tool", {"prompt": "test"})
 
-        # Should return error
-        response_data = parse_tool_response(result)
-        assert response_data["status"] == "error"
-        assert "Unknown tool" in response_data["message"]
+        # Parse the JSON response
+        result_text = cast(TextContent, cast(list, result)[0]).text
+        parsed_result = json.loads(result_text)
 
-    @pytest.mark.asyncio
-    async def test_handle_missing_prompt_argument(self):
-        """Test handling calls without prompt argument."""
-        # Test completely missing arguments
-        result = await call_tool("ray_cluster", None)
-        response_data = parse_tool_response(result)
-        assert response_data["status"] == "error"
-        assert "prompt required" in response_data["message"].lower()
-
-        # Test empty arguments
-        result = await call_tool("ray_cluster", {})
-        response_data = parse_tool_response(result)
-        assert response_data["status"] == "error"
-        assert "prompt required" in response_data["message"].lower()
-
-        # Test arguments without prompt
-        result = await call_tool("ray_cluster", {"other_field": "value"})
-        response_data = parse_tool_response(result)
-        assert response_data["status"] == "error"
-        assert "prompt required" in response_data["message"].lower()
-
-    @pytest.mark.asyncio
-    async def test_handle_handler_exception(self):
-        """Test handling exceptions in handlers."""
-        with patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster:
-            # Mock exception from cluster handler
-            mock_handle_cluster.side_effect = Exception("Cluster error")
-
-            result = await call_tool("ray_cluster", {"prompt": "create cluster"})
-
-            # Should return error
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "error"
-            assert "Cluster error" in response_data["message"]
-
-    @pytest.mark.asyncio
-    async def test_handle_job_exception(self):
-        """Test handling exceptions in job handlers."""
-        with patch("ray_mcp.main.handlers.handle_job") as mock_handle_job:
-            # Mock exception from job handler
-            mock_handle_job.side_effect = Exception("Job error")
-
-            result = await call_tool("ray_job", {"prompt": "submit job"})
-
-            # Should return error
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "error"
-            assert "Job error" in response_data["message"]
-
-    @pytest.mark.asyncio
-    async def test_handle_service_exception(self):
-        """Test handling exceptions in service handlers."""
-        with patch("ray_mcp.main.handlers.handle_service") as mock_handle_service:
-            # Mock exception from service handler
-            mock_handle_service.side_effect = Exception("Service error")
-
-            result = await call_tool("ray_service", {"prompt": "create service"})
-
-            # Should return error
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "error"
-            assert "Service error" in response_data["message"]
-
-    @pytest.mark.asyncio
-    async def test_handle_cloud_exception(self):
-        """Test handling exceptions in cloud handlers."""
-        with patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud:
-            # Mock exception from cloud handler
-            mock_handle_cloud.side_effect = Exception("Cloud error")
-
-            result = await call_tool("cloud", {"prompt": "authenticate"})
-
-            # Should return error
-            response_data = parse_tool_response(result)
-            assert response_data["status"] == "error"
-            assert "Cloud error" in response_data["message"]
+        assert parsed_result["status"] == "error"
+        assert "Unknown tool: unknown_tool" in parsed_result["message"]
 
     @pytest.mark.asyncio
     async def test_concurrent_tool_calls(self):
-        """Test that handlers can handle concurrent tool calls."""
+        """Test concurrent tool calls work correctly with LLM-based routing."""
         import asyncio
 
         with (
-            patch("ray_mcp.main.handlers.handle_cluster") as mock_handle_cluster,
-            patch("ray_mcp.main.handlers.handle_job") as mock_handle_job,
-            patch("ray_mcp.main.handlers.handle_service") as mock_handle_service,
-            patch("ray_mcp.main.handlers.handle_cloud") as mock_handle_cloud,
+            patch("ray_mcp.main.job_manager") as mock_job_mgr,
+            patch("ray_mcp.main.service_manager") as mock_service_mgr,
+            patch("ray_mcp.main.cloud_provider_manager") as mock_cloud_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
         ):
-            # Mock different responses for different calls
-            mock_handle_cluster.return_value = {"status": "success", "type": "cluster"}
-            mock_handle_job.return_value = {"status": "success", "type": "job"}
-            mock_handle_service.return_value = {"status": "success", "type": "service"}
-            mock_handle_cloud.return_value = {"status": "success", "type": "cloud"}
+            # Set up different responses for each manager
+            mock_job_mgr.execute_request = AsyncMock(
+                return_value={"type": "job", "status": "success"}
+            )
+            mock_service_mgr.execute_request = AsyncMock(
+                return_value={"type": "service", "status": "success"}
+            )
+            mock_cloud_mgr.execute_request = AsyncMock(
+                return_value={"type": "cloud", "status": "success"}
+            )
 
-            # Make concurrent calls
+            # Mock the LLM parser to return different types based on prompt
+            mock_parser_instance = AsyncMock()
+
+            def parse_side_effect(prompt):
+                if "job" in prompt:
+                    return {"type": "job", "operation": "create"}
+                elif "service" in prompt:
+                    return {"type": "service", "operation": "create"}
+                elif "authenticate" in prompt:
+                    return {"type": "cloud", "operation": "authenticate"}
+                else:
+                    return {"type": "job", "operation": "create"}
+
+            mock_parser_instance.parse_action = AsyncMock(side_effect=parse_side_effect)
+            mock_parser.return_value = mock_parser_instance
+
+            # Execute concurrent calls
             tasks = [
-                call_tool("ray_cluster", {"prompt": "cluster prompt"}),
-                call_tool("ray_job", {"prompt": "job prompt"}),
-                call_tool("ray_service", {"prompt": "service prompt"}),
-                call_tool("cloud", {"prompt": "cloud prompt"}),
+                call_tool("ray", {"prompt": "submit job"}),
+                call_tool("ray", {"prompt": "deploy service"}),
+                call_tool("ray", {"prompt": "authenticate"}),
             ]
 
             results = await asyncio.gather(*tasks)
 
-            # All should succeed
-            assert len(results) == 4
+            assert len(results) == 3
 
-            # Parse responses
-            responses = [parse_tool_response(result) for result in results]
+            # Parse results
+            parsed_results = [
+                json.loads(cast(TextContent, cast(list, result)[0]).text)
+                for result in results
+            ]
 
-            # Should have different types as expected
-            types = [resp["type"] for resp in responses]
-            assert "cluster" in types
-            assert "job" in types
-            assert "service" in types
-            assert "cloud" in types
+            assert parsed_results[0]["type"] == "job"
+            assert parsed_results[1]["type"] == "service"
+            assert parsed_results[2]["type"] == "cloud"
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+@pytest.mark.unit
+class TestErrorHandling:
+    """Test error handling scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_manager_error_propagation(self):
+        """Test that manager errors are properly handled."""
+        with (
+            patch("ray_mcp.main.job_manager") as mock_job_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
+        ):
+            mock_job_mgr.execute_request = AsyncMock(
+                side_effect=ValueError("Test error")
+            )
+
+            # Mock the LLM parser to return job type
+            mock_parser_instance = AsyncMock()
+            mock_parser_instance.parse_action = AsyncMock(
+                return_value={"type": "job", "operation": "create"}
+            )
+            mock_parser.return_value = mock_parser_instance
+
+            result = await call_tool("ray", {"prompt": "invalid job"})
+
+            # Parse the JSON response
+            result_text = cast(TextContent, cast(list, result)[0]).text
+            parsed_result = json.loads(result_text)
+
+            assert parsed_result["status"] == "error"
+            assert "Test error" in parsed_result["message"]
+
+    @pytest.mark.asyncio
+    async def test_missing_prompt_handling(self):
+        """Test handling of missing prompt parameter."""
+        result = await call_tool("ray", {})  # No prompt
+
+        # Parse the JSON response
+        result_text = cast(TextContent, cast(list, result)[0]).text
+        parsed_result = json.loads(result_text)
+
+        assert parsed_result["status"] == "error"
+        assert "prompt required" in parsed_result["message"]
+
+    @pytest.mark.asyncio
+    async def test_json_serialization_handling(self):
+        """Test handling of complex response data."""
+        with (
+            patch("ray_mcp.main.job_manager") as mock_job_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
+        ):
+            complex_response = {
+                "status": "success",
+                "data": {
+                    "nested": {"key": "value"},
+                    "list": [1, 2, 3],
+                    "boolean": True,
+                },
+            }
+            mock_job_mgr.execute_request = AsyncMock(return_value=complex_response)
+
+            # Mock the LLM parser to return job type
+            mock_parser_instance = AsyncMock()
+            mock_parser_instance.parse_action = AsyncMock(
+                return_value={"type": "job", "operation": "create"}
+            )
+            mock_parser.return_value = mock_parser_instance
+
+            result = await call_tool("ray", {"prompt": "test"})
+
+            # Parse the JSON response
+            result_text = cast(TextContent, cast(list, result)[0]).text
+            parsed_result = json.loads(result_text)
+
+            assert parsed_result == complex_response
+
+
+@pytest.mark.unit
+class TestMCPServerIntegration:
+    """Test MCP server integration without abstraction layers."""
+
+    @pytest.mark.asyncio
+    async def test_basic_tool_calls_work(self):
+        """Test that basic tool calls work without errors with LLM routing."""
+        with (
+            patch("ray_mcp.main.job_manager") as mock_job_mgr,
+            patch("ray_mcp.main.service_manager") as mock_service_mgr,
+            patch("ray_mcp.main.cloud_provider_manager") as mock_cloud_mgr,
+            patch("ray_mcp.main.get_parser") as mock_parser,
+        ):
+            # Set up mock responses
+            mock_job_mgr.execute_request = AsyncMock(
+                return_value={"status": "success", "test": "mocked"}
+            )
+            mock_service_mgr.execute_request = AsyncMock(
+                return_value={"status": "success", "test": "mocked"}
+            )
+            mock_cloud_mgr.execute_request = AsyncMock(
+                return_value={"status": "success", "test": "mocked"}
+            )
+
+            # Mock the LLM parser to return different types based on call count
+            mock_parser_instance = AsyncMock()
+            call_count = 0
+
+            def parse_side_effect(prompt):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return {"type": "job", "operation": "create"}
+                elif call_count == 2:
+                    return {"type": "service", "operation": "create"}
+                else:
+                    return {"type": "cloud", "operation": "authenticate"}
+
+            mock_parser_instance.parse_action = AsyncMock(side_effect=parse_side_effect)
+            mock_parser.return_value = mock_parser_instance
+
+            # Test all three operation types through the unified tool
+            test_prompts = ["submit job", "deploy service", "authenticate"]
+            for prompt in test_prompts:
+                result = await call_tool("ray", {"prompt": prompt})
+                assert result is not None
+
+                # Parse and verify response
+                result_text = cast(TextContent, cast(list, result)[0]).text
+                parsed_result = json.loads(result_text)
+                assert parsed_result["status"] == "success"
+                assert parsed_result["test"] == "mocked"
+
+    @pytest.mark.asyncio
+    async def test_tool_argument_validation(self):
+        """Test that tools properly validate arguments."""
+        # Test with None arguments
+        result = await call_tool("ray", None)
+        result_text = cast(TextContent, cast(list, result)[0]).text
+        parsed_result = json.loads(result_text)
+        assert parsed_result["status"] == "error"
+        assert "prompt required" in parsed_result["message"]
+
+        # Test with empty arguments
+        result = await call_tool("ray", {})
+        result_text = cast(TextContent, cast(list, result)[0]).text
+        parsed_result = json.loads(result_text)
+        assert parsed_result["status"] == "error"
+        assert "prompt required" in parsed_result["message"]

@@ -2,14 +2,7 @@
 
 from typing import TYPE_CHECKING, Any, Optional
 
-# Ray imports
-try:
-    import ray
-
-    RAY_AVAILABLE = True
-except ImportError:
-    ray = None
-    RAY_AVAILABLE = False
+# Ray imports removed - local Ray clusters not supported
 
 # Kubernetes imports
 try:

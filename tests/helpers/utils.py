@@ -53,20 +53,23 @@ def get_text_content(result: List[TextContent]) -> str:
 async def call_tool(
     tool_name: str, arguments: Optional[Dict[str, Any]] = None
 ) -> List[TextContent]:
-    """Helper function to call tools using the ToolRegistry architecture."""
-    # Use the same RayManager instance that the MCP tools use
-    from ray_mcp.main import handlers
+    """Helper function to call tools using direct manager access."""
+    # Use the same managers that the MCP tools use
+    from ray_mcp.main import cloud_provider_manager, job_manager, service_manager
 
-    # Convert tool name and arguments to prompt format
-    if tool_name == "ray_cluster":
-        prompt = arguments.get("prompt", "list clusters")
-        result = await handlers.handle_cluster(prompt)
-    elif tool_name == "ray_job":
-        prompt = arguments.get("prompt", "list jobs")
-        result = await handlers.handle_job(prompt)
-    elif tool_name == "cloud":
-        prompt = arguments.get("prompt", "check environment")
-        result = await handlers.handle_cloud(prompt)
+    # Convert tool name and arguments to action format for the new API
+    if tool_name == "ray_job":
+        # For testing, create a simple list action
+        action = {"type": "job", "operation": "list", "namespace": "default"}
+        result = await job_manager.execute_request(action)
+    elif tool_name == "ray_service":
+        # For testing, create a simple list action
+        action = {"type": "service", "operation": "list", "namespace": "default"}
+        result = await service_manager.execute_request(action)
+    elif tool_name == "ray_cloud":
+        # For testing, create a simple check action
+        action = {"type": "cloud", "operation": "check_environment"}
+        result = await cloud_provider_manager.execute_request(action)
     else:
         result = {"status": "error", "message": f"Unknown tool: {tool_name}"}
 
@@ -112,111 +115,3 @@ class TempScriptManager:
         """Clean up temporary script."""
         if self.script_path and os.path.exists(self.script_path):
             os.unlink(self.script_path)
-
-
-# Common test scripts
-class TestScripts:
-    """Collection of common test scripts for e2e tests."""
-
-    QUICK_SUCCESS = """
-import ray
-import time
-
-@ray.remote
-def quick_task(n):
-    return n * n
-
-# Run a simple task
-result = ray.get(quick_task.remote(5))
-print(f"Task result: {result}")
-print("Job completed successfully!")
-"""
-
-    INTENTIONAL_FAILURE = """
-import sys
-print("This job will fail intentionally")
-sys.exit(1)  # Intentional failure
-"""
-
-    LIGHTWEIGHT_SUCCESS = """
-import ray
-
-@ray.remote
-def quick_success_task():
-    return "Success!"
-
-result = ray.get(quick_success_task.remote())
-print(f"Success job result: {result}")
-print("Success job completed!")
-"""
-
-
-def run_ray_cleanup(verbose: bool = True) -> bool:
-    """
-    Run the ray_cleanup.sh script.
-
-    Args:
-        verbose: Whether to print cleanup messages
-
-    Returns:
-        True if cleanup was successful, False otherwise
-    """
-    cleanup_script = Path(__file__).parent.parent.parent / "scripts" / "ray_cleanup.sh"
-
-    if not cleanup_script.exists():
-        if verbose:
-            print("⚠️  Ray cleanup script not found")
-        return False
-
-    try:
-        if verbose:
-            print("🧹 Running ray_cleanup.sh...")
-
-        result = subprocess.run(
-            [str(cleanup_script)], check=True, capture_output=True, text=True
-        )
-
-        if verbose:
-            print("✅ Ray cleanup completed successfully")
-            if result.stdout:
-                print(f"Cleanup output: {result.stdout}")
-
-        return True
-
-    except subprocess.CalledProcessError as e:
-        if verbose:
-            print(f"⚠️  Ray cleanup failed: {e}")
-            if e.stdout:
-                print(f"stdout: {e.stdout}")
-            if e.stderr:
-                print(f"stderr: {e.stderr}")
-        return False
-
-
-def wait_for_ray_shutdown(timeout: int = 30) -> bool:
-    """
-    Wait for Ray to fully shutdown.
-
-    Args:
-        timeout: Maximum time to wait in seconds
-
-    Returns:
-        True if Ray shutdown successfully, False if timeout
-    """
-    try:
-        import ray
-    except ImportError:
-        # Ray not available, consider it shutdown
-        return True
-
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            if not ray.is_initialized():
-                return True
-            time.sleep(1)
-        except Exception:
-            # Ray might be in an inconsistent state, continue waiting
-            time.sleep(1)
-
-    return False

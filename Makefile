@@ -2,29 +2,24 @@
 # 
 # Modern Testing Strategy:
 # - test-fast:  Unit tests with 100% mocking (fast development feedback)
-# - test-e2e:   End-to-end tests without mocking (integration validation)
-# - test:       Complete test suite including E2E (full validation)
+# - test:       Complete test suite (unit tests)
 
-.PHONY: test test-fast test-e2e test-integration-local test-integration-gke test-integration-both test-integration-setup install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
+.PHONY: test test-fast test-integration-local test-integration-gke test-integration-both test-integration-setup install dev-install sync clean uv-lock uv-check lint-tool-functions wc clean-coverage clean-all test-cov
 
 # ================================================================================
 # TESTING TARGETS
 # ================================================================================
 
-# Default test - full test suite including e2e
+# Default test - unit test suite
 test:
-	@echo "🔍 Running complete test suite..."
-	@python tests/integration/test_runner.py all
+	@echo "🔍 Running unit test suite..."
+	@python tests/integration/test_runner.py unit
 
 # Fast test suite (unit tests with 100% mocking) - for development
 test-fast:
 	@echo "🏃‍♂️ Running fast unit tests with 100% mocking..."
 	@python tests/integration/test_runner.py unit
 
-# End-to-end tests without mocking - for integration validation
-test-e2e:
-	@echo "🚀 Running end-to-end tests without mocking..."
-	@python tests/integration/test_runner.py e2e
 
 # Integration tests for local mode
 test-integration-local:
@@ -126,8 +121,8 @@ uv-check:
 
 # Update dependencies to latest compatible versions
 update-deps:
-	@echo "🔄 Running dependency update helper..."
-	@python scripts/update_dependencies.py
+	@echo "🔄 Updating dependencies..."
+	@uv sync --dev --upgrade
 
 # Create virtual environment with uv
 venv:
@@ -185,12 +180,6 @@ wc:
 	@echo "examples/ (example files):"
 	@find ./examples -name "*.py" | xargs wc -l | tail -1
 	@echo ""
-	@echo "scripts/ (utility scripts):"
-	@find ./scripts -name "*.py" -o -name "*.sh" | xargs wc -l | tail -1
-	@echo ""
-	@echo "docs/ (documentation):"
-	@find ./docs -name "*.md" -o -name "*.py" | xargs wc -l | tail -1
-	@echo ""
 	@echo "📈 Summary:"
 	@echo "================================"
 	@echo "Total Python lines:"
@@ -236,9 +225,8 @@ help:
 	@echo "  update-deps      Update dependencies to latest compatible versions"
 	@echo ""
 	@echo "🧪 Testing (New Test Runner):"
-	@echo "  test             Run complete test suite (unit + e2e)"
+	@echo "  test             Run unit test suite"
 	@echo "  test-fast        Run unit tests with 100% mocking (fast development)"
-	@echo "  test-e2e         Run end-to-end tests without mocking (integration)"
 	@echo "  test-cov         Run unit tests with coverage reporting"
 	@echo ""
 	@echo "🔧 Integration Testing:"
@@ -260,4 +248,4 @@ help:
 	@echo "🎯 Architecture:"
 	@echo "  3 Tools: ray_cluster, ray_job, cloud"
 	@echo "  Interface: Natural language prompts"
-	@echo "  Tests: 96 unit + 8 e2e = 104 total" 
+	@echo "  Tests: 96 unit tests"

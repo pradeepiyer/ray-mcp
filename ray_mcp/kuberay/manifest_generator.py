@@ -2,12 +2,12 @@
 
 import asyncio
 import json
-import re
 from typing import Any, Optional
 
 import yaml
 
 from ..foundation.logging_utils import LoggingUtility
+from ..foundation.name_utils import NameGenerator
 
 try:
     from kubernetes import client, config
@@ -50,102 +50,11 @@ class ManifestGenerator:
                 raise RuntimeError(f"Failed to initialize Kubernetes client: {str(e)}")
 
     @staticmethod
-    def generate_ray_cluster_manifest(prompt: str, action: dict[str, Any]) -> str:
-        """Generate RayCluster manifest from prompt and parsed action."""
+    def generate_ray_service_manifest(action: dict[str, Any]) -> str:
+        """Generate RayService manifest from parsed action data."""
         # Extract parameters from action
-        name = action.get("name", "ray-cluster")
-        namespace = action.get("namespace", "default")
-        workers = action.get("workers") or 1  # Handle None workers
-        head_resources = action.get("head_resources", {"cpu": "4", "memory": "16Gi"})
-        worker_resources = action.get(
-            "worker_resources", {"cpu": "8", "memory": "16Gi"}
-        )
-
-        # Generate manifest YAML
-        manifest = f"""apiVersion: ray.io/v1
-kind: RayCluster
-metadata:
-  name: {name}
-  namespace: {namespace}
-spec:
-  rayVersion: '2.47.0'
-  enableInTreeAutoscaling: true
-  headGroupSpec:
-    rayStartParams:
-      dashboard-host: '0.0.0.0'
-    template:
-      spec:
-        containers:
-        - name: ray-head
-          image: rayproject/ray:2.47.0
-          resources:
-            limits:
-              cpu: {head_resources["cpu"]}
-              memory: {head_resources["memory"]}
-            requests:
-              cpu: {head_resources["cpu"]}
-              memory: {head_resources["memory"]}
-          ports:
-          - containerPort: 6379
-            name: gcs-server
-          - containerPort: 8265
-            name: dashboard
-          - containerPort: 10001
-            name: client
-  workerGroupSpecs:
-  - replicas: {workers}
-    minReplicas: 1
-    maxReplicas: {workers * 2}
-    groupName: small-group
-    rayStartParams: {{}}
-    template:
-      spec:
-        containers:
-        - name: ray-worker
-          image: rayproject/ray:2.47.0
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh","-c","ray stop"]
-          resources:
-            limits:
-              cpu: {worker_resources["cpu"]}
-              memory: {worker_resources["memory"]}
-            requests:
-              cpu: {worker_resources["cpu"]}
-              memory: {worker_resources["memory"]}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {name}-head-svc
-  namespace: {namespace}
-spec:
-  selector:
-    ray.io/cluster: {name}
-    ray.io/node-type: head
-  ports:
-  - name: dashboard
-    port: 8265
-    targetPort: 8265
-  - name: client
-    port: 10001
-    targetPort: 10001
-  type: ClusterIP
-"""
-        # Log the generated manifest
-        LoggingUtility.log_info(
-            "kuberay_cluster_manifest_gen",
-            f"Generated RayCluster manifest:\n{manifest}",
-        )
-
-        return manifest
-
-    @staticmethod
-    def generate_ray_service_manifest(prompt: str, action: dict[str, Any]) -> str:
-        """Generate RayService manifest from prompt and parsed action."""
-        # Extract parameters from action
-        name = action.get("name", "ray-service")
+        base_name = action.get("name")
+        name = NameGenerator.generate_ray_resource_name("service", base_name)
         namespace = action.get("namespace", "default")
         gateway = action.get("gateway", "ray-gateway")
         script = action.get("script") or action.get("source", "python serve.py")
@@ -172,8 +81,8 @@ spec:
                         )
 
                         # Set entrypoint to run the script from the downloaded repo
-                        # Ray unpacks the zip and makes it available in the working directory
-                        # The script path should be relative to the repo root
+                        # Ray creates a URL-based directory structure like:
+                        # https_github_com_anyscale_rayturbo-benchmarks_archive_main/rayturbo-benchmarks-main/
                         script = f"python {script_path}"
 
         # Handle runtime environment
@@ -338,15 +247,16 @@ spec:
         return manifest
 
     @staticmethod
-    def generate_ray_job_manifest(prompt: str, action: dict[str, Any]) -> str:
-        """Generate RayJob manifest from prompt and parsed action."""
+    def generate_ray_job_manifest(action: dict[str, Any]) -> str:
+        """Generate RayJob manifest from parsed action data."""
         # Extract parameters from action
-        name = action.get("name", "ray-job")
+        base_name = action.get("name")
+        name = NameGenerator.generate_ray_resource_name("job", base_name)
         namespace = action.get("namespace", "default")
         script = action.get("script") or action.get("source", "python main.py")
         runtime_env = action.get("runtime_env", {})
 
-        # Handle GitHub URL in script - convert to proper working_dir + entrypoint
+        # Handle GitHub URL in script - convert to proper working_dir + entrypoint.
         if script and script.startswith("https://github.com/"):
             # Extract repo and script path from GitHub URL
             # Example: https://github.com/anyscale/rayturbo-benchmarks/blob/main/aggregations-filters/tpch-q1.py
@@ -515,9 +425,18 @@ spec:
             ]
 
             if failed_resources:
+                # Include detailed error information in the message
+                error_details = []
+                for failed in failed_resources:
+                    error_details.append(
+                        f"{failed['kind']} '{failed['name']}': {failed.get('error', 'Unknown error')}"
+                    )
+
+                detailed_message = f"Failed to apply {len(failed_resources)} of {len(applied_resources)} resources. Errors: {'; '.join(error_details)}"
+
                 return {
                     "status": "error",
-                    "message": f"Failed to apply {len(failed_resources)} of {len(applied_resources)} resources",
+                    "message": detailed_message,
                     "applied_resources": applied_resources,
                     "failed_resources": failed_resources,
                     "namespace": namespace,
@@ -557,9 +476,7 @@ spec:
                 group = "ray.io"
                 version = "v1"
 
-                if kind == "RayCluster":
-                    plural = "rayclusters"
-                elif kind == "RayJob":
+                if kind == "RayJob":
                     plural = "rayjobs"
                 elif kind == "RayService":
                     plural = "rayservices"
@@ -738,16 +655,7 @@ spec:
         try:
             self._ensure_kubernetes_client()
 
-            if resource_type.lower() == "raycluster":
-                await asyncio.to_thread(
-                    self._custom_objects_api.delete_namespaced_custom_object,
-                    group="ray.io",
-                    version="v1",
-                    namespace=namespace,
-                    plural="rayclusters",
-                    name=name,
-                )
-            elif resource_type.lower() == "rayjob":
+            if resource_type.lower() == "rayjob":
                 await asyncio.to_thread(
                     self._custom_objects_api.delete_namespaced_custom_object,
                     group="ray.io",
@@ -816,16 +724,7 @@ spec:
         try:
             self._ensure_kubernetes_client()
 
-            if resource_type.lower() == "raycluster":
-                resource_data = await asyncio.to_thread(
-                    self._custom_objects_api.get_namespaced_custom_object,
-                    group="ray.io",
-                    version="v1",
-                    namespace=namespace,
-                    plural="rayclusters",
-                    name=name,
-                )
-            elif resource_type.lower() == "rayjob":
+            if resource_type.lower() == "rayjob":
                 resource_data = await asyncio.to_thread(
                     self._custom_objects_api.get_namespaced_custom_object,
                     group="ray.io",
@@ -930,15 +829,7 @@ spec:
         try:
             self._ensure_kubernetes_client()
 
-            if resource_type.lower() == "raycluster":
-                resources_data = await asyncio.to_thread(
-                    self._custom_objects_api.list_namespaced_custom_object,
-                    group="ray.io",
-                    version="v1",
-                    namespace=namespace,
-                    plural="rayclusters",
-                )
-            elif resource_type.lower() == "rayjob":
+            if resource_type.lower() == "rayjob":
                 resources_data = await asyncio.to_thread(
                     self._custom_objects_api.list_namespaced_custom_object,
                     group="ray.io",
@@ -1028,27 +919,3 @@ spec:
                 "message": f"Failed to list {resource_type}: {str(e)}",
                 "namespace": namespace,
             }
-
-    @staticmethod
-    def extract_gpu_resources(prompt: str) -> dict[str, str]:
-        """Extract GPU resource requirements from prompt."""
-        resources = {}
-
-        # Look for GPU specifications
-        gpu_match = re.search(r"(\d+)\s*(?:gpu|nvidia)", prompt, re.IGNORECASE)
-        if gpu_match:
-            resources["nvidia.com/gpu"] = gpu_match.group(1)
-
-        return resources
-
-    @staticmethod
-    def detect_service_type(prompt: str) -> str:
-        """Detect desired service type from prompt."""
-        prompt_lower = prompt.lower()
-
-        if "loadbalancer" in prompt_lower or "external" in prompt_lower:
-            return "LoadBalancer"
-        elif "nodeport" in prompt_lower:
-            return "NodePort"
-        else:
-            return "ClusterIP"

@@ -5,26 +5,12 @@ import pytest
 
 @pytest.fixture
 def e2e_ray_manager():
-    """Fixture to manage Ray cluster lifecycle for e2e testing."""
-    # Use the same RayManager instance that the MCP tools use
-    from ray_mcp.main import ray_manager
+    """Fixture to manage Kubernetes cluster lifecycle for e2e testing."""
+    # Return the individual managers since ray_manager no longer exists
+    from ray_mcp.main import cloud_provider_manager, job_manager, service_manager
 
-    # Ensure Ray is not already running
-    try:
-        import ray
-
-        if ray.is_initialized():
-            ray.shutdown()
-    except ImportError:
-        pass  # Ray not available
-
-    yield ray_manager
-
-    # Cleanup: Stop Ray if it's running
-    try:
-        import ray
-
-        if ray.is_initialized():
-            ray.shutdown()
-    except Exception:
-        pass  # Ignore cleanup errors
+    return {
+        "job_manager": job_manager,
+        "service_manager": service_manager,
+        "cloud_manager": cloud_provider_manager,
+    }

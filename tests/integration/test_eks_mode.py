@@ -49,7 +49,7 @@ async def test_eks_environment_setup():
         return False
 
     # Test cloud environment check
-    result = await call_tool("cloud", {"prompt": "check environment"})
+    result = await call_tool("ray_cloud", {"prompt": "check environment"})
     response = parse_tool_result(result)
     print(f"✅ Environment check: {response['status']}")
 
@@ -75,7 +75,7 @@ async def test_aws_authentication():
 
     region = EKSTestConfig.get_region()
     result = await call_tool(
-        "cloud", {"prompt": f"authenticate with AWS region {region}"}
+        "ray_cloud", {"prompt": f"authenticate with AWS region {region}"}
     )
     response = parse_tool_result(result)
 
@@ -97,7 +97,7 @@ async def test_eks_cluster_discovery():
 
     region = EKSTestConfig.get_region()
     result = await call_tool(
-        "cloud", {"prompt": f"list EKS clusters in region {region}"}
+        "ray_cloud", {"prompt": f"list EKS clusters in region {region}"}
     )
     response = parse_tool_result(result)
 
@@ -125,7 +125,7 @@ async def test_eks_cluster_info():
     # First, discover clusters to get a cluster name
     region = EKSTestConfig.get_region()
     result = await call_tool(
-        "cloud", {"prompt": f"list EKS clusters in region {region}"}
+        "ray_cloud", {"prompt": f"list EKS clusters in region {region}"}
     )
     response = parse_tool_result(result)
 
@@ -145,7 +145,7 @@ async def test_eks_cluster_info():
         return False
 
     result = await call_tool(
-        "cloud",
+        "ray_cloud",
         {"prompt": f"get info for EKS cluster {cluster_name} in region {region}"},
     )
     response = parse_tool_result(result)

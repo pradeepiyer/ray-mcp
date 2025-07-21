@@ -12,19 +12,20 @@ from mcp.server.models import InitializationOptions
 from mcp.types import ServerCapabilities, TextContent, Tool
 
 from . import __version__
-from .foundation.import_utils import RAY_AVAILABLE
-from .foundation.logging_utils import LoggingUtility
-from .handlers import RayHandlers
-from .managers.unified_manager import RayUnifiedManager
+from .cloud.cloud_provider_manager import CloudProviderManager
+from .foundation.logging_utils import LoggingUtility, error_response
+from .kuberay.job_manager import JobManager
+from .kuberay.service_manager import ServiceManager
+from .llm_parser import get_parser
 from .tools import get_ray_tools
 
-# Check Ray availability
-# RAY_AVAILABLE is imported from import_utils
+# Kubernetes-only Ray MCP server
 
 # Initialize server and components
 server = Server("ray-mcp")
-ray_manager = RayUnifiedManager()
-handlers = RayHandlers(ray_manager)
+job_manager = JobManager()
+service_manager = ServiceManager()
+cloud_provider_manager = CloudProviderManager()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,13 +34,13 @@ logger = logging.getLogger(__name__)
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Return the 4 Ray tools with natural language interfaces."""
+    """Return the unified Ray tool with natural language interface."""
     return get_ray_tools()
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextContent]:
-    """Handle tool calls with natural language prompts."""
+    """Handle tool calls with LLM-based routing from natural language prompts."""
     if not arguments or "prompt" not in arguments:
         return [
             TextContent(
@@ -50,32 +51,33 @@ async def call_tool(name: str, arguments: Optional[dict] = None) -> list[TextCon
     prompt = arguments["prompt"]
 
     try:
-        if name == "ray_cluster":
-            result = await handlers.handle_cluster(prompt)
-        elif name == "ray_job":
-            result = await handlers.handle_job(prompt)
-        elif name == "ray_service":
-            result = await handlers.handle_service(prompt)
-        elif name == "cloud":
-            result = await handlers.handle_cloud(prompt)
+        if name != "ray":
+            result = error_response(f"Unknown tool: {name}")
         else:
-            result = {"status": "error", "message": f"Unknown tool: {name}"}
+            # Use LLM to parse the prompt and determine routing
+            action = await get_parser().parse_action(prompt)
+            action_type = action.get("type")
+
+            if action_type == "job":
+                result = await job_manager.execute_request(action)
+            elif action_type == "service":
+                result = await service_manager.execute_request(action)
+            elif action_type == "cloud":
+                result = await cloud_provider_manager.execute_request(action)
+            else:
+                result = error_response(
+                    f"Unable to determine operation type from prompt: {prompt}"
+                )
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     except Exception as e:
-        error_result = {"status": "error", "message": str(e)}
+        error_result = error_response(str(e))
         return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
 
 
 async def main():
     """Run the Ray MCP server."""
-    if not RAY_AVAILABLE:
-        LoggingUtility.log_warning(
-            "server",
-            "Ray is not available. The MCP server will start but Ray operations will fail.",
-        )
-
     try:
         async with stdio_server() as (read_stream, write_stream):
             await server.run(

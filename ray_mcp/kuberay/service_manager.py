@@ -1,43 +1,39 @@
-"""Pure prompt-driven KubeRay service management for Ray MCP."""
+"""Ray service management for Ray MCP via KubeRay."""
 
 import asyncio
 from typing import Any, Optional
 
-from ..config import config
 from ..foundation.logging_utils import LoggingUtility, error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..llm_parser import get_parser
 from .manifest_generator import ManifestGenerator
 
 
-class KubeRayServiceManager(ResourceManager):
-    """Pure prompt-driven Ray service management using KubeRay - no traditional APIs."""
+class ServiceManager(ResourceManager):
+    """Ray service management using KubeRay."""
 
     def __init__(self):
         super().__init__(
-            enable_ray=True,
             enable_kubernetes=True,
             enable_cloud=False,
         )
 
         self._manifest_generator = ManifestGenerator()
 
-    async def execute_request(self, prompt: str) -> dict[str, Any]:
-        """Execute KubeRay service operations using natural language prompts.
+    async def execute_request(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Execute KubeRay service operations using parsed action data.
 
-        Examples:
-            - "create Ray service with inference model model.py on kubernetes"
-            - "list all Ray services in production namespace"
-            - "get status of service inference-service"
-            - "delete service model-serving"
-            - "get logs for service image-classifier"
+        Args:
+            action: Parsed action dict containing operation details
         """
         try:
-            action = await get_parser().parse_kuberay_service_action(prompt)
+            if action.get("type") != "service":
+                raise ValueError(
+                    f"Expected service action but got: {action.get('type')}"
+                )
             operation = action["operation"]
 
             if operation == "create":
-                return await self._create_ray_service_from_prompt(action)
+                return await self._create_ray_service_from_action(action)
             elif operation == "list":
                 namespace = action.get("namespace", "default")
                 return await self._list_ray_services(namespace)
@@ -92,7 +88,7 @@ class KubeRayServiceManager(ResourceManager):
                 Exception(f"Failed to configure kubectl context: {str(e)}"),
             )
 
-    async def _create_ray_service_from_prompt(
+    async def _create_ray_service_from_action(
         self, action: dict[str, Any]
     ) -> dict[str, Any]:
         """Create Ray service from parsed prompt action using manifest generation."""
@@ -100,9 +96,7 @@ class KubeRayServiceManager(ResourceManager):
             namespace = action.get("namespace", "default")
 
             # Generate manifest from action
-            manifest = self._manifest_generator.generate_ray_service_manifest(
-                f"create service {action.get('name', 'ray-service')}", action
-            )
+            manifest = self._manifest_generator.generate_ray_service_manifest(action)
 
             # Apply manifest
             result = await self._manifest_generator.apply_manifest(manifest, namespace)
@@ -160,9 +154,7 @@ class KubeRayServiceManager(ResourceManager):
         }
 
         # Generate and apply manifest
-        manifest = self._manifest_generator.generate_ray_service_manifest(
-            f"create service {service_name}", action
-        )
+        manifest = self._manifest_generator.generate_ray_service_manifest(action)
 
         apply_result = await self._manifest_generator.apply_manifest(
             manifest, namespace

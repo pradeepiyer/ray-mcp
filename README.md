@@ -8,10 +8,10 @@
 
 ## ✨ Features
 
-- **4 Simple Tools**: `ray_cluster`, `ray_job`, `ray_service`, `cloud`
+- **Single Tool**: `ray` with automatic operation detection
 - **Natural Language Interface**: Single prompt parameter per tool
-- **Unified Management**: Works with local Ray, KubeRay, GKE, and AWS EKS
-- **Automatic Detection**: Intelligent routing between environments
+- **Kubernetes-Only**: Focused on KubeRay, GKE, and AWS EKS clusters
+- **Intelligent Routing**: Direct cloud provider and operation detection
 
 ## 🚀 Quick Start
 
@@ -40,57 +40,37 @@ Add to your MCP client configuration:
 ### Basic Usage
 
 ```bash
-# Cluster management
-ray_cluster: "create a local cluster with 4 CPUs"
-ray_cluster: "connect to kubernetes cluster my-cluster"
-ray_cluster: "inspect cluster status"
-
 # Job operations
-ray_job: "submit job with script train.py"
-ray_job: "list all running jobs"
-ray_job: "get logs for job raysubmit_123"
+ray: "submit job with script train.py"
+ray: "list all running jobs"
+ray: "get logs for job raysubmit_123"
 
 # Service operations
-ray_service: "deploy service with inference model serve.py"
-ray_service: "list all services"
-ray_service: "scale service model-api to 3 replicas"
+ray: "deploy service with inference model serve.py"
+ray: "list all services"
+ray: "scale service model-api to 3 replicas"
 
 # Cloud providers
-cloud: "authenticate with GCP project ml-experiments"
-cloud: "list all GKE clusters"
-cloud: "authenticate with AWS region us-west-2"
-cloud: "list all EKS clusters"
-cloud: "connect to cluster production-cluster"
+ray: "authenticate with GCP project ml-experiments"
+ray: "list all GKE clusters"
+ray: "authenticate with AWS region us-west-2"
+ray: "list all EKS clusters"
+ray: "connect to cluster production-cluster"
 ```
 
 ## 🎯 Tool Reference
 
-### `ray_cluster`
-Manage Ray clusters with natural language prompts.
+### `ray`
+Unified Ray management with automatic operation detection.
 
-**Examples:**
-- `"create a local cluster with 4 CPUs"`
-- `"create head-only cluster"`
-- `"connect to cluster at 192.168.1.100:10001"`
-- `"create Ray cluster named ml-cluster with 3 workers on kubernetes"`
-- `"stop the current cluster"`
-- `"inspect cluster status"`
-
-### `ray_job`
-Submit and manage Ray jobs.
-
-**Examples:**
+**Job Operations:**
 - `"submit job with script train.py"`
 - `"submit job with script train.py and 2 CPUs"`
 - `"list all running jobs"`
 - `"get logs for job raysubmit_123"`
 - `"cancel job raysubmit_456"`
-- `"create Ray job with training script on kubernetes"`
 
-### `ray_service`
-Deploy and manage Ray services for long-running inference and serving.
-
-**Examples:**
+**Service Operations:**
 - `"deploy service with inference model serve.py"`
 - `"create service named image-classifier with model classifier.py"`
 - `"list all services"`
@@ -98,42 +78,20 @@ Deploy and manage Ray services for long-running inference and serving.
 - `"get status of service inference-engine"`
 - `"delete service recommendation-api"`
 
-### `cloud`
-Manage cloud providers and authentication.
-
-**Examples:**
+**Cloud Operations:**
 - `"authenticate with GCP project ml-experiments"`
 - `"list all GKE clusters"`
 - `"authenticate with AWS region us-west-2"`
 - `"list all EKS clusters"`
 - `"connect to GKE cluster production-cluster"`
 - `"connect to EKS cluster training-cluster in region us-west-2"`
-- `"check cloud environment setup"`
+- `"check environment setup"`
 - `"create GKE cluster ml-cluster with 3 nodes"`
-- `"create EKS cluster ml-cluster with 3 nodes"
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    Natural Language    ┌─────────────────┐
-│   LLM Agent     │──────────────────────►│   Ray MCP       │
-│                 │     Single Prompt      │   Server        │
-└─────────────────┘                        └─────────┬───────┘
-                                                     │
-                   ┌─────────────────────────────────┼─────────────────────────────┐
-                   │                                 │                             │
-                   ▼                                 ▼                             ▼
-            ┌─────────────┐                  ┌─────────────┐              ┌─────────────┐
-            │ Local Ray   │                  │  KubeRay    │              │   Cloud     │
-            │ Clusters    │                  │ Clusters    │              │ (GKE/EKS)   │
-            └─────────────┘                  └─────────────┘              └─────────────┘
-```
 
 **Key Components:**
-- **LLM Parser**: Uses Anthropic Claude to convert natural language prompts to structured actions
-- **ActionParser**: Processes parsed prompts into Ray operations  
-- **RayUnifiedManager**: Routes requests between specialized managers
-- **RayHandlers**: Processes MCP tool calls with validation
+- **LLM Parser**: Uses OpenAI to convert natural language prompts to structured actions
+- **Kubernetes Managers**: Direct operation routing to cloud providers
+- **MCP Tool**: Single `ray` tool with automatic operation routing
 
 ## 🔧 Environment Setup
 
@@ -182,15 +140,6 @@ export RAY_MCP_LOG_LEVEL=INFO                   # Logging level (DEBUG, INFO, WA
 export RAY_DISABLE_USAGE_STATS=1                # Disable Ray usage statistics
 ```
 
-## 📖 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Configuration](docs/CONFIGURATION.md) | Authentication and setup guides |
-| [Examples](docs/EXAMPLES.md) | Common usage patterns |
-| [Development](docs/DEVELOPMENT.md) | Contributing and development setup |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-
 ## 🛠️ Development
 
 ```bash
@@ -199,7 +148,6 @@ make dev-install
 
 # Run tests
 make test-fast      # Unit tests with mocking
-make test-e2e       # End-to-end integration tests
 make test           # Complete test suite
 
 # Code quality
@@ -215,8 +163,195 @@ make format         # Format code
 
 **Optional:**
 - **Google Cloud SDK**: For GKE integration
-- **AWS CLI**: For EKS integration
+- **AWS SDK**: For EKS integration
 - **kubectl**: For Kubernetes management
+
+## 📚 Examples
+
+Common usage patterns for Ray MCP Server (Kubernetes-only).
+
+### Job Operations
+
+#### Submit and Manage Jobs
+
+```bash
+# Submit a job
+ray: "submit job with script train.py"
+
+# Submit job with resources
+ray: "submit job with script train.py requiring 2 CPUs and 1 GPU"
+
+# Submit job with runtime environment
+ray: "submit job with script train.py and pip packages pandas numpy"
+
+# List jobs
+ray: "list all running jobs"
+ray: "list jobs in namespace production"
+
+# Get job status and logs
+ray: "get status for job raysubmit_123"
+ray: "get logs for job raysubmit_123"
+
+# Cancel job
+ray: "cancel job raysubmit_123"
+```
+
+### Service Operations
+
+#### Deploy and Manage Services
+
+```bash
+# Deploy a service
+ray: "deploy service with inference model serve.py"
+
+# Deploy named service
+ray: "create service named image-classifier with model classifier.py"
+
+# List services
+ray: "list all services"
+ray: "list services in namespace production"
+
+# Manage services
+ray: "get status of service image-classifier"
+ray: "scale service model-api to 5 replicas"
+ray: "get logs for service text-analyzer"
+ray: "delete service old-model-service"
+```
+
+### Cloud Operations
+
+#### Authentication
+
+```bash
+# Google Cloud (GKE)
+ray: "authenticate with GCP project ml-experiments"
+ray: "authenticate with GCP"
+
+# Amazon Web Services (EKS)
+ray: "authenticate with AWS region us-west-2"
+ray: "authenticate with AWS"
+
+# Azure (AKS)
+ray: "authenticate with Azure"
+```
+
+#### Cluster Discovery and Management
+
+```bash
+# List clusters
+ray: "list all GKE clusters"
+ray: "list all EKS clusters"
+ray: "list all AKS clusters"
+
+# Connect to clusters
+ray: "connect to GKE cluster production-cluster in us-west1-c"
+ray: "connect to EKS cluster training-cluster in us-west-2"
+ray: "connect to AKS cluster ml-cluster in eastus2"
+
+# Check environment
+ray: "check environment setup"
+```
+
+### Workflow Examples
+
+#### Development Workflow
+
+```bash
+# 1. Authenticate
+ray: "authenticate with GCP project my-ml-project"
+
+# 2. Connect to cluster
+ray: "connect to cluster dev-cluster in us-central1-a"
+
+# 3. Submit test job
+ray: "submit job with script test_model.py"
+
+# 4. Check results
+ray: "get logs for job raysubmit_123"
+```
+
+#### Production Deployment
+
+```bash
+# 1. Connect to production cluster
+ray: "connect to cluster production-cluster in us-west1-c"
+
+# 2. Deploy service
+ray: "create service named prod-inference with model production_model.py in namespace production"
+
+# 3. Scale for load
+ray: "scale service prod-inference to 10 replicas"
+
+# 4. Monitor
+ray: "get status of service prod-inference"
+```
+
+#### Batch Processing
+
+```bash
+# 1. Connect to compute cluster
+ray: "connect to cluster batch-cluster"
+
+# 2. Submit batch job
+ray: "submit job with script batch_processing.py requiring 8 CPUs"
+
+# 3. Monitor progress
+ray: "get status for job batch-processing-job"
+
+# 4. Get results
+ray: "get logs for job batch-processing-job"
+```
+
+### Advanced Examples
+
+#### Multi-Environment Setup
+
+```bash
+# Development
+ray: "authenticate with GCP project dev-project"
+ray: "connect to cluster dev-cluster"
+ray: "submit job with script experiment.py"
+
+# Staging
+ray: "authenticate with AWS region us-east-1"
+ray: "connect to cluster staging-cluster"
+ray: "submit job with script validation.py"
+
+# Production
+ray: "authenticate with GCP project prod-project"
+ray: "connect to cluster prod-cluster"
+ray: "deploy service with model final_model.py"
+```
+
+#### Resource-Specific Operations
+
+```bash
+# CPU-intensive job
+ray: "submit job with script data_processing.py requiring 4 CPUs"
+
+# GPU training job
+ray: "submit job with script gpu_training.py requiring 2 GPUs"
+
+# Mixed workload
+ray: "submit job with script hybrid_task.py requiring 2 CPUs and 1 GPU"
+```
+
+#### Error Handling and Debugging
+
+```bash
+# Check cluster status
+ray: "check environment setup"
+
+# Get detailed logs
+ray: "get error logs for job raysubmit_456"
+
+# List failed jobs
+ray: "list failed jobs"
+
+# Restart failed job
+ray: "cancel job raysubmit_456"
+ray: "submit job with script fixed_model.py"
+```
 
 ## 📄 License
 

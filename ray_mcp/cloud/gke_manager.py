@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import json
 import os
 import tempfile
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from ..config import config
 from ..foundation.enums import CloudProvider
@@ -15,17 +15,13 @@ from ..foundation.import_utils import (
     GOOGLE_CLOUD_AVAILABLE,
     GOOGLE_SERVICE_ACCOUNT_AVAILABLE,
     KUBERNETES_AVAILABLE,
-    DefaultCredentialsError,
     client,
-    config as k8s_config,
     container_v1,
-    default,
     google_auth_transport,
     service_account,
 )
 from ..foundation.logging_utils import error_response, success_response
 from ..foundation.resource_manager import ResourceManager
-from ..llm_parser import get_parser
 
 
 class GKEManager(ResourceManager):
@@ -40,7 +36,6 @@ class GKEManager(ResourceManager):
 
     def __init__(self):
         super().__init__(
-            enable_ray=False,
             enable_kubernetes=True,
             enable_cloud=True,
         )
@@ -53,18 +48,13 @@ class GKEManager(ResourceManager):
         self._credentials = None
         self._ca_cert_file = None  # Track the CA certificate file for cleanup
 
-    async def execute_request(self, prompt: str) -> dict[str, Any]:
-        """Execute GKE operations using natural language prompts.
+    async def execute_request(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Execute GKE operations using parsed action data.
 
-        Examples:
-            - "authenticate with GCP project ml-experiments"
-            - "list all GKE clusters in us-central1"
-            - "connect to GKE cluster training-cluster in zone us-central1-a"
-            - "create GKE cluster ml-cluster with 3 nodes"
-            - "get info for cluster production-cluster"
+        Args:
+            action: Parsed action dict containing operation details
         """
         try:
-            action = await get_parser().parse_cloud_action(prompt)
             operation = action["operation"]
 
             if operation == "authenticate":
@@ -75,20 +65,20 @@ class GKEManager(ResourceManager):
                 return await self._discover_clusters(project_id)
             elif operation == "connect_cluster":
                 cluster_name = action.get("cluster_name")
-                location = action.get("zone")  # parse_cloud_action uses "zone"
+                location = action.get("zone")  # parse_action uses "zone"
                 project_id = action.get("project_id")
                 if not cluster_name or not location:
                     return error_response("cluster name and location required")
                 return await self._connect_cluster(cluster_name, location, project_id)
             elif operation == "create_cluster":
                 cluster_name = action.get("cluster_name")
-                location = action.get("zone")  # parse_cloud_action uses "zone"
+                location = action.get("zone")  # parse_action uses "zone"
                 project_id = action.get("project_id")
                 cluster_spec = {"name": cluster_name, "location": location}
                 return await self._create_cluster(cluster_spec, project_id)
             elif operation == "get_cluster_info":
                 cluster_name = action.get("cluster_name")
-                location = action.get("zone")  # parse_cloud_action uses "zone"
+                location = action.get("zone")  # parse_action uses "zone"
                 project_id = action.get("project_id")
                 if not cluster_name or not location:
                     return error_response("cluster name and location required")
@@ -624,7 +614,7 @@ class GKEManager(ResourceManager):
             parent = f"projects/{project_id}/locations/{location}"
 
             # Type cast to satisfy type checker - GKE API accepts dictionary format
-            from typing import Any, cast
+            from typing import cast
 
             cluster_config_typed = cast(Any, cluster_config_dict)
 
